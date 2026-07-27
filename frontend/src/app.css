@@ -275,6 +275,90 @@ html.desktop .app {
   letter-spacing: 0.04em;
 }
 
+
+/* ---------------------------------------------------------------- slash typeahead
+ * Product register (design.md): instrument panel, not a marketing popover.
+ * Restrained: paper surface, mono command, muted description, accent wash on
+ * the active row. No left stripe, no glass, no gradient text.
+ */
+.slash {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-2xs);
+  display: grid;
+  gap: 2px;
+  max-height: min(42dvh, 18rem);
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-surface);
+  background: var(--color-paper-2, var(--color-paper));
+  box-shadow: 0 -8px 24px oklch(0% 0 0 / 0.18);
+  -webkit-overflow-scrolling: touch;
+}
+
+.slash__row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--space-xs) var(--space-sm);
+  text-align: start;
+  padding: 8px 10px;
+  min-height: var(--tap, 44px);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-ink);
+  cursor: pointer;
+  font: inherit;
+}
+
+.slash__row:hover {
+  background: var(--color-paper-3, var(--color-accent-wash));
+}
+
+.slash__row.is-on {
+  background: var(--color-accent-wash);
+  color: var(--color-ink);
+}
+
+.slash__row.is-on .slash__name {
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.slash__name {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-variant-ligatures: none;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.slash__desc {
+  font-size: var(--text-xs);
+  color: var(--color-ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+@media (max-width: 28rem) {
+  .slash__row {
+    grid-template-columns: 1fr;
+    gap: 2px;
+    padding: 10px 10px;
+  }
+  .slash__desc {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+}
+
 /* ---------------------------------------------------------------- buttons */
 
 .btn {

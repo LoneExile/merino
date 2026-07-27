@@ -425,6 +425,13 @@ func (s *AgentsService) SendText(paneID, text string) error {
 	return cli.SubmitText(s.ctx, paneID, text)
 }
 
+// SlashCommands returns typeahead hits for the composer when the user types
+// "/…" in a pane. agent is the herdr agent label (omp/pi/claude/grok/…).
+// query may include the leading slash.
+func (s *AgentsService) SlashCommands(agent, query, cwd string) []SlashCommand {
+	return FilterSlashCommands(agent, query, cwd)
+}
+
 // SendKeys presses allowlisted keys in a pane.
 func (s *AgentsService) SendKeys(paneID string, keys []string) error {
 	if err := s.guard.CheckPane(paneID); err != nil {

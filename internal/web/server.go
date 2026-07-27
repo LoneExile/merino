@@ -195,6 +195,7 @@ func (s *Server) routes() http.Handler {
 
 	mux.Handle("GET /api/session", s.authed(s.handleSession))
 	mux.Handle("GET /api/agents", s.authed(s.handleAgents))
+	mux.Handle("GET /api/slash", s.authed(s.handleSlash))
 	if s.cfg.Sessions != nil {
 		mux.Handle("GET /api/sessions", s.authed(s.handleSessions))
 	}
@@ -342,6 +343,30 @@ func (s *Server) handleSession(w http.ResponseWriter, _ *http.Request, id Identi
 func (s *Server) handleAgents(w http.ResponseWriter, _ *http.Request, id Identity) {
 	agents := filterViewable(s.cfg.Policy, id, s.src.List())
 	writeJSON(w, http.StatusOK, agents)
+}
+
+// handleSlash serves composer typeahead for "/" commands. Query:
+//
+//	?agent=omp&q=hel
+//
+// Returns []SlashCommand. Always 200 with an array (possibly empty).
+func (s *Server) handleSlash(w http.ResponseWriter, r *http.Request, id Identity) {
+	_ = id
+	agent := r.URL.Query().Get("agent")
+	q := r.URL.Query().Get("q")
+	if q == "" {
+		q = r.URL.Query().Get("query")
+	}
+	cwd := r.URL.Query().Get("cwd")
+	// Prefer the live AgentsService when available.
+	type slashper interface {
+		SlashCommands(agent, query, cwd string) []app.SlashCommand
+	}
+	if sp, ok := s.src.(slashper); ok {
+		writeJSON(w, http.StatusOK, sp.SlashCommands(agent, q, cwd))
+		return
+	}
+	writeJSON(w, http.StatusOK, app.FilterSlashCommands(agent, q, cwd))
 }
 
 func (s *Server) handleOutput(w http.ResponseWriter, r *http.Request, id Identity) {

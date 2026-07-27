@@ -61,6 +61,15 @@ export function wailsClient(): Client {
     // A nil Go slice serialises to null, so the generated binding is typed
     // Agent[] | null. Normalise here so callers never handle both.
     list: async () => (await AgentsService.List()) ?? [],
+    slashCommands: async (agent: string, query: string, cwd?: string) => {
+      const list = (await AgentsService.SlashCommands(agent, query, cwd ?? "")) ?? [];
+      return list.map((c) => ({
+        name: c.name,
+        value: c.value,
+        description: c.description,
+        source: c.source,
+      }));
+    },
     read: (paneId: string, lines: number) => AgentsService.Read(paneId, lines),
 
     subscribe(onAgents) {

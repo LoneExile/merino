@@ -9,7 +9,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -19,14 +19,18 @@ import * as $models from "./models.js";
  * Connection reports herdr connectivity.
  */
 export function Connection(): $CancellablePromise<$models.Conn> {
-    return $Call.ByID(2291788203);
+    return $Call.ByID(2291788203).then(($result: any) => {
+        return $$createType0($result);
+    });
 }
 
 /**
  * Counts returns a summary of the herd.
  */
 export function Counts(): $CancellablePromise<$models.Counts> {
-    return $Call.ByID(3973762459);
+    return $Call.ByID(3973762459).then(($result: any) => {
+        return $$createType1($result);
+    });
 }
 
 /**
@@ -46,8 +50,10 @@ export function Interrupt(paneID: string): $CancellablePromise<void> {
 /**
  * List returns the current agents, most urgent first.
  */
-export function List(): $CancellablePromise<$models.Agent[] | null> {
-    return $Call.ByID(2878599779);
+export function List(): $CancellablePromise<$models.Agent[]> {
+    return $Call.ByID(2878599779).then(($result: any) => {
+        return $$createType3($result);
+    });
 }
 
 /**
@@ -120,7 +126,7 @@ export function Respond(paneID: string, text: string): $CancellablePromise<void>
 /**
  * SendKeys presses allowlisted keys in a pane.
  */
-export function SendKeys(paneID: string, keys: string[] | null): $CancellablePromise<void> {
+export function SendKeys(paneID: string, keys: string[]): $CancellablePromise<void> {
     return $Call.ByID(2624467717, paneID, keys);
 }
 
@@ -128,6 +134,12 @@ export function SendKeys(paneID: string, keys: string[] | null): $CancellablePro
  * SendText writes arbitrary text and submits it, which is what a person typing
  * a reply expects. Higher trust than Respond: bounded by length only. Prefer
  * Respond where the answer is one of the canned options.
+ * 
+ * Routing:
+ *   - Pane hosts a coding agent (omp/pi/claude/grok/…) → herdr agent.prompt.
+ *     That path is harness-aware, so slash commands (/help, /status, …) work
+ *     the same way they do when typed in the agent TUI.
+ *   - Plain shell pane → SubmitText (send_text + Enter).
  */
 export function SendText(paneID: string, text: string): $CancellablePromise<void> {
     return $Call.ByID(1262299878, paneID, text);
@@ -137,8 +149,21 @@ export function SendText(paneID: string, text: string): $CancellablePromise<void
  * Sessions enumerates every herdr session this machine knows about,
  * best-effort probed for reachability and pane/agent counts.
  */
-export function Sessions(): $CancellablePromise<$models.SessionInfo[] | null> {
-    return $Call.ByID(482238306);
+export function Sessions(): $CancellablePromise<$models.SessionInfo[]> {
+    return $Call.ByID(482238306).then(($result: any) => {
+        return $$createType5($result);
+    });
+}
+
+/**
+ * SlashCommands returns typeahead hits for the composer when the user types
+ * "/…" in a pane. agent is the herdr agent label (omp/pi/claude/grok/…).
+ * query may include the leading slash.
+ */
+export function SlashCommands(agent: string, query: string, cwd: string): $CancellablePromise<$models.SlashCommand[]> {
+    return $Call.ByID(2459391730, agent, query, cwd).then(($result: any) => {
+        return $$createType7($result);
+    });
 }
 
 /**
@@ -173,3 +198,13 @@ export function StreamOutputANSI(paneID: string, lines: number, onText: any): $C
 export function SwitchSession(id: string): $CancellablePromise<void> {
     return $Call.ByID(3209187573, id);
 }
+
+// Private type creation functions
+const $$createType0 = $models.Conn.createFrom;
+const $$createType1 = $models.Counts.createFrom;
+const $$createType2 = $models.Agent.createFrom;
+const $$createType3 = $Create.Array($$createType2);
+const $$createType4 = $models.SessionInfo.createFrom;
+const $$createType5 = $Create.Array($$createType4);
+const $$createType6 = $models.SlashCommand.createFrom;
+const $$createType7 = $Create.Array($$createType6);

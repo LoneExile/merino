@@ -107,6 +107,12 @@ export interface Client {
   pushSubscribe?(sub: PushSubscriptionJSON): Promise<void>;
   pushUnsubscribe?(endpoint: string): Promise<void>;
 
+  /**
+   * Slash-command typeahead for the composer. agent is the herdr label
+   * (omp/pi/claude/grok). query may include the leading '/'.
+   */
+  slashCommands?(agent: string, query: string, cwd?: string): Promise<SlashCommand[]>;
+
   /** Desktop-only. Absent on the browser transport. */
   launchAtLogin?(): Promise<boolean>;
   setLaunchAtLogin?(on: boolean): Promise<void>;
@@ -130,6 +136,13 @@ export interface PairingTicket {
   token: string;
   qrPng: string;
   expiresAt: number;
+}
+
+export interface SlashCommand {
+  name: string;
+  value: string;
+  description?: string;
+  source?: string;
 }
 
 /**
@@ -195,6 +208,12 @@ async function httpClient(): Promise<Client> {
 
     session: async () => session,
     list: () => getJSON<Agent[]>("/api/agents"),
+
+    slashCommands: (agent: string, query: string, cwd?: string) => {
+      const q = new URLSearchParams({ agent, q: query });
+      if (cwd) q.set("cwd", cwd);
+      return getJSON<SlashCommand[]>(`/api/slash?${q}`);
+    },
 
     async read(paneId: string, lines: number) {
       const r = await getJSON<{ text: string }>(

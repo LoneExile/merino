@@ -6,9 +6,10 @@ export {
     AgentsService
 };
 
-export type {
+export {
     Agent,
     Conn,
     Counts,
-    SessionInfo
+    SessionInfo,
+    SlashCommand
 } from "./models.js";

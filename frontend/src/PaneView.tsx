@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Agent } from "../bindings/github.com/LoneExile/herdr-tunnel/internal/app";
-import type { Client } from "./client";
+import type { Client, SlashCommand } from "./client";
 import { usePaneStream } from "./usePaneStream";
 import { StatusDot } from "./StatusDot";
 import { parseAnsi } from "./ansi";
@@ -220,6 +220,9 @@ function Composer({ client, agent, onSent }: ComposerProps) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const box = useRef<HTMLTextAreaElement>(null);
+  const [slashHits, setSlashHits] = useState<SlashCommand[]>([]);
+  const [slashIdx, setSlashIdx] = useState(0);
+  const slashOpen = slashHits.length > 0;
 
   const canWrite = Boolean(client.sendText);
   const canKeys = Boolean(client.sendKeys);
@@ -234,6 +237,47 @@ function Composer({ client, agent, onSent }: ComposerProps) {
     el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
   }, [value]);
 
+  // Slash typeahead: when the draft is a single "/" token (optionally with a
+  // prefix), query the catalog for this harness. Debounced so skills walk
+  // stays off the hot path.
+  useEffect(() => {
+    if (!client?.slashCommands || !canWrite) {
+      setSlashHits([]);
+      return;
+    }
+    const m = value.match(/^\/(\S*)$/);
+    if (!m) {
+      setSlashHits([]);
+      return;
+    }
+    const q = m[1];
+    let alive = true;
+    const t = window.setTimeout(() => {
+      void client.slashCommands?.(agent.agent || "", q, agent.cwd || undefined).then(
+        (hits) => {
+          if (!alive) return;
+          setSlashHits(Array.isArray(hits) ? hits : []);
+          setSlashIdx(0);
+        },
+        () => {
+          if (alive) setSlashHits([]);
+        },
+      );
+    }, 80);
+    return () => {
+      alive = false;
+      window.clearTimeout(t);
+    };
+  }, [value, client, agent.agent, agent.cwd, canWrite]);
+
+  const applySlash = useCallback((cmd: SlashCommand) => {
+    setValue(cmd.value);
+    setSlashHits([]);
+    setSlashIdx(0);
+    // Keep focus for continued typing (args after the command).
+    requestAnimationFrame(() => box.current?.focus());
+  }, []);
+
   const send = useCallback(
     async (text: string, kind: "reply" | "approve") => {
       const body = text.trim();
@@ -241,7 +285,10 @@ function Composer({ client, agent, onSent }: ComposerProps) {
       setBusy(true);
       setErr(null);
       const restore = value;
-      if (kind === "reply") setValue("");
+      if (kind === "reply") {
+        setValue("");
+        setSlashHits([]);
+      }
       try {
         // No trailing newline: the backend presses Enter as a key. A bare "\n"
         // is ignored by a TUI reading raw input and the text would sit
@@ -345,6 +392,29 @@ function Composer({ client, agent, onSent }: ComposerProps) {
         </div>
       )}
 
+      {canWrite && slashOpen && (
+        <ul className="slash" role="listbox" aria-label="Slash commands">
+          {slashHits.map((h, i) => (
+            <li key={`${h.source ?? "x"}:${h.name}`}>
+              <button
+                type="button"
+                role="option"
+                aria-selected={i === slashIdx}
+                className={`slash__row${i === slashIdx ? " is-on" : ""}`}
+                onMouseDown={(e) => {
+                  // prevent blur-before-click wiping the menu
+                  e.preventDefault();
+                  applySlash(h);
+                }}
+              >
+                <span className="slash__name mono">{h.value.trim()}</span>
+                {h.description && <span className="slash__desc">{h.description}</span>}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
       {canWrite && (
         <div className="composer__row">
           <textarea
@@ -355,9 +425,11 @@ function Composer({ client, agent, onSent }: ComposerProps) {
             maxLength={MAX_TEXT}
             disabled={busy}
             placeholder={
-              canKeys
-                ? `Reply, or Esc/↑/↓/Enter for menus…`
-                : `Reply to ${agent.agent || "pane"}…`
+              agent.agent
+                ? `Message ${agent.agent}, or / for commands…`
+                : canKeys
+                  ? `Reply, or Esc/↑/↓/Enter for menus…`
+                  : `Reply to pane…`
             }
             aria-label={`Reply to ${agent.agent || "pane"}`}
             onChange={(e) => setValue(e.target.value)}
@@ -369,6 +441,31 @@ function Composer({ client, agent, onSent }: ComposerProps) {
               // `value` can still look empty and an immediate Enter would
               // go to the pane instead of sending the reply.
               const live = e.currentTarget.value;
+
+              // Slash typeahead navigation — steals arrows/enter/tab/esc while open.
+              if (slashOpen) {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setSlashIdx((i) => (i + 1) % slashHits.length);
+                  return;
+                }
+                if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setSlashIdx((i) => (i - 1 + slashHits.length) % slashHits.length);
+                  return;
+                }
+                if (e.key === "Enter" || e.key === "Tab") {
+                  e.preventDefault();
+                  const hit = slashHits[slashIdx] ?? slashHits[0];
+                  if (hit) applySlash(hit);
+                  return;
+                }
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  setSlashHits([]);
+                  return;
+                }
+              }
 
               // Empty box → TUI navigation keys go to the pane, not the chat.
               // That is how you drive the Ask chooser (↑/↓, Enter, Esc) from a
