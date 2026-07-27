@@ -40,6 +40,10 @@ func main() {
 		"the server sits behind a trusted TLS-terminating proxy such as a Cloudflare tunnel; "+
 			"marks cookies Secure and trusts CF-Connecting-IP for login throttling. "+
 			"Never enable this while the port is also reachable directly")
+	allowWrites := flag.Bool("allow-writes", false,
+		"let the web dashboard approve prompts, send keys and interrupt agents. "+
+			"Off by default: this is arbitrary input into live terminals, and every "+
+			"action is written to the audit log")
 	listen := flag.String("listen", "",
 		"serve the read-only web dashboard on this address, e.g. 127.0.0.1:8730 "+
 			"or 0.0.0.0:8730 for other devices on your network (disabled when empty)")
@@ -79,7 +83,7 @@ func main() {
 	agents := app.NewAgentsService(client, logger, emit, onCounts)
 
 	if *listen != "" {
-		srv, err := startWeb(agents, *listen, *behindProxy, assets, logger)
+		srv, err := startWeb(agents, *listen, *behindProxy, *allowWrites, assets, logger)
 		if err != nil {
 			logger.Error("web dashboard failed to start", "err", err)
 			os.Exit(1)
@@ -257,7 +261,7 @@ func showPanel(tray *application.SystemTray, panel *application.WebviewWindow) {
 // Disabled unless --listen is given, and never defaults to a public bind: the
 // operator has to type the address, so exposing the herd to the LAN is always
 // a deliberate act rather than something that happens by forgetting a flag.
-func startWeb(src web.Source, addr string, behindProxy bool, assets embed.FS, logger *slog.Logger) (*web.Server, error) {
+func startWeb(src web.Source, addr string, behindProxy, allowWrites bool, assets embed.FS, logger *slog.Logger) (*web.Server, error) {
 	user := os.Getenv("HERDR_TUNNEL_USER")
 	pass := os.Getenv("HERDR_TUNNEL_PASS")
 	if user == "" || pass == "" {
@@ -271,6 +275,28 @@ func startWeb(src web.Source, addr string, behindProxy bool, assets embed.FS, lo
 		return nil, fmt.Errorf("locate frontend assets: %w", err)
 	}
 
+	// Writes and their audit log are enabled together. The server refuses a
+	// Writer without an Audit, so this cannot drift apart.
+	var (
+		writer web.Writer
+		audit  *app.Audit
+	)
+	if allowWrites {
+		a, auditErr := app.NewAudit(app.DefaultAuditPath())
+		if auditErr != nil {
+			return nil, auditErr
+		}
+		audit = a
+		w, castOK := src.(web.Writer)
+		if !castOK {
+			return nil, errors.New("source does not support writes")
+		}
+		writer = w
+		logger.Warn("web dashboard can write to your agents",
+			"audit", app.DefaultAuditPath(),
+			"note", "approvals, keys and interrupts are accepted from any signed-in browser")
+	}
+
 	srv, err := web.New(src, web.Config{
 		Addr:     addr,
 		Provider: web.NewPasswordProvider(user, pass, ipResolver(behindProxy)),
@@ -280,6 +306,8 @@ func startWeb(src web.Source, addr string, behindProxy bool, assets embed.FS, lo
 		BehindProxy: behindProxy,
 		Assets:      dist,
 		Logger:      logger,
+		Writer:      writer,
+		Audit:       audit,
 	})
 	if err != nil {
 		return nil, err

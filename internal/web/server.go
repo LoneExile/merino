@@ -49,6 +49,14 @@ type Config struct {
 	// Assets is the built frontend, served at /.
 	Assets fs.FS
 	Logger *slog.Logger
+
+	// Writer enables the write endpoints. Nil means read-only, and read-only
+	// means the routes do not exist rather than being refused at runtime.
+	Writer Writer
+	// Audit records every write. Required whenever Writer is set: an
+	// internet-reachable path into a live terminal without a durable record of
+	// who used it is not something worth shipping.
+	Audit *app.Audit
 }
 
 // Server is the read-only HTTP dashboard.
@@ -82,6 +90,9 @@ func New(src Source, cfg Config) (*Server, error) {
 	}
 	if cfg.Policy == nil {
 		return nil, errors.New("web: a Policy is required")
+	}
+	if cfg.Writer != nil && cfg.Audit == nil {
+		return nil, errors.New("web: writes require an Audit; refusing to accept unlogged writes")
 	}
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
@@ -125,6 +136,10 @@ func (s *Server) routes() http.Handler {
 	mux.Handle("GET /api/agents", s.authed(s.handleAgents))
 	mux.Handle("GET /api/events", s.authed(s.handleEvents))
 	mux.Handle("GET /api/panes/{id}/output", s.authed(s.handleOutput))
+
+	if s.cfg.Writer != nil {
+		s.mountWrites(mux)
+	}
 
 	mux.Handle("GET /", s.authed(s.handleStatic))
 
@@ -187,9 +202,9 @@ func (s *Server) handleSession(w http.ResponseWriter, _ *http.Request, id Identi
 	writeJSON(w, http.StatusOK, map[string]any{
 		"user":     id.Name,
 		"provider": id.Provider,
-		// Tells the frontend to hide every write affordance. The server has no
-		// write endpoints at all, so this is a UX hint, not the enforcement.
-		"readOnly": true,
+		// A UX hint so the browser can hide affordances it cannot use. The
+		// enforcement is that the routes are absent, not this flag.
+		"readOnly": s.cfg.Writer == nil,
 	})
 }
 
@@ -374,10 +389,14 @@ func (s *Server) Start() error {
 	if err != nil {
 		return fmt.Errorf("web: listen %s: %w", s.cfg.Addr, err)
 	}
+	mode := "read-only"
+	if s.cfg.Writer != nil {
+		mode = "read-write"
+	}
 	s.log.Info("web dashboard listening",
 		"addr", ln.Addr().String(),
 		"auth", s.cfg.Provider.Name(),
-		"mode", "read-only")
+		"mode", mode)
 
 	go func() {
 		if err := s.http.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
