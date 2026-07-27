@@ -285,11 +285,12 @@ func (s *AgentsService) Respond(paneID, text string) error {
 		return err
 	}
 	s.log.Info("respond", "pane", paneID, "text", text)
-	return s.client.SendText(s.ctx, paneID, text+"\n")
+	return s.client.SubmitText(s.ctx, paneID, text)
 }
 
-// SendText writes arbitrary text. Higher trust than Respond: bounded by length
-// only. Prefer Respond where the answer is one of the canned options.
+// SendText writes arbitrary text and submits it, which is what a person typing
+// a reply expects. Higher trust than Respond: bounded by length only. Prefer
+// Respond where the answer is one of the canned options.
 func (s *AgentsService) SendText(paneID, text string) error {
 	if err := s.guard.CheckPane(paneID); err != nil {
 		return err
@@ -298,7 +299,7 @@ func (s *AgentsService) SendText(paneID, text string) error {
 		return err
 	}
 	s.log.Info("send_text", "pane", paneID, "bytes", len(text))
-	return s.client.SendText(s.ctx, paneID, text)
+	return s.client.SubmitText(s.ctx, paneID, text)
 }
 
 // SendKeys presses allowlisted keys in a pane.

@@ -236,6 +236,29 @@ func (c *Client) SendText(ctx context.Context, paneID, text string) error {
 	return c.Call(ctx, "pane.send_text", paneSendTextParams{PaneID: paneID, Text: text}, nil)
 }
 
+// SubmitText types text into a pane and presses Enter.
+//
+// Appending "\n" to the text does NOT work for agents. A TUI reads the
+// terminal in raw mode, where Enter arrives as CR (0x0D) and a bare LF is
+// ignored — the text lands in the input box and simply sits there. Verified
+// against a live omp agent: text plus "\n" left the prompt unsubmitted, while
+// a subsequent send_keys ["Enter"] submitted it and the agent replied.
+//
+// Line-based shells accept "\n", which is why this bug looked fine when tested
+// against a plain zsh pane and failed on the thing that actually matters.
+func (c *Client) SubmitText(ctx context.Context, paneID, text string) error {
+	if err := c.SendText(ctx, paneID, text); err != nil {
+		return err
+	}
+	if err := c.SendKeys(ctx, paneID, "Enter"); err != nil {
+		// The two halves are not atomic, and the caller must be told which one
+		// happened: the text is now sitting in the prompt, unsubmitted. An
+		// audit line reading only "failed" would misdescribe the pane's state.
+		return fmt.Errorf("text delivered but not submitted, it is left in the prompt: %w", err)
+	}
+	return nil
+}
+
 // SendKeys presses keys in a pane.
 func (c *Client) SendKeys(ctx context.Context, paneID string, keys ...string) error {
 	return c.Call(ctx, "pane.send_keys", paneSendKeysParams{PaneID: paneID, Keys: keys}, nil)

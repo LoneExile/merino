@@ -145,8 +145,10 @@ function PaneDrawer({
     if (!body || body.length > MAX_REPLY || !client.sendText) return;
     setBusy(true);
     try {
-      // A newline submits it, which is what typing into the agent would do.
-      await client.sendText(agent.paneId, body + "\n");
+      // No trailing newline: the backend presses Enter as a key. A bare "\n"
+      // is ignored by a TUI agent reading raw input, and the text would sit
+      // unsubmitted in the prompt.
+      await client.sendText(agent.paneId, body);
       setDraft("");
       // Give the agent a moment to react before showing the result.
       await new Promise((r) => setTimeout(r, 600));

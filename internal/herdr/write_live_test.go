@@ -174,3 +174,40 @@ func TestLiveWriteToUnknownPaneFails(t *testing.T) {
 		t.Error("send_text to a nonexistent pane unexpectedly succeeded")
 	}
 }
+
+// Text sent to a pane must actually be submitted, not left sitting in the
+// prompt.
+//
+// Regression test for a bug that only appeared against a real agent: the code
+// appended "\n", which a line-based shell accepts but a TUI reading raw input
+// ignores, because Enter is CR. Against a live omp agent the reply landed in
+// the input box and stayed there until Enter was sent as a key.
+//
+// Asserted via the shell's own echo: a submitted command produces output on a
+// later line, an unsubmitted one does not.
+func TestLiveSubmitTextActuallySubmits(t *testing.T) {
+	c := liveClient(t)
+	p := newProbePane(t, c)
+	ctx := context.Background()
+
+	marker := "submitted_" + time.Now().Format("150405.000")
+	// echo runs only if the line was submitted; the literal text appears either
+	// way, so look for a second occurrence produced by the shell.
+	if err := c.SubmitText(ctx, p.paneID, "echo "+marker); err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+
+	deadline := time.Now().Add(8 * time.Second)
+	for time.Now().Before(deadline) {
+		out, err := c.ReadPaneFull(ctx, p.paneID, herdr.ReadVisible, 50)
+		if err != nil {
+			t.Fatalf("read: %v", err)
+		}
+		// Two occurrences: the typed command, and the shell's output.
+		if strings.Count(out.Text, marker) >= 2 {
+			return
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+	t.Error("text was typed but never executed — Enter was not delivered")
+}
