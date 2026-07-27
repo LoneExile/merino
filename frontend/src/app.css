@@ -589,7 +589,8 @@ html.desktop .app {
 /* ---------------------------------------------------------------- pane */
 
 .pane {
-  /* header · screen · composer. Only the middle row scrolls. */
+  position: relative;
+  /* header · body(screen+jump) · composer. Only the screen scrolls. */
   display: grid;
   grid-template-rows: auto 1fr auto;
   min-height: 0;
@@ -658,6 +659,14 @@ html.desktop .app {
   opacity: 0.7;
 }
 
+.pane__body {
+  position: relative;
+  min-height: 0;
+  min-width: 0;
+  display: grid;
+  grid-template-rows: 1fr;
+}
+
 .pane__screen {
   overflow: auto;
   overscroll-behavior: contain;
@@ -665,6 +674,7 @@ html.desktop .app {
   -webkit-overflow-scrolling: touch;
   /* Same reasoning as .pane's min-width: 0 above, one grid level down. */
   min-width: 0;
+  min-height: 0;
 }
 
 .term {
@@ -721,21 +731,36 @@ html.desktop .app {
   color: var(--color-ink-3);
 }
 
-.jump {
+.jump-dock {
   position: absolute;
-  bottom: calc(var(--space-2xl) + var(--space-lg));
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 2;
-  font: 500 var(--text-xs) / 1 var(--font-body);
+  left: 0;
+  right: 0;
+  bottom: var(--space-sm);
+  z-index: 3;
+  display: flex;
+  justify-content: center;
+  pointer-events: none; /* dock never steals scrolls; only the pill is live */
+}
+
+.jump {
+  pointer-events: auto;
+  font: 600 var(--text-2xs) / 1 var(--font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   color: var(--color-accent-ink);
   background: var(--color-accent);
   border: 0;
   border-radius: var(--radius-pill);
-  padding: var(--space-xs) var(--space-md);
+  padding: 8px 14px;
+  min-height: 32px;
   box-shadow: var(--shadow-pop);
   cursor: pointer;
 }
+
+.jump:active {
+  transform: translateY(1px);
+}
+
 
 /* ---------------------------------------------------------------- composer */
 
@@ -761,28 +786,60 @@ html.desktop .app {
 
 .composer__keys {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  flex-wrap: nowrap;
+  align-items: stretch;
   gap: var(--space-2xs);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 1px; /* room for focus ring */
 }
 
-.composer__keys-hint {
-  flex: none;
-  font-size: var(--text-2xs);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--color-ink-3);
-  padding-inline: var(--space-2xs);
+/* Segmented arrow cluster — one control, four cells. */
+.keypad {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(2.5rem, 1fr));
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-control);
+  overflow: hidden;
+  background: var(--color-paper-2);
 }
 
 .btn--key {
-  min-width: var(--tap);
+  flex: 0 0 auto;
+  min-width: 2.75rem;
   min-height: var(--tap);
   padding-inline: var(--space-sm);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
-  font-weight: 500;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
+
+.btn--keypad {
+  min-width: 0;
+  border: 0;
+  border-radius: 0;
+  border-inline-end: 1px solid var(--color-rule);
+  background: transparent;
+  padding-inline: 0;
+}
+
+.btn--keypad:last-child {
+  border-inline-end: 0;
+}
+
+.btn--keypad:active {
+  background: var(--color-accent-wash);
+}
+
+.btn--key-primary {
+  background: var(--color-accent-wash);
+  border-color: color-mix(in oklab, var(--color-accent) 45%, var(--color-rule));
+  color: var(--color-accent);
+}
+
 
 .composer__row {
   display: flex;

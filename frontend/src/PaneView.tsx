@@ -200,42 +200,47 @@ export function PaneView({ client, agent, wrap, onBack, onRename }: PaneViewProp
         </div>
       </header>
 
-      <div className="pane__screen" ref={scroller} onScroll={onScroll} tabIndex={0}>
-        {loadingMore && (
-          <div className="pane__history mono" role="status">
-            Loading earlier output…
-          </div>
-        )}
-        {!loadingMore && !canLoadMore && text.length > 0 && (
-          <div className="pane__history pane__history--end mono" role="status">
-            Beginning of available history
-          </div>
-        )}
+      <div className="pane__body">
+        <div className="pane__screen" ref={scroller} onScroll={onScroll} tabIndex={0}>
+          {loadingMore && (
+            <div className="pane__history mono" role="status">
+              Loading earlier output…
+            </div>
+          )}
+          {!loadingMore && !canLoadMore && text.length > 0 && (
+            <div className="pane__history pane__history--end mono" role="status">
+              Beginning of available history
+            </div>
+          )}
 
-        {loaded ? (
-          <pre className={`term${wrap ? " term--wrap" : ""}`}>
-            {text
-              ? segments.map((seg, i) => (
-                  <span
-                    key={i}
-                    className={seg.style.backgroundColor ? "term__bg" : undefined}
-                    style={seg.style}
-                  >
-                    {seg.text}
-                  </span>
-                ))
-              : "(this pane has produced no output)"}
-          </pre>
-        ) : (
-          <p className="term term--muted">{error ?? "Connecting to pane…"}</p>
+          {loaded ? (
+            <pre className={`term${wrap ? " term--wrap" : ""}`}>
+              {text
+                ? segments.map((seg, i) => (
+                    <span
+                      key={i}
+                      className={seg.style.backgroundColor ? "term__bg" : undefined}
+                      style={seg.style}
+                    >
+                      {seg.text}
+                    </span>
+                  ))
+                : "(this pane has produced no output)"}
+            </pre>
+          ) : (
+            <p className="term term--muted">{error ?? "Connecting to pane…"}</p>
+          )}
+        </div>
+
+        {/* Sits in the terminal column, above the composer — never covers keys. */}
+        {!pinned && (
+          <div className="jump-dock">
+            <button type="button" className="jump" onClick={() => setPinned(true)}>
+              ↓ Latest
+            </button>
+          </div>
         )}
       </div>
-
-      {!pinned && (
-        <button className="jump" onClick={() => setPinned(true)}>
-          Jump to latest
-        </button>
-      )}
 
       <Composer client={client} agent={agent} onSent={() => setPinned(true)} />
     </section>
@@ -449,28 +454,60 @@ function Composer({ client, agent, onSent }: ComposerProps) {
 
       {canKeys && (
         <div className="composer__keys" role="toolbar" aria-label="Terminal keys">
-          <span className="composer__keys-hint mono">TUI</span>
-          {(
-            [
-              { label: "Esc", keys: ["Escape"], title: "Cancel / close TUI menu" },
-              { label: "↑", keys: ["Up"], title: "Move up" },
-              { label: "↓", keys: ["Down"], title: "Move down" },
-              { label: "Enter", keys: ["Enter"], title: "Select / confirm" },
-              { label: "Tab", keys: ["Tab"], title: "Tab" },
-            ] as const
-          ).map((b) => (
-            <button
-              key={b.label}
-              type="button"
-              className="btn btn--key"
-              disabled={busy}
-              title={b.title}
-              aria-label={b.title}
-              onClick={() => void press([...b.keys])}
-            >
-              {b.label}
-            </button>
-          ))}
+          <button
+            type="button"
+            className="btn btn--key"
+            disabled={busy}
+            title="Cancel / close menu"
+            aria-label="Escape"
+            onClick={() => void press(["Escape"])}
+          >
+            Esc
+          </button>
+
+          <div className="keypad" role="group" aria-label="Arrow keys">
+            {(
+              [
+                { label: "←", keys: ["Left"], title: "Left" },
+                { label: "↑", keys: ["Up"], title: "Up" },
+                { label: "↓", keys: ["Down"], title: "Down" },
+                { label: "→", keys: ["Right"], title: "Right" },
+              ] as const
+            ).map((b) => (
+              <button
+                key={b.label}
+                type="button"
+                className="btn btn--key btn--keypad"
+                disabled={busy}
+                title={b.title}
+                aria-label={b.title}
+                onClick={() => void press([...b.keys])}
+              >
+                {b.label}
+              </button>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            className="btn btn--key btn--key-primary"
+            disabled={busy}
+            title="Select / confirm"
+            aria-label="Enter"
+            onClick={() => void press(["Enter"])}
+          >
+            Enter
+          </button>
+          <button
+            type="button"
+            className="btn btn--key"
+            disabled={busy}
+            title="Tab"
+            aria-label="Tab"
+            onClick={() => void press(["Tab"])}
+          >
+            Tab
+          </button>
         </div>
       )}
 
