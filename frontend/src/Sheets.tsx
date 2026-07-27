@@ -297,6 +297,14 @@ export function SessionSheet({ client, onClose }: SessionSheetProps) {
 
   useEffect(() => {
     let alive = true;
+    if (!client.sessions) {
+      // Defensive: the palette no longer offers this without the capability,
+      // but a sheet that waits on a method the transport does not implement
+      // shows "Looking for sessions…" forever, which is what the desktop
+      // panel did.
+      setErr("This build cannot list herdr sessions.");
+      return;
+    }
     void (async () => {
       try {
         const d = await client.sessions?.();

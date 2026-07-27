@@ -9,5 +9,6 @@ export {
 export type {
     Agent,
     Conn,
-    Counts
+    Counts,
+    SessionInfo
 } from "./models.js";

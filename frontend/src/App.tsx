@@ -55,9 +55,24 @@ export default function App() {
       hint: `${statusLabel(a.status)} · ${a.paneId}`,
       run: () => setOpenPane(a.paneId),
     }));
+    cmds.push({
+      id: "cmd:settings",
+      label: "Open settings",
+      hint: "theme, server",
+      run: () => setOverlay("settings"),
+    });
+    // Only when the transport can actually enumerate sessions. Offering it
+    // unconditionally is how the desktop panel ended up opening a picker that
+    // sat on "Looking for sessions…" forever.
+    if (client?.sessions) {
+      cmds.push({
+        id: "cmd:sessions",
+        label: "Switch session",
+        hint: "herdr session",
+        run: () => setOverlay("sessions"),
+      });
+    }
     cmds.push(
-      { id: "cmd:settings", label: "Open settings", hint: "theme, server", run: () => setOverlay("settings") },
-      { id: "cmd:sessions", label: "Switch session", hint: "herdr session", run: () => setOverlay("sessions") },
       {
         id: "cmd:theme",
         label: `Theme: ${pref}`,
@@ -66,7 +81,7 @@ export default function App() {
       },
     );
     return cmds;
-  }, [agents, pref, setPref]);
+  }, [agents, client, pref, setPref]);
 
   // Global keys. Escape is deliberately NOT handled here: each overlay owns its
   // own Escape so the innermost surface closes first.
@@ -93,7 +108,7 @@ export default function App() {
     <div className="app">
       <header className="rail">
         <div className="rail__brand">
-          <span className="rail__mark" aria-hidden="true" />
+          <img className="rail__mark" src="/favicon-64.png" alt="" width="18" height="18" />
           <span className="rail__name">Herdr</span>
         </div>
 

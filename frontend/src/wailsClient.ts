@@ -7,11 +7,12 @@
 // from anything the browser can reach.
 
 import { Events } from "@wailsio/runtime";
+
 import {
   AgentsService,
   type Agent,
 } from "../bindings/github.com/LoneExile/herdr-tunnel/internal/app";
-import type { Client, Session } from "./client";
+import type { Client, Session, SessionList } from "./client";
 
 const EVENT_AGENTS_CHANGED = "agents:changed";
 
@@ -36,7 +37,24 @@ export function wailsClient(): Client {
     readOnly: false,
 
     async session(): Promise<Session> {
-      return { user: "local", provider: "desktop", readOnly: false };
+      return {
+        user: "local",
+        provider: "desktop",
+        readOnly: false,
+        // The desktop panel talks to the Go service directly, so it can do
+        // both. It reports them so the UI's capability checks mean the same
+        // thing on both transports.
+        //
+        // Note the asymmetry, which is deliberate and predates this: the
+        // service layer's Guard (pane existence, response allowlist, free-text
+        // and rename bounds) applies to BOTH transports, but Policy and the
+        // audit log are HTTP-only. Both answer "which of several remote
+        // identities did this", and the desktop panel has exactly one identity
+        // sitting at the machine. Respond and SendText have always worked this
+        // way; renames and session switching follow suit.
+        canSwitchSession: true,
+        canRename: true,
+      };
     },
 
     // A nil Go slice serialises to null, so the generated binding is typed
@@ -58,5 +76,32 @@ export function wailsClient(): Client {
     sendText: (paneId: string, text: string) => AgentsService.SendText(paneId, text),
     focus: (paneId: string) => AgentsService.Focus(paneId),
     interrupt: (paneId: string) => AgentsService.Interrupt(paneId),
+
+    rename: (kind, id, name) =>
+      kind === "pane"
+        ? AgentsService.RenamePane(id, name)
+        : kind === "tab"
+          ? AgentsService.RenameTab(id, name)
+          : AgentsService.RenameWorkspace(id, name),
+
+    // These were bound in Go from the start but never wired here, so the
+    // session picker opened on the desktop and sat on "Looking for
+    // sessions…" forever — the sheet awaited a method that did not exist.
+    async sessions(): Promise<SessionList> {
+      const list = (await AgentsService.Sessions()) ?? [];
+      return {
+        current: list.find((s) => s.current)?.id ?? "",
+        canSwitch: true,
+        sessions: list.map((s) => ({
+          id: s.id,
+          name: s.name,
+          panes: s.panes,
+          agents: s.agents,
+          current: s.current,
+          reachable: s.reachable,
+        })),
+      };
+    },
+    switchSession: (id: string) => AgentsService.SwitchSession(id),
   };
 }

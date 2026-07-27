@@ -135,11 +135,13 @@ body {
 }
 
 .rail__mark {
-  width: 9px;
-  height: 9px;
-  border-radius: 2px;
-  background: var(--color-accent);
+  /* The sheep, not a coloured square. A 9px accent square was standing in for
+     a logo and read as exactly that: an unexplained blue dot. */
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
   flex: none;
+  display: block;
 }
 
 .rail__name {

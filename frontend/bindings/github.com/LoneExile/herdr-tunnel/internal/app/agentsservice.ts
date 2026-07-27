@@ -51,10 +51,63 @@ export function List(): $CancellablePromise<$models.Agent[] | null> {
 }
 
 /**
+ * OnBlocked registers fn to be called whenever an agent pane transitions
+ * into the blocked status — never while a pane merely remains blocked. Wired
+ * from main.go, once, before ServiceStartup launches any background
+ * goroutine; nil (the default) until then, which is exactly correct for
+ * every existing caller and test that has no notifier to attach.
+ * 
+ * Delegates straight to Store, which is where old-vs-new status is actually
+ * observed: SetStatus, UpsertPane and Replace each detect the transition
+ * directly, so this service does no polling or diffing of its own.
+ */
+export function OnBlocked(fn: any): $CancellablePromise<void> {
+    return $Call.ByID(335758706, fn);
+}
+
+/**
  * Read returns recent plain-text output for a pane.
  */
 export function Read(paneID: string, lines: number): $CancellablePromise<string> {
     return $Call.ByID(3652161007, paneID, lines);
+}
+
+/**
+ * ReadANSI is Read but preserves ANSI/SGR colour and style escapes instead
+ * of stripping them, for a renderer that can display them. Used only by the
+ * web dashboard's terminal view; the desktop panel calls Read.
+ */
+export function ReadANSI(paneID: string, lines: number): $CancellablePromise<string> {
+    return $Call.ByID(958820652, paneID, lines);
+}
+
+/**
+ * RenamePane sets a pane's display name via herdr.
+ */
+export function RenamePane(paneID: string, name: string): $CancellablePromise<void> {
+    return $Call.ByID(4042646775, paneID, name);
+}
+
+/**
+ * RenameTab sets a tab's display name via herdr.
+ * 
+ * Unlike pane writes there is no Guard.CheckPane-equivalent here: tabs are
+ * not tracked as first-class entities in Store, only as a field on the panes
+ * within them. The web layer authorises the request against an agent
+ * occupying the tab before this is ever called (see
+ * Server.authorizeControl), which is also what stands in for "does this tab
+ * exist".
+ */
+export function RenameTab(tabID: string, name: string): $CancellablePromise<void> {
+    return $Call.ByID(2509532040, tabID, name);
+}
+
+/**
+ * RenameWorkspace sets a workspace's display name via herdr. See RenameTab
+ * for why there is no store-backed existence check here.
+ */
+export function RenameWorkspace(workspaceID: string, name: string): $CancellablePromise<void> {
+    return $Call.ByID(2695363026, workspaceID, name);
 }
 
 /**
@@ -72,9 +125,51 @@ export function SendKeys(paneID: string, keys: string[] | null): $CancellablePro
 }
 
 /**
- * SendText writes arbitrary text. Higher trust than Respond: bounded by length
- * only. Prefer Respond where the answer is one of the canned options.
+ * SendText writes arbitrary text and submits it, which is what a person typing
+ * a reply expects. Higher trust than Respond: bounded by length only. Prefer
+ * Respond where the answer is one of the canned options.
  */
 export function SendText(paneID: string, text: string): $CancellablePromise<void> {
     return $Call.ByID(1262299878, paneID, text);
+}
+
+/**
+ * Sessions enumerates every herdr session this machine knows about,
+ * best-effort probed for reachability and pane/agent counts.
+ */
+export function Sessions(): $CancellablePromise<$models.SessionInfo[] | null> {
+    return $Call.ByID(482238306);
+}
+
+/**
+ * StreamOutput streams a pane's live output until ctx is cancelled, calling
+ * onText with the latest rendering on every matching change.
+ * 
+ * ctx is the CALLER's context, not s.ctx: unlike the service's own
+ * background streams, which live for the whole app, a pane subscription
+ * must end the moment its one subscriber — an HTTP request, say — goes
+ * away, not when the app itself shuts down.
+ */
+export function StreamOutput(paneID: string, lines: number, onText: any): $CancellablePromise<void> {
+    return $Call.ByID(24953646, paneID, lines, onText);
+}
+
+/**
+ * StreamOutputANSI is StreamOutput but preserves ANSI/SGR colour and style
+ * escapes instead of stripping them. See ReadANSI.
+ */
+export function StreamOutputANSI(paneID: string, lines: number, onText: any): $CancellablePromise<void> {
+    return $Call.ByID(2565354021, paneID, lines, onText);
+}
+
+/**
+ * SwitchSession repoints the service at a different herdr session's socket.
+ * 
+ * The previous session's background goroutines are cancelled before the new
+ * generation's are started, so the store is never fed events from two
+ * sessions at once. id is resolved through Sessions rather than trusted as a
+ * path, so a caller can never point the server at an arbitrary socket.
+ */
+export function SwitchSession(id: string): $CancellablePromise<void> {
+    return $Call.ByID(3209187573, id);
 }

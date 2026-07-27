@@ -43,3 +43,20 @@ export interface Counts {
     "blocked": number;
     "working": number;
 }
+
+/**
+ * SessionInfo describes one herdr session this machine can reach: the
+ * default socket herdr uses when none is named, plus every named session
+ * under ~/.config/herdr/sessions/*. ListSessions is the only thing that
+ * constructs these, so a caller of SwitchSession can never point the server
+ * at a socket outside this list.
+ */
+export interface SessionInfo {
+    "id": string;
+    "name": string;
+    "socket": string;
+    "panes": number;
+    "agents": number;
+    "reachable": boolean;
+    "current": boolean;
+}
