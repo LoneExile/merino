@@ -183,6 +183,32 @@ def app_icon(size: int, maskable: bool) -> str:
     return svg(size, body, TILE, radius, scale, 50, 52)
 
 
+# Deep blue for the head and legs on the TILE-LESS favicon. On the app icon
+# they are near-black, which only works because it sits on a graphite tile; with
+# no tile behind it a near-black head disappears into a dark browser tab strip.
+# A dark BLUE stays legible on white and on black alike, and still reads as part
+# of the same animal.
+HEAD_BARE = "#14508f"
+EYE_BARE = "#cfe4ff"
+
+
+def favicon(size: int) -> str:
+    """Browser-tab mark: the sheep on full transparency, no tile.
+
+    A tile is right for a home-screen icon and wrong for a tab: the browser
+    already supplies a background, and a baked-in graphite square just sits
+    there as a rectangle in whatever colour the tab strip happens to be. The
+    previous version carried one, and its rounded corners were the "white area"
+    that showed against dark chrome.
+
+    Same geometry as the app icon; only the colour roles change, because the
+    tile is what made near-black safe.
+    """
+    body = sheep_body(COBALT, HEAD_BARE, legs=(-9, 2, 9), bob=0)
+    body += f'<circle cx="{EYE[0]}" cy="{EYE[1]}" r="{EYE[2]}" fill="{EYE_BARE}" />'
+    return svg(size, body, None, 0, 0.94, 50, 52)
+
+
 # There is no separate small-size mark. An earlier revision carried a
 # single-colour silhouette for favicon sizes, on the usual reasoning that
 # two-tone art dies at 16px. Compared head to head at 16/20/24/32 against the
@@ -244,7 +270,7 @@ def main() -> None:
     w("apple-touch-icon.svg", app_icon(180, maskable=False))
 
     for n in (32, 64):
-        w(f"favicon-{n}.svg", app_icon(n, maskable=False))
+        w(f"favicon-{n}.svg", favicon(n))
 
     w("tray-idle.svg", tray_frame(*IDLE))
     for i, (legs, bob) in enumerate(WALK):
