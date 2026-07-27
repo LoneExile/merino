@@ -126,6 +126,8 @@ func TestPWAAssetsAreReachableWithoutSession(t *testing.T) {
 		"icon-512.png":          &fstest.MapFile{Data: []byte("\x89PNG\r\n\x1a\n512")},
 		"icon-512-maskable.png": &fstest.MapFile{Data: []byte("\x89PNG\r\n\x1a\nmask")},
 		"apple-touch-icon.png":  &fstest.MapFile{Data: []byte("\x89PNG\r\n\x1a\napple")},
+		"favicon-32.png":        &fstest.MapFile{Data: []byte("\x89PNG\r\n\x1a\nf32")},
+		"favicon-64.png":        &fstest.MapFile{Data: []byte("\x89PNG\r\n\x1a\nf64")},
 	}
 	s, err := New(&fakeSource{}, Config{
 		Provider: NewPasswordProvider("alice", "correct-horse", DirectIP, false),
@@ -158,6 +160,8 @@ func TestPWAAssetsAreReachableWithoutSession(t *testing.T) {
 		{"/icon-512.png", "image/png", true},
 		{"/icon-512-maskable.png", "image/png", true},
 		{"/apple-touch-icon.png", "image/png", true},
+		{"/favicon-32.png", "image/png", true},
+		{"/favicon-64.png", "image/png", true},
 	} {
 		resp, err := client.Get(srv.URL + tc.path)
 		if err != nil {

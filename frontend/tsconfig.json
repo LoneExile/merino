@@ -22,4 +22,10 @@
     "noFallthroughCasesInSwitch": true
   },
   "include": ["src", "bindings"],
+  // __checks__ holds standalone `node --experimental-strip-types` scripts
+  // (see src/__checks__/ansi.check.ts) — a different runtime than the
+  // Vite-bundled browser app this project otherwise type-checks, and one
+  // with its own globals (`process`) this config's browser-only "lib" does
+  // not (and should not) declare.
+  "exclude": ["src/__checks__"]
 }

@@ -268,6 +268,21 @@ const (
 	ReadDetection ReadSource = "detection"
 )
 
+// ReadFormat selects how a pane.read response encodes styled text.
+//
+// These are the only values herdr accepts for this field; anything else is
+// rejected with "unknown variant", matching ReadSource's contract above.
+type ReadFormat string
+
+const (
+	// FormatText is herdr's default: the server strips ANSI/SGR escape
+	// sequences before returning the text.
+	FormatText ReadFormat = "text"
+	// FormatANSI preserves ANSI/SGR escape sequences in the returned text,
+	// so a client can render colour and style instead of a plain dump.
+	FormatANSI ReadFormat = "ansi"
+)
+
 type paneListParams struct {
 	WorkspaceID string `json:"workspace_id,omitempty"`
 }
@@ -277,9 +292,13 @@ type paneListResult struct {
 }
 
 type paneReadParams struct {
-	PaneID    string     `json:"pane_id"`
-	Source    ReadSource `json:"source"`
-	Lines     *int       `json:"lines,omitempty"`
+	PaneID string     `json:"pane_id"`
+	Source ReadSource `json:"source"`
+	Lines  *int       `json:"lines,omitempty"`
+	// Format and StripANSI are always sent explicitly, never left implicit:
+	// every caller states exactly what it wants instead of depending on
+	// herdr's own default, which could change later.
+	Format    ReadFormat `json:"format"`
 	StripANSI bool       `json:"strip_ansi"`
 }
 

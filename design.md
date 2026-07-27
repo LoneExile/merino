@@ -17,19 +17,31 @@ drawings that drift.
 
 Two renderings, from one geometry:
 
-- **App / PWA icon** — colour. Near-white fleece (`--color-ink`) on graphite
-  ground (`--color-paper` dark), cobalt head (`--color-accent` dark). The
-  accent is the head only: a small, deliberate fraction of the mark.
+- **App / PWA / favicon** — colour. Cobalt fleece (`--color-accent` dark) with
+  a near-black head, legs and drawn outline, on a mid-graphite tile. The tile
+  is deliberately lighter than the app's own paper: a near-black head on a
+  near-black ground is invisible, which is the single thing that separates a
+  readable sheep from a blue blob.
 - **macOS menu bar** — a flat black silhouette on transparency. Not a style
   choice: macOS treats a *template* image as a stencil and re-tints it, which
   is the only way one icon reads correctly on a light bar, a dark bar, and a
-  highlighted bar.
+  highlighted bar. The silhouette skips the outline pass entirely — drawing an
+  outline in the fill colour fattens every shape and welds the legs together.
 
-The silhouette is the whole design constraint. At 22 px nothing survives but
-the outline, so the geometry is tuned for it: a near-flat fleece underside so
-the legs read as legs rather than fringe, and a head that breaks the fleece
-outline instead of merging into it. Both were fixed after looking at the mark
-at actual size, not at 512 px.
+The art direction came from a generated reference (xAI Grok), then was redrawn
+as vector rather than traced. Tracing a JPEG inherits its soft edges, and more
+importantly a traced blob cannot be re-posed — the menu bar needs the same
+animal in eleven poses.
+
+**Small sizes are the whole constraint.** There is no separate simplified mark:
+a single-colour silhouette was tried for favicon sizes and lost a head-to-head
+comparison at 16/20/24/32 px, because the dark head is what gives the shape a
+front. Favicons are rendered at their target size from the same drawing, never
+downscaled from the 192 px icon — that downscale is what made the tab icon a
+smudge. The geometry earns its legibility from a near-flat fleece underside so
+the legs read as legs, three legs rather than four so they do not merge, and a
+head that breaks the fleece outline. Every one of those was fixed after looking
+at the mark at actual size, not at 512 px.
 
 **The mark animates to report state**, and only in the menu bar:
 

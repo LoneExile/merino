@@ -30,6 +30,10 @@ type scriptedPane struct {
 	mu      sync.Mutex
 	screens []string
 	reads   int
+	// params records each pane.read call's raw request params, in call
+	// order, so a test can assert on the wire shape (format, strip_ansi)
+	// rather than only on the text a call returns.
+	params []json.RawMessage
 }
 
 func newScriptedPane(t *testing.T, screens ...string) *scriptedPane {
@@ -75,14 +79,23 @@ func (p *scriptedPane) readCount() int {
 	return p.reads
 }
 
+// allParams returns every pane.read call's raw request params, in call
+// order.
+func (p *scriptedPane) allParams() []json.RawMessage {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return append([]json.RawMessage(nil), p.params...)
+}
+
 func (p *scriptedPane) serve(conn net.Conn) {
 	defer conn.Close()
 	sc := bufio.NewScanner(conn)
 	sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
 	for sc.Scan() {
 		var req struct {
-			ID     string `json:"id"`
-			Method string `json:"method"`
+			ID     string          `json:"id"`
+			Method string          `json:"method"`
+			Params json.RawMessage `json:"params"`
 		}
 		if err := json.Unmarshal(sc.Bytes(), &req); err != nil {
 			return
@@ -90,6 +103,9 @@ func (p *scriptedPane) serve(conn net.Conn) {
 		var resp any
 		switch req.Method {
 		case "pane.read":
+			p.mu.Lock()
+			p.params = append(p.params, req.Params)
+			p.mu.Unlock()
 			resp = map[string]any{"id": req.ID, "result": map[string]any{
 				"read": map[string]any{"type": "pane_read", "text": p.next()},
 			}}
@@ -115,6 +131,36 @@ func collect(t *testing.T, sock string, want int, budget time.Duration) []string
 	go func() {
 		defer close(done)
 		_ = herdr.New(sock).StreamPaneOutput(ctx, "w1:p1", 200, func(s string) {
+			mu.Lock()
+			got = append(got, s)
+			n := len(got)
+			mu.Unlock()
+			if n >= want {
+				cancel()
+			}
+		})
+	}()
+	<-done
+	mu.Lock()
+	defer mu.Unlock()
+	return append([]string(nil), got...)
+}
+
+// collectANSI is collect but drives StreamPaneOutputANSI instead of
+// StreamPaneOutput — the suppression and delivery contracts below must hold
+// on the ANSI path too, and it is a genuinely separate method, not a detail
+// only visible by reading the source.
+func collectANSI(t *testing.T, sock string, want int, budget time.Duration) []string {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), budget)
+	defer cancel()
+
+	var mu sync.Mutex
+	var got []string
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_ = herdr.New(sock).StreamPaneOutputANSI(ctx, "w1:p1", 200, func(s string) {
 			mu.Lock()
 			got = append(got, s)
 			n := len(got)
@@ -194,6 +240,55 @@ func TestStreamPaneOutputStopsOnCancel(t *testing.T) {
 	}
 }
 
+// StreamPaneOutputANSI's poll must carry the same format:"ansi" /
+// strip_ansi:false contract as the one-shot ReadPaneANSI read below — it is
+// the path the web dashboard actually receives its live updates from, so a
+// poll that silently reverted to stripped plain text would still look
+// correct from the one-shot read alone.
+func TestStreamPaneOutputANSIRequestsANSIFormatWithoutStripping(t *testing.T) {
+	p := newScriptedPane(t, "screen one", "screen two")
+
+	_ = collectANSI(t, p.path, 2, 3*time.Second)
+
+	params := p.allParams()
+	if len(params) == 0 {
+		t.Fatal("StreamPaneOutputANSI made no pane.read calls")
+	}
+	for i, raw := range params {
+		var got map[string]any
+		if err := json.Unmarshal(raw, &got); err != nil {
+			t.Fatalf("call %d params: %v", i, err)
+		}
+		if got["format"] != "ansi" {
+			t.Errorf("call %d format = %v, want %q", i, got["format"], "ansi")
+		}
+		if got["strip_ansi"] != false {
+			t.Errorf("call %d strip_ansi = %v, want false — sending true would strip "+
+				"the very escapes the web terminal needs to render colour", i, got["strip_ansi"])
+		}
+	}
+}
+
+// An unchanged ANSI-styled screen must be suppressed exactly like an
+// unchanged plain-text one (TestStreamPaneOutputSuppressesUnchangedScreens
+// above): with escapes included the payload is roughly 2.4x larger and
+// churns more in practice, which is exactly the shape of change that could
+// silently defeat a suppression check exercised only against plain ASCII.
+func TestStreamPaneOutputANSISuppressesUnchangedScreens(t *testing.T) {
+	screen := "\x1b[1;31mBOLD RED\x1b[0m plain \x1b[38;5;208morange\x1b[0m\r\n"
+	p := newScriptedPane(t, screen, screen, screen, screen, screen)
+
+	got := collectANSI(t, p.path, 2, 2500*time.Millisecond)
+
+	if len(got) != 1 {
+		t.Errorf("delivered %d payloads for an unchanging ANSI screen (%q), want 1", len(got), got)
+	}
+	if p.readCount() < 3 {
+		t.Errorf("polled only %d times in the window — the test is not exercising "+
+			"the suppression path", p.readCount())
+	}
+}
+
 // The rename wire field is "label", not "name".
 //
 // This is a regression test for a bug that shipped green: the params were
@@ -248,5 +343,70 @@ func TestRenameSendsLabelNotName(t *testing.T) {
 		if params[w.idKey] != w.id {
 			t.Errorf("%s %s = %v, want %q", w.method, w.idKey, params[w.idKey], w.id)
 		}
+	}
+}
+
+// The web dashboard needs ANSI/SGR escapes preserved so it can render colour
+// and style, so its read path must ask herdr for format:"ansi" AND turn off
+// strip_ansi — asking for the escapes while leaving strip_ansi at its
+// plain-text default would just have herdr strip them right back out. A test
+// asserting only "ReadPaneANSI made a pane.read call" would pass even with
+// strip_ansi hardcoded to true, exactly the class of wire bug
+// TestRenameSendsLabelNotName above exists to catch.
+func TestReadPaneANSIRequestsANSIFormatWithoutStripping(t *testing.T) {
+	f := newFakeHerdr(t, "")
+	c := f.client(t)
+	ctx := context.Background()
+
+	if _, err := c.ReadPaneANSI(ctx, "w1:p1", 50); err != nil {
+		t.Fatalf("ReadPaneANSI: %v", err)
+	}
+	if len(f.calls) != 1 {
+		t.Fatalf("made %d calls, want 1", len(f.calls))
+	}
+	if f.calls[0].Method != "pane.read" {
+		t.Fatalf("method = %q, want pane.read", f.calls[0].Method)
+	}
+
+	var params map[string]any
+	if err := json.Unmarshal(f.calls[0].Params, &params); err != nil {
+		t.Fatalf("params: %v", err)
+	}
+	if params["format"] != "ansi" {
+		t.Errorf("format = %v, want %q", params["format"], "ansi")
+	}
+	if params["strip_ansi"] != false {
+		t.Errorf("strip_ansi = %v, want false", params["strip_ansi"])
+	}
+	if params["pane_id"] != "w1:p1" {
+		t.Errorf("pane_id = %v, want w1:p1", params["pane_id"])
+	}
+}
+
+// ReadPane — the plain-text path every other caller uses (the desktop panel,
+// via AgentsService.Read) — must keep asking herdr to strip escapes exactly
+// as it did before this field existed. Regressing this would recolour every
+// desktop terminal by accident.
+func TestReadPaneStillStripsANSI(t *testing.T) {
+	f := newFakeHerdr(t, "")
+	c := f.client(t)
+	ctx := context.Background()
+
+	if _, err := c.ReadPane(ctx, "w1:p1", 50); err != nil {
+		t.Fatalf("ReadPane: %v", err)
+	}
+	if len(f.calls) != 1 {
+		t.Fatalf("made %d calls, want 1", len(f.calls))
+	}
+
+	var params map[string]any
+	if err := json.Unmarshal(f.calls[0].Params, &params); err != nil {
+		t.Fatalf("params: %v", err)
+	}
+	if params["format"] != "text" {
+		t.Errorf("format = %v, want %q", params["format"], "text")
+	}
+	if params["strip_ansi"] != true {
+		t.Errorf("strip_ansi = %v, want true", params["strip_ansi"])
 	}
 }

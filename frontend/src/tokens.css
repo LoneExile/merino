@@ -30,6 +30,31 @@
   --color-term-ink: oklch(91% 0.008 250);
   --color-term-rule: oklch(31% 0.016 258);
 
+  /* The 16-colour ANSI terminal palette. Tuned against --color-term
+   * specifically (not the canonical xterm defaults — pure blue #0000ff and
+   * black are both unreadable on graphite) and verified >= 4.5:1 (WCAG AA,
+   * normal text) against BOTH --color-term lightnesses. --color-term barely
+   * differs between light and dark mode (both are near-black graphite —
+   * "the terminal is graphite in BOTH modes", above), so one set of values
+   * clears AA in both; restated per theme below anyway, matching every
+   * other colour token in this file. */
+  --ansi-black: oklch(61.7% 0.014 260);
+  --ansi-red: oklch(64.6% 0.160 25);
+  --ansi-green: oklch(61.2% 0.130 158);
+  --ansi-yellow: oklch(63.6% 0.130 95);
+  --ansi-blue: oklch(62.9% 0.160 256);
+  --ansi-magenta: oklch(64.6% 0.160 322);
+  --ansi-cyan: oklch(61.6% 0.100 200);
+  --ansi-white: oklch(88.4% 0.008 250);
+  --ansi-bright-black: oklch(69.9% 0.010 260);
+  --ansi-bright-red: oklch(75.4% 0.145 25);
+  --ansi-bright-green: oklch(71.9% 0.150 158);
+  --ansi-bright-yellow: oklch(75.1% 0.150 95);
+  --ansi-bright-blue: oklch(73.7% 0.130 256);
+  --ansi-bright-magenta: oklch(75.9% 0.180 322);
+  --ansi-bright-cyan: oklch(72.4% 0.120 200);
+  --ansi-bright-white: oklch(92.0% 0.005 250);
+
   /* Same treatment: all three status hues failed AA on light paper untouched. */
   --status-blocked: oklch(55.5% 0.19 25);
   --status-working: oklch(52.5% 0.13 158);
@@ -62,6 +87,28 @@
   --color-term-ink: oklch(91% 0.008 250);
   --color-term-rule: oklch(28% 0.015 258);
 
+  /* Same 16 values as light mode: --color-term is only 6 points of L
+   * darker here (15% vs 21%), which raises every one of these ratios
+   * rather than lowering them, so nothing needs separate tuning. Restated
+   * per theme, like every other colour token above, rather than left to
+   * fall through from :root. */
+  --ansi-black: oklch(61.7% 0.014 260);
+  --ansi-red: oklch(64.6% 0.160 25);
+  --ansi-green: oklch(61.2% 0.130 158);
+  --ansi-yellow: oklch(63.6% 0.130 95);
+  --ansi-blue: oklch(62.9% 0.160 256);
+  --ansi-magenta: oklch(64.6% 0.160 322);
+  --ansi-cyan: oklch(61.6% 0.100 200);
+  --ansi-white: oklch(88.4% 0.008 250);
+  --ansi-bright-black: oklch(69.9% 0.010 260);
+  --ansi-bright-red: oklch(75.4% 0.145 25);
+  --ansi-bright-green: oklch(71.9% 0.150 158);
+  --ansi-bright-yellow: oklch(75.1% 0.150 95);
+  --ansi-bright-blue: oklch(73.7% 0.130 256);
+  --ansi-bright-magenta: oklch(75.9% 0.180 322);
+  --ansi-bright-cyan: oklch(72.4% 0.120 200);
+  --ansi-bright-white: oklch(92.0% 0.005 250);
+
   --status-blocked: oklch(71% 0.17 25);
   --status-working: oklch(74% 0.15 158);
   --status-idle: oklch(60% 0.012 256);
@@ -78,7 +125,7 @@
 :root {
   --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
   --font-body: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-mono: "JetBrains Mono", "Symbols Nerd Font Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
   --space-3xs: 0.25rem;
   --space-2xs: 0.375rem;

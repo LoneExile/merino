@@ -26,10 +26,14 @@ import (
 type Source interface {
 	List() []app.Agent
 	Counts() app.Counts
-	Read(paneID string, lines int) (string, error)
-	// StreamOutput streams a pane's live output until ctx is cancelled,
-	// calling onText with the latest rendering on every matching change.
-	StreamOutput(ctx context.Context, paneID string, lines int, onText func(string)) error
+	// ReadANSI returns a pane's visible screen with ANSI/SGR colour and
+	// style preserved, so the dashboard can render it instead of dumping
+	// plain text.
+	ReadANSI(paneID string, lines int) (string, error)
+	// StreamOutputANSI is ReadANSI's live-push counterpart: it calls onText
+	// with the pane's ANSI-preserved text whenever it changes, until ctx is
+	// cancelled.
+	StreamOutputANSI(ctx context.Context, paneID string, lines int, onText func(string)) error
 }
 
 // Config configures the HTTP server.
@@ -251,7 +255,8 @@ var pwaIcons = []string{
 	"icon-512.png",
 	"icon-512-maskable.png",
 	"apple-touch-icon.png",
-	// No favicon.png: index.html uses icon-192.png as the favicon.
+	"favicon-32.png",
+	"favicon-64.png",
 }
 
 // public serves a handler with no identity. Use it ONLY for assets that carry
@@ -341,7 +346,7 @@ func (s *Server) handleOutput(w http.ResponseWriter, r *http.Request, id Identit
 		return
 	}
 
-	text, err := s.src.Read(paneID, 50)
+	text, err := s.src.ReadANSI(paneID, 50)
 	if err != nil {
 		s.log.Warn("web read pane", "pane", paneID, "err", err)
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "could not read pane"})
@@ -462,7 +467,7 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request, id Identit
 	// Snapshot immediately so a client that just connected paints without
 	// waiting on live output, which may not arrive for a long time on a
 	// settled pane.
-	if text, err := s.src.Read(paneID, paneStreamLines); err != nil {
+	if text, err := s.src.ReadANSI(paneID, paneStreamLines); err != nil {
 		s.log.Warn("web stream initial read", "pane", paneID, "err", err)
 	} else {
 		sendOutput(text)
@@ -500,7 +505,7 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request, id Identit
 	subDone := make(chan struct{})
 	go func() {
 		defer close(subDone)
-		if err := s.src.StreamOutput(ctx, paneID, paneStreamLines, push); err != nil && ctx.Err() == nil {
+		if err := s.src.StreamOutputANSI(ctx, paneID, paneStreamLines, push); err != nil && ctx.Err() == nil {
 			s.log.Warn("web pane stream ended", "pane", paneID, "err", err)
 		}
 	}()

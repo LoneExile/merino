@@ -347,6 +347,31 @@ func (s *AgentsService) StreamOutput(ctx context.Context, paneID string, lines i
 	return s.currentClient().StreamPaneOutput(ctx, paneID, lines, onText)
 }
 
+// ReadANSI is Read but preserves ANSI/SGR colour and style escapes instead
+// of stripping them, for a renderer that can display them. Used only by the
+// web dashboard's terminal view; the desktop panel calls Read.
+func (s *AgentsService) ReadANSI(paneID string, lines int) (string, error) {
+	if err := s.guard.CheckPane(paneID); err != nil {
+		return "", err
+	}
+	if lines <= 0 {
+		lines = 50
+	}
+	return s.currentClient().ReadPaneANSI(s.ctx, paneID, lines)
+}
+
+// StreamOutputANSI is StreamOutput but preserves ANSI/SGR colour and style
+// escapes instead of stripping them. See ReadANSI.
+func (s *AgentsService) StreamOutputANSI(ctx context.Context, paneID string, lines int, onText func(string)) error {
+	if err := s.guard.CheckPane(paneID); err != nil {
+		return err
+	}
+	if lines <= 0 {
+		lines = 200
+	}
+	return s.currentClient().StreamPaneOutputANSI(ctx, paneID, lines, onText)
+}
+
 // Respond answers an agent's approval prompt with a canned reply.
 func (s *AgentsService) Respond(paneID, text string) error {
 	if err := s.guard.CheckPane(paneID); err != nil {

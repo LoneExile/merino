@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Agent } from "../bindings/github.com/LoneExile/herdr-tunnel/internal/app";
 import type { Client } from "./client";
 import { usePaneStream } from "./usePaneStream";
 import { StatusDot } from "./StatusDot";
+import { parseAnsi } from "./ansi";
 
 /** Mirrors app.MaxFreeTextLen so the limit is felt while typing, not as a 400. */
 const MAX_TEXT = 1000;
@@ -13,6 +14,7 @@ const PIN_SLACK = 48;
 export interface PaneViewProps {
   client: Client;
   agent: Agent;
+  wrap: boolean;
   onBack: () => void;
   onRename: (agent: Agent) => void;
 }
@@ -24,37 +26,61 @@ export interface PaneViewProps {
  * scrolling region — the terminal. The header and the composer are fixed
  * siblings in a grid, so reaching the input never requires scrolling past the
  * buffer. On a phone that is the whole difference between usable and not.
+ *
+ * The terminal can ALSO scroll horizontally, independent of that vertical
+ * region: box-drawing TUI output runs far wider than a phone (see .term in
+ * app.css), so by default it keeps its real geometry instead of wrapping
+ * into nonsense, and pans sideways instead. The vertical auto-scroll-to-
+ * bottom contract and the horizontal pan position must not fight each
+ * other — see the layout effect below.
  */
-export function PaneView({ client, agent, onBack, onRename }: PaneViewProps) {
+export function PaneView({ client, agent, wrap, onBack, onRename }: PaneViewProps) {
   const { text, loaded, live, error } = usePaneStream(client, agent.paneId);
   const scroller = useRef<HTMLDivElement>(null);
   const [pinned, setPinned] = useState(true);
   const [menu, setMenu] = useState(false);
 
-  const toBottom = useCallback((behavior: ScrollBehavior = "auto") => {
-    const el = scroller.current;
-    if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior });
-  }, []);
+  // Last user-set horizontal scroll position. Tracked separately from
+  // `pinned` (which is vertical-only) and restored on every text update so a
+  // live poll never yanks someone panned right back to column 0.
+  const scrollLeftRef = useRef(0);
 
   // Re-pin whenever the pane changes: opening a terminal must land on the
-  // newest output, never halfway up yesterday's buffer.
+  // newest output, never halfway up yesterday's buffer. A different pane's
+  // horizontal pan position isn't this one's business either.
   useEffect(() => {
     setPinned(true);
+    scrollLeftRef.current = 0;
   }, [agent.paneId]);
 
   // Layout effect, not effect: scroll before paint so the jump to the bottom
   // is never visible as a flash of the top of the buffer.
   useLayoutEffect(() => {
-    if (pinned) toBottom();
-  }, [text, pinned, toBottom]);
+    const el = scroller.current;
+    if (!el) return;
+    if (pinned) el.scrollTo({ top: el.scrollHeight, behavior: "auto" });
+    // Reapply on every text update, pinned or not: some engines clamp
+    // scrollLeft to the new (possibly smaller) scrollWidth when an update
+    // briefly narrows the widest line on screen, and never restore it once
+    // the content widens back out. Explicit beats hoping scrollTo({top})
+    // left scrollLeft alone.
+    el.scrollLeft = scrollLeftRef.current;
+  }, [text, pinned]);
 
   const onScroll = useCallback(() => {
     const el = scroller.current;
     if (!el) return;
+    scrollLeftRef.current = el.scrollLeft;
     const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
     setPinned(distance <= PIN_SLACK);
   }, []);
+
+  // Re-parsed only when the text actually changes, not on every render — a
+  // 300-line ANSI-styled screen re-parsed on every poll tick regardless of
+  // whether the poll saw new content would be wasted work almost every
+  // tick, since usePaneStream/StreamPaneOutputANSI already suppress
+  // unchanged screens before `text` ever updates.
+  const segments = useMemo(() => parseAnsi(text), [text]);
 
   return (
     <section className="pane" aria-label={`${agent.agent} terminal`}>
@@ -147,7 +173,15 @@ export function PaneView({ client, agent, onBack, onRename }: PaneViewProps) {
 
       <div className="pane__screen" ref={scroller} onScroll={onScroll} tabIndex={0}>
         {loaded ? (
-          <pre className="term">{text || "(this pane has produced no output)"}</pre>
+          <pre className={`term${wrap ? " term--wrap" : ""}`}>
+            {text
+              ? segments.map((seg, i) => (
+                  <span key={i} style={seg.style}>
+                    {seg.text}
+                  </span>
+                ))
+              : "(this pane has produced no output)"}
+          </pre>
         ) : (
           <p className="term term--muted">{error ?? "Connecting to pane…"}</p>
         )}

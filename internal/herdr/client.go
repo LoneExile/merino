@@ -216,7 +216,33 @@ func (c *Client) ReadPane(ctx context.Context, paneID string, lines int) (string
 // ReadPaneFull returns the complete pane.read payload, including whether the
 // output was truncated.
 func (c *Client) ReadPaneFull(ctx context.Context, paneID string, source ReadSource, lines int) (PaneRead, error) {
-	p := paneReadParams{PaneID: paneID, Source: source, StripANSI: true}
+	return c.readPane(ctx, paneID, source, lines, FormatText)
+}
+
+// ReadPaneANSI is ReadPane but asks herdr to preserve ANSI/SGR escape
+// sequences instead of stripping them, for a caller that renders colour and
+// style rather than dumping plain text. Used only by the web dashboard's
+// terminal view; every other caller wants ReadPane's stripped text.
+func (c *Client) ReadPaneANSI(ctx context.Context, paneID string, lines int) (string, error) {
+	r, err := c.readPane(ctx, paneID, ReadVisible, lines, FormatANSI)
+	if err != nil {
+		return "", err
+	}
+	return r.Text, nil
+}
+
+// readPane is the shared implementation behind ReadPaneFull and ReadPaneANSI.
+// StripANSI is derived from format rather than taken as its own parameter:
+// asking herdr for ANSI-preserved text while also asking it to strip ANSI
+// would be a contradiction on the wire, so no caller can express that
+// combination by construction.
+func (c *Client) readPane(ctx context.Context, paneID string, source ReadSource, lines int, format ReadFormat) (PaneRead, error) {
+	p := paneReadParams{
+		PaneID:    paneID,
+		Source:    source,
+		Format:    format,
+		StripANSI: format != FormatANSI,
+	}
 	if lines > 0 {
 		p.Lines = &lines
 	}
@@ -256,6 +282,22 @@ const PaneOutputPollInterval = 300 * time.Millisecond
 // Polling catches every kind of change, pushes only on a real diff, and costs
 // nothing while a pane is idle.
 func (c *Client) StreamPaneOutput(ctx context.Context, paneID string, lines int, onText func(string)) error {
+	return c.streamPaneOutput(ctx, paneID, lines, FormatText, onText)
+}
+
+// StreamPaneOutputANSI is StreamPaneOutput but polls with ANSI/SGR escape
+// sequences preserved instead of stripped — see ReadPaneANSI. Used only by
+// the web dashboard's terminal view.
+func (c *Client) StreamPaneOutputANSI(ctx context.Context, paneID string, lines int, onText func(string)) error {
+	return c.streamPaneOutput(ctx, paneID, lines, FormatANSI, onText)
+}
+
+// streamPaneOutput is the shared poll loop behind StreamPaneOutput and
+// StreamPaneOutputANSI. format only changes what herdr sends back; the
+// change-detection contract above — suppress unless the text actually
+// differs — applies identically to both, since it compares whatever bytes
+// came back regardless of what they encode.
+func (c *Client) streamPaneOutput(ctx context.Context, paneID string, lines int, format ReadFormat, onText func(string)) error {
 	tick := time.NewTicker(PaneOutputPollInterval)
 	defer tick.Stop()
 
@@ -268,7 +310,7 @@ func (c *Client) StreamPaneOutput(ctx context.Context, paneID string, lines int,
 		case <-tick.C:
 		}
 
-		text, err := c.ReadPane(ctx, paneID, lines)
+		r, err := c.readPane(ctx, paneID, ReadVisible, lines, format)
 		if err != nil {
 			if ctx.Err() != nil {
 				return nil
@@ -277,11 +319,11 @@ func (c *Client) StreamPaneOutput(ctx context.Context, paneID string, lines int,
 			// is fatal to a watcher: keep polling and recover when it returns.
 			continue
 		}
-		if primed && text == last {
+		if primed && r.Text == last {
 			continue
 		}
-		last, primed = text, true
-		onText(text)
+		last, primed = r.Text, true
+		onText(r.Text)
 	}
 }
 

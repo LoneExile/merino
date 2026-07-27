@@ -10,6 +10,8 @@ export interface SettingsSheetProps {
   pref: ThemePref;
   actual: "light" | "dark";
   onPref: (p: ThemePref) => void;
+  wrap: boolean;
+  onWrap: (w: boolean) => void;
   onClose: () => void;
 }
 
@@ -17,6 +19,11 @@ const THEMES: { id: ThemePref; label: string }[] = [
   { id: "light", label: "Light" },
   { id: "dark", label: "Dark" },
   { id: "system", label: "System" },
+];
+
+const WRAP_OPTS: { value: boolean; label: string }[] = [
+  { value: false, label: "Off" },
+  { value: true, label: "On" },
 ];
 
 type PushStatus = "checking" | "unsupported" | "denied" | "off" | "subscribed";
@@ -55,6 +62,8 @@ export function SettingsSheet({
   pref,
   actual,
   onPref,
+  wrap,
+  onWrap,
   onClose,
 }: SettingsSheetProps) {
   const [pushStatus, setPushStatus] = useState<PushStatus>("checking");
@@ -143,6 +152,28 @@ export function SettingsSheet({
           {pref === "system"
             ? `Following your device — currently ${actual}.`
             : `Always ${pref}.`}
+        </p>
+      </fieldset>
+
+      <fieldset className="field">
+        <legend>Terminal</legend>
+        <div className="seg" role="radiogroup" aria-label="Wrap long lines">
+          {WRAP_OPTS.map((o) => (
+            <button
+              key={String(o.value)}
+              role="radio"
+              aria-checked={wrap === o.value}
+              className={`seg__opt${wrap === o.value ? " is-on" : ""}`}
+              onClick={() => onWrap(o.value)}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+        <p className="hint">
+          {wrap
+            ? "Wrap long lines: long output wraps to fit the screen."
+            : "Wrap long lines: off. Long output keeps its width — scroll the terminal sideways to read it."}
         </p>
       </fieldset>
 

@@ -175,7 +175,15 @@ func main() {
 	// tray API: a template icon on darwin, so the sheep silhouette adopts
 	// the menubar's light/dark appearance, and a plain icon everywhere
 	// else, mirroring how the previous static icon was set.
+	// frameCount lets a live run prove the animation is actually ticking.
+	// The tray is the one surface no test and no screenshot can reach from
+	// this environment, so without a counter "is it animating?" is
+	// unanswerable except by staring at the menu bar.
+	var frameCount atomic.Int64
 	setTrayIcon := func(icon []byte) {
+		if n := frameCount.Add(1); logLevel() <= slog.LevelDebug {
+			logger.Debug("tray frame", "n", n, "bytes", len(icon))
+		}
 		if runtime.GOOS == "darwin" {
 			tray.SetTemplateIcon(icon)
 		} else {

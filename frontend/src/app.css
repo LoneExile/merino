@@ -22,6 +22,39 @@
 @import "@fontsource/jetbrains-mono/latin-400.css";
 @import "@fontsource/jetbrains-mono/latin-500.css";
 
+/* Self-hosted glyph fallback for terminal output, NOT @fontsource: nothing
+ * but a TUI's private-use-area icon codepoints ever needs this face —
+ * JetBrains Mono covers all Latin/Latin-1 text and is listed first in
+ * --font-mono (tokens.css), so this only ever supplies the glyphs that
+ * would otherwise render as tofu boxes. Split into the two Unicode blocks
+ * Nerd Fonts occupies (classic icon sets — Font Awesome, Devicons,
+ * Codicons, Powerline, Seti, Octicons, … — in the base Private Use Area;
+ * Material Design Icons in Supplementary PUA-A, which is where nerd-fonts
+ * had to move MDI once it outgrew the base PUA) so `unicode-range` lets the
+ * browser skip downloading the ~1.2 MB MDI block entirely on any pane that
+ * never draws one of its glyphs — a lazy, per-glyph, browser-native fetch,
+ * not something this app schedules itself. Subset from the "Symbols Nerd
+ * Font Mono" release asset (github.com/ryanoasis/nerd-fonts v3.4.0) via
+ * frontend/scripts/subset-nerd-font-symbols.py; MIT-licensed, see
+ * public/fonts/NerdFonts-LICENSE.txt. */
+@font-face {
+  font-family: "Symbols Nerd Font Mono";
+  src: url("/fonts/SymbolsNerdFontMono-PUA.woff2") format("woff2");
+  unicode-range: U+E000-F8FF;
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Symbols Nerd Font Mono";
+  src: url("/fonts/SymbolsNerdFontMono-SuppPUA-A.woff2") format("woff2");
+  unicode-range: U+F0000-FFFFD;
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 *,
 *::before,
 *::after {
@@ -372,6 +405,11 @@ body {
   display: grid;
   grid-template-rows: auto 1fr auto;
   min-height: 0;
+  /* Grid items default to min-width: auto, i.e. their content's intrinsic
+   * width — which for an unwrapped .term line is the width of its longest
+   * row. Without this, a wide TUI screen would stretch .pane itself instead
+   * of staying inside it and letting .pane__screen scroll horizontally. */
+  min-width: 0;
   position: relative;
 }
 
@@ -418,6 +456,8 @@ body {
   overscroll-behavior: contain;
   background: var(--color-term);
   -webkit-overflow-scrolling: touch;
+  /* Same reasoning as .pane's min-width: 0 above, one grid level down. */
+  min-width: 0;
 }
 
 .term {
@@ -427,11 +467,22 @@ body {
   font-size: var(--text-xs);
   line-height: 1.45;
   color: var(--color-term-ink);
-  /* pre-wrap, not pre: a phone is narrower than any terminal, and a horizontal
-   * scrollbar under a vertical one is unusable with a thumb. */
+  /* pre, not pre-wrap: this app's live panes run wide (288 columns is
+   * typical), far past any phone viewport. Box-drawing output is
+   * column-aligned by the agent that drew it — reflowing it at the wrong
+   * width doesn't just look bad, it turns unrelated border fragments into
+   * nonsense that reads as stray text (e.g. a wrapped top-border title
+   * reappearing mid-screen). Keeping the real geometry and scrolling
+   * .pane__screen horizontally is what mobile terminal apps do, and is the
+   * default; "Wrap long lines" in Settings opts back into wrapping. */
+  white-space: pre;
+  tab-size: 2;
+}
+
+/* "Wrap long lines" setting, opt-in, OFF by default (frontend/src/wrapPref.ts). */
+.term--wrap {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  tab-size: 2;
 }
 
 .term--muted {

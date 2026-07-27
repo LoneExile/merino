@@ -32,11 +32,11 @@ type fakeSource struct {
 
 func (f *fakeSource) List() []app.Agent  { return f.agents }
 func (f *fakeSource) Counts() app.Counts { return app.Counts{Total: len(f.agents)} }
-func (f *fakeSource) Read(string, int) (string, error) {
+func (f *fakeSource) ReadANSI(string, int) (string, error) {
 	return f.text, nil
 }
 
-func (f *fakeSource) StreamOutput(ctx context.Context, _ string, _ int, onText func(string)) error {
+func (f *fakeSource) StreamOutputANSI(ctx context.Context, _ string, _ int, onText func(string)) error {
 	if f.started != nil {
 		close(f.started)
 	}

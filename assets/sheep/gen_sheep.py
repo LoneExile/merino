@@ -25,39 +25,51 @@ import sys
 GROUND = "#10141a"  # --color-paper        dark  oklch(19%   0.014 260)
 WOOL = "#ebeff2"  # --color-ink          dark  oklch(95%   0.006 250)
 COBALT = "#56a7ff"  # --color-accent       dark  oklch(72%   0.16  254)
+# Head, legs and the drawn outline. A notch darker than the graphite ground so
+# the sheep reads as sitting ON the tile rather than cut out of it — the move
+# the reference art uses to separate a dark head from a dark background.
+INK_DARK = "#141821"
+# The icon TILE, not the app background. The head and legs are near-black, so
+# the tile has to be light enough for them to read — the reference art uses a
+# mid grey for exactly this reason. --color-paper-3 (dark) converted.
+TILE = "#31363f"
 
 # --- the sheep, in 100x100 units, facing right -------------------------------
 
 # Fleece is a union of circles: overlapping discs read as a soft mass at any
 # size, where a hand-drawn bezier fleece turns to mush below about 32px.
-# Bottom row is deliberately shallow: the fleece needs a near-flat underside so
-# the legs read as attached to a body. With a rounded bottom the legs start
-# inside the mass and look like fringe.
+# Fleece: one solid body with a few big scallops on top, NOT a pile of equal
+# circles. Eight same-sized discs read as a cloud at 512px and as grey mush at
+# 32; four large bumps over a slab keep a recognisable outline all the way
+# down. The underside is deliberately flat so the legs attach to a body.
+FLEECE_BODY = (40, 45, 30, 22)  # cx, cy, rx, ry — the slab
 FLEECE = [
-    (36, 39, 18),
-    (23, 44, 13),
-    (50, 37, 16),
-    (30, 28, 12),
-    (46, 26, 11),
-    (28, 50, 12),
-    (44, 50, 12),
-    (53, 44, 11),
+    (20, 40, 12),
+    (26, 29, 13),
+    (41, 25, 14),
+    (56, 30, 13),
+    (62, 42, 12),
 ]
 FLEECE_BOTTOM = 62
 
-LEG_X = (29, 40, 52, 61)
-LEG_TOP = 58
-LEG_LEN = 26
-LEG_W = 7.0
+# Three legs, not four. The fourth sits behind the third at this angle and only
+# ever reads as a thicker smudge; dropping it buys negative space, which is
+# what makes a small icon legible.
+LEG_X = (28, 42, 58)
+LEG_TOP = 60
+LEG_LEN = 24
+LEG_W = 7.5
+# Fat underlay stroke that becomes the drawn outline around the whole sheep.
+OUTLINE_W = 7.0
 
 # The head must break the fleece outline, not sit on it. At 22px in a menu bar
 # the silhouette is all there is, and a round mass with a bump reads as a
 # sheep only when the bump is unmistakably a head on a neck.
-HEAD = (76, 48, 12.0, 12.5)   # cx, cy, rx, ry
-MUZZLE = (85, 53, 7.0, 5.6)   # cx, cy, rx, ry
-EAR = (70, 37, 6.2, 3.6, -34)  # cx, cy, rx, ry, rotation
-EYE = (79, 45, 2.0)
-TAIL = (18, 38, 5.5)
+HEAD = (75, 47, 13.5, 14.0)   # cx, cy, rx, ry
+MUZZLE = (86, 54, 8.0, 6.2)   # cx, cy, rx, ry
+EAR = (67, 36, 7.0, 4.0, -38)  # cx, cy, rx, ry, rotation
+EYE = (79, 44, 2.3)
+TAIL = (14, 40, 6.0)
 
 
 def leg(x: float, angle_deg: float, bob: float, tuck: float = 0.0) -> str:
@@ -73,41 +85,70 @@ def leg(x: float, angle_deg: float, bob: float, tuck: float = 0.0) -> str:
     y1 = y0 + math.cos(a) * length
     return (
         f'<line x1="{x0:.2f}" y1="{y0:.2f}" x2="{x1:.2f}" y2="{y1:.2f}" '
-        f'stroke-width="{LEG_W}" stroke-linecap="round" />'
+        f'stroke-linecap="round" />'
     )
 
 
-def sheep_body(fg: str, accent: str, legs, bob: float, tuck: float = 0.0) -> str:
-    """The sheep itself, no background.
+def _fleece_shapes(bob: float) -> str:
+    bx, by, brx, bry = FLEECE_BODY
+    out = [
+        f'<rect x="{bx - brx}" y="{by - bry + bob:.2f}" width="{brx * 2}" '
+        f'height="{bry * 2}" rx="{bry}" />'
+    ]
+    out += [f'<circle cx="{cx}" cy="{cy + bob:.2f}" r="{r}" />' for cx, cy, r in FLEECE]
+    out.append(f'<circle cx="{TAIL[0]}" cy="{TAIL[1] + bob:.2f}" r="{TAIL[2]}" />')
+    return "".join(out)
 
-    fg paints fleece and legs; accent paints the head. When the two are equal
-    the result is a single flat silhouette, which is exactly what a macOS
-    template icon must be.
+
+def _head_shapes(bob: float) -> str:
+    ex, ey, erx, ery, erot = EAR
+    hx, hy, hrx, hry = HEAD
+    mx, my, mrx, mry = MUZZLE
+    return (
+        f'<ellipse cx="{ex}" cy="{ey + bob:.2f}" rx="{erx}" ry="{ery}" '
+        f'transform="rotate({erot} {ex} {ey + bob:.2f})" />'
+        f'<ellipse cx="{hx}" cy="{hy + bob:.2f}" rx="{hrx}" ry="{hry}" />'
+        f'<ellipse cx="{mx}" cy="{my + bob:.2f}" rx="{mrx}" ry="{mry}" />'
+    )
+
+
+def sheep_body(fleece: str, dark: str, legs, bob: float, tuck: float = 0.0,
+               outline: str | None = None) -> str:
+    """The sheep, drawn in the grok reference's language.
+
+    A cloud of overlapping shapes has no single outline path, so the outline is
+    drawn by painting every shape TWICE: once underneath with a fat stroke in
+    the outline colour, then again on top with the fill. The union of the fat
+    strokes is exactly the silhouette's border, which is what gives the clean
+    outlined cloud without computing a real boolean union.
+
+    Passing outline=None and fleece==dark collapses the whole thing to one flat
+    silhouette, which is what a macOS template icon must be.
     """
-    parts = [f'<g stroke="{fg}" fill="{fg}">']
+    parts = []
+
+    # Underlay: same geometry, fat stroke, paints the outline. Skipped entirely
+    # when no outline is wanted — drawing it in the fill colour would silently
+    # fatten every shape and weld the legs into one blob, which is exactly what
+    # a flat silhouette must not do.
+    if outline is not None:
+        parts.append(f'<g fill="{outline}" stroke="{outline}" '
+                     f'stroke-width="{OUTLINE_W}" stroke-linejoin="round">')
+        parts.append(f'<g stroke-width="{LEG_W + OUTLINE_W}">')
+        parts.extend(leg(x, a, bob, tuck) for x, a in zip(LEG_X, legs))
+        parts.append("</g>")
+        parts.append(_fleece_shapes(bob))
+        parts.append(_head_shapes(bob))
+        parts.append("</g>")
+
+    # Legs and head sit dark on top of the fleece.
+    parts.append(f'<g fill="{dark}" stroke="{dark}" stroke-width="{LEG_W}" '
+                 f'stroke-linejoin="round">')
     parts.extend(leg(x, a, bob, tuck) for x, a in zip(LEG_X, legs))
     parts.append("</g>")
 
-    parts.append(f'<g fill="{fg}" stroke="none">')
-    parts.append(f'<circle cx="{TAIL[0]}" cy="{TAIL[1] + bob:.2f}" r="{TAIL[2]}" />')
-    for cx, cy, r in FLEECE:
-        parts.append(f'<circle cx="{cx}" cy="{cy + bob:.2f}" r="{r}" />')
-    parts.append("</g>")
-
-    ex, ey, erx, ery, erot = EAR
-    hx, hy, hrx, hry = HEAD
-    parts.append(f'<g fill="{accent}" stroke="none">')
-    parts.append(
-        f'<ellipse cx="{ex}" cy="{ey + bob:.2f}" rx="{erx}" ry="{ery}" '
-        f'transform="rotate({erot} {ex} {ey + bob:.2f})" />'
-    )
-    parts.append(f'<ellipse cx="{hx}" cy="{hy + bob:.2f}" rx="{hrx}" ry="{hry}" />')
-    mx, my, mrx, mry = MUZZLE
-    parts.append(f'<ellipse cx="{mx}" cy="{my + bob:.2f}" rx="{mrx}" ry="{mry}" />')
-    parts.append("</g>")
-
-    # The eye is punched in the ground colour on the colour icon. On a flat
-    # silhouette it would be invisible, so callers pass eye=None there.
+    parts.append(f'<g fill="{fleece}" stroke="none">{_fleece_shapes(bob)}</g>')
+    parts.append(f'<g fill="{dark}" stroke="none">{_head_shapes(bob)}</g>')
     return "".join(parts)
 
 
@@ -136,10 +177,17 @@ def app_icon(size: int, maskable: bool) -> str:
     Maskable variants must survive an aggressive circular crop, so the sheep is
     scaled to sit inside the 80% safe zone and the ground runs full-bleed.
     """
-    body = sheep_body(WOOL, COBALT, legs=(-9, 7, -7, 9), bob=0) + eye_dot(GROUND, 0)
+    body = sheep_body(COBALT, INK_DARK, legs=(-9, 2, 9), bob=0, outline=INK_DARK) + eye_dot(WOOL, 0)
     scale = 0.68 if maskable else 0.84
     radius = 0 if maskable else 22
-    return svg(size, body, GROUND, radius, scale, 50, 52)
+    return svg(size, body, TILE, radius, scale, 50, 52)
+
+
+# There is no separate small-size mark. An earlier revision carried a
+# single-colour silhouette for favicon sizes, on the usual reasoning that
+# two-tone art dies at 16px. Compared head to head at 16/20/24/32 against the
+# current drawing, it lost at every size: the dark head is what gives the shape
+# a front, and without it the silhouette is a blue blob. One artwork it is.
 
 
 def tray_frame(legs, bob: float, tuck: float = 0.0, size: int = 44) -> str:
@@ -158,25 +206,25 @@ def tray_frame(legs, bob: float, tuck: float = 0.0, size: int = 44) -> str:
 # A walk cycle is two diagonal pairs in opposition. Six frames is the fewest
 # that still reads as walking rather than twitching.
 WALK = [
-    ((-30, 24, -24, 30), 0.0),
-    ((-16, 12, -12, 16), 1.1),
-    ((-2, -2, 2, 2), 1.6),
-    ((24, -30, 30, -24), 0.0),
-    ((12, -16, 16, -12), 1.1),
-    ((2, 2, -2, -2), 1.6),
+    ((-30, 26, -22), 0.0),
+    ((-16, 14, -10), 1.1),
+    ((-2, 0, 2), 1.6),
+    ((26, -30, 22), 0.0),
+    ((14, -16, 10), 1.1),
+    ((2, 0, -2), 1.6),
 ]
 
 # Jump: crouch, launch, tuck at apex, extend, land. The bob carries the arc;
 # the tuck sells it as effort rather than a hover.
 JUMP = [
-    ((-8, 8, -8, 8), 4.0, 0.30),
-    ((-34, 34, -30, 30), -4.0, 0.42),
-    ((-44, 44, -40, 40), -10.0, 0.58),
-    ((-34, 34, -30, 30), -4.0, 0.42),
-    ((-8, 8, -8, 8), 2.5, 0.22),
+    ((-8, 8, -6), 4.0, 0.30),
+    ((-36, 34, -30), -4.5, 0.42),
+    ((-46, 44, -40), -11.0, 0.58),
+    ((-36, 34, -30), -4.5, 0.42),
+    ((-8, 8, -6), 2.5, 0.22),
 ]
 
-IDLE = ((-5, 4, -4, 5), 0.0)
+IDLE = ((-5, 2, 5), 0.0)
 
 
 def main() -> None:
@@ -194,6 +242,9 @@ def main() -> None:
         w(f"icon-{size}.svg", app_icon(size, maskable=False))
     w("icon-512-maskable.svg", app_icon(512, maskable=True))
     w("apple-touch-icon.svg", app_icon(180, maskable=False))
+
+    for n in (32, 64):
+        w(f"favicon-{n}.svg", app_icon(n, maskable=False))
 
     w("tray-idle.svg", tray_frame(*IDLE))
     for i, (legs, bob) in enumerate(WALK):
