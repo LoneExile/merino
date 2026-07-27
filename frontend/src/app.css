@@ -11,9 +11,14 @@
 
 @import "./tokens.css";
 
-/* latin-* subsets only. The full entrypoints ship cyrillic, greek and
- * vietnamese @font-face blocks the app will never use — 46 kB of CSS and a
- * pile of emitted files for a dashboard that is English-only. */
+/* latin-* subsets only for body/display. The full JetBrains Mono entrypoint
+ * ships cyrillic/greek/vietnamese the app never uses — but its latin pack
+ * also omits box-drawing (U+2500–259F). Without a matching face those glyphs
+ * fall through to ui-monospace/Menlo, whose advance is NOT 600 units, so a
+ * 290-column TUI frame walks off the right edge by several pixels. The two
+ * @font-face rules below graft a ~10 kB box-drawing subset back onto the
+ * same family name at the same cell width (600). See
+ * frontend/scripts/subset-jetbrains-mono-boxdrawing.py. */
 @import "@fontsource/space-grotesk/latin-500.css";
 @import "@fontsource/space-grotesk/latin-600.css";
 @import "@fontsource/inter/latin-400.css";
@@ -22,20 +27,42 @@
 @import "@fontsource/jetbrains-mono/latin-400.css";
 @import "@fontsource/jetbrains-mono/latin-500.css";
 
-/* Self-hosted glyph fallback for terminal output, NOT @fontsource: nothing
+/* Same family name as @fontsource's latin faces so the browser stitches one
+ * logical font: latin text from the small pack, box-drawing/blocks/arrows
+ * from this subset. unicode-range keeps the download off any pane that never
+ * paints those codepoints. */
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/JetBrainsMono-BoxDrawing-400.woff2") format("woff2");
+  unicode-range: U+2022-2023, U+2026, U+2190-21FF, U+2500-259F, U+25A0-25FF, U+2800-28FF;
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/JetBrainsMono-BoxDrawing-500.woff2") format("woff2");
+  unicode-range: U+2022-2023, U+2026, U+2190-21FF, U+2500-259F, U+25A0-25FF, U+2800-28FF;
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Self-hosted glyph fallback for terminal PUA icons, NOT @fontsource: nothing
  * but a TUI's private-use-area icon codepoints ever needs this face —
- * JetBrains Mono covers all Latin/Latin-1 text and is listed first in
- * --font-mono (tokens.css), so this only ever supplies the glyphs that
- * would otherwise render as tofu boxes. Split into the two Unicode blocks
- * Nerd Fonts occupies (classic icon sets — Font Awesome, Devicons,
- * Codicons, Powerline, Seti, Octicons, … — in the base Private Use Area;
- * Material Design Icons in Supplementary PUA-A, which is where nerd-fonts
- * had to move MDI once it outgrew the base PUA) so `unicode-range` lets the
- * browser skip downloading the ~1.2 MB MDI block entirely on any pane that
- * never draws one of its glyphs — a lazy, per-glyph, browser-native fetch,
- * not something this app schedules itself. Subset from the "Symbols Nerd
- * Font Mono" release asset (github.com/ryanoasis/nerd-fonts v3.4.0) via
- * frontend/scripts/subset-nerd-font-symbols.py; MIT-licensed, see
+ * JetBrains Mono (latin + box-drawing faces above) covers Latin and the
+ * line-drawing grid, and is listed first in --font-mono (tokens.css), so this
+ * only ever supplies the glyphs that would otherwise render as tofu boxes.
+ * Split into the two Unicode blocks Nerd Fonts occupies (classic icon sets —
+ * Font Awesome, Devicons, Codicons, Powerline, Seti, Octicons, … — in the
+ * base Private Use Area; Material Design Icons in Supplementary PUA-A, which
+ * is where nerd-fonts had to move MDI once it outgrew the base PUA) so
+ * `unicode-range` lets the browser skip downloading the ~1.2 MB MDI block
+ * entirely on any pane that never draws one of its glyphs — a lazy, per-glyph,
+ * browser-native fetch, not something this app schedules itself. Subset from
+ * the "Symbols Nerd Font Mono" release asset (github.com/ryanoasis/nerd-fonts
+ * v3.4.0) via frontend/scripts/subset-nerd-font-symbols.py; MIT-licensed, see
  * public/fonts/NerdFonts-LICENSE.txt. */
 @font-face {
   font-family: "Symbols Nerd Font Mono";
