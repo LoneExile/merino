@@ -2,6 +2,8 @@ package web
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +11,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -130,17 +133,38 @@ func (s *Server) authed(h func(http.ResponseWriter, *http.Request, Identity)) ht
 	})
 }
 
+// nonceKey carries the per-request CSP nonce to the HTML handler.
+type nonceKey struct{}
+
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// A fresh nonce per response. Inline <script> in index.html is stamped
+		// with it by handleStatic; anything not stamped is refused by the
+		// browser, which is the point.
+		raw := make([]byte, 16)
+		if _, err := rand.Read(raw); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		nonce := base64.RawStdEncoding.EncodeToString(raw)
+
 		h := w.Header()
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Referrer-Policy", "no-referrer")
-		// The bundle is self-contained: no external origins, no inline event
-		// handlers. 'unsafe-inline' is needed for the styles Vite inlines.
+		// script-src must be explicit. Relying on the default-src fallback
+		// blocks every inline script — including the ones this server injects,
+		// which silently broke browser-mode detection until a real browser
+		// surfaced it. 'unsafe-inline' is deliberately NOT used for scripts;
+		// a nonce keeps the policy strict while allowing our own.
 		h.Set("Content-Security-Policy",
-			"default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'")
-		next.ServeHTTP(w, r)
+			"default-src 'self'; "+
+				"script-src 'self' 'nonce-"+nonce+"'; "+
+				"style-src 'self' 'unsafe-inline'; "+
+				"img-src 'self' data:; connect-src 'self'; "+
+				"base-uri 'none'; form-action 'self'; object-src 'none'")
+
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), nonceKey{}, nonce)))
 	})
 }
 
@@ -273,10 +297,16 @@ func (s *Server) Clients() int {
 // webModeMarker tells the bundle it is running in a browser rather than the
 // desktop webview, so it uses the HTTP transport instead of Wails bindings.
 //
-// Injected server-side rather than sniffed client-side: capability detection
-// for the Wails IPC bridge is platform-specific and racy, whereas whoever
-// served the page knows the answer for certain.
-const webModeMarker = `<script>window.__HERDR_WEB__=true</script>`
+// A <meta> tag, deliberately not a <script>. The first attempt injected an
+// inline script, which this server's own Content-Security-Policy then blocked:
+// the flag was never set, the bundle fell back to the Wails IPC bridge, and
+// every call died on POST /wails/runtime 405. A meta tag carries no script and
+// cannot be refused by any script policy.
+const webModeMarker = `<meta name="herdr-mode" content="web">`
+
+// inlineScriptOpen matches an inline <script> (one with no src attribute) so a
+// nonce can be stamped onto it.
+var inlineScriptOpen = regexp.MustCompile(`<script(?:\s[^>]*)?>`)
 
 func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request, _ Identity) {
 	if s.cfg.Assets == nil {
@@ -299,6 +329,18 @@ func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request, _ Identity
 			return
 		}
 		html := strings.Replace(string(raw), "<head>", "<head>"+webModeMarker, 1)
+
+		// Stamp the CSP nonce onto inline scripts the build emitted (the boot
+		// fallback). Scripts with src are already allowed by 'self'.
+		if nonce, ok := r.Context().Value(nonceKey{}).(string); ok {
+			html = inlineScriptOpen.ReplaceAllStringFunc(html, func(tag string) string {
+				if strings.Contains(tag, "src=") || strings.Contains(tag, "nonce=") {
+					return tag
+				}
+				return strings.Replace(tag, "<script", `<script nonce="`+nonce+`"`, 1)
+			})
+		}
+
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
 		_, _ = w.Write([]byte(html))

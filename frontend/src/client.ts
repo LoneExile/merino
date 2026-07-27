@@ -41,14 +41,16 @@ export interface Client {
   interrupt?(paneId: string): Promise<void>;
 }
 
-declare global {
-  interface Window {
-    __HERDR_WEB__?: boolean;
-  }
-}
-
-/** True when the page was served by the Go web server rather than the webview. */
-const webMode = (): boolean => typeof window !== "undefined" && window.__HERDR_WEB__ === true;
+/**
+ * True when the page was served by the Go web server rather than the webview.
+ *
+ * Read from a <meta> tag, not a global set by an inline script: the server's
+ * Content-Security-Policy blocks inline scripts, so a script-based flag was
+ * silently dropped and the bundle wrongly took the desktop path.
+ */
+const webMode = (): boolean =>
+  typeof document !== "undefined" &&
+  document.querySelector('meta[name="herdr-mode"]')?.getAttribute("content") === "web";
 
 async function getJSON<T>(url: string): Promise<T> {
   const res = await fetch(url, { credentials: "same-origin" });

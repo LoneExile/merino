@@ -237,18 +237,68 @@ func TestNoWriteEndpoints(t *testing.T) {
 
 // The bundle must be told it is running in a browser, or it will try to use
 // the Wails IPC bridge and fail.
+//
+// The marker must also survive the server's own Content-Security-Policy. An
+// earlier version injected it as an inline <script>, which the CSP then
+// blocked: the flag never got set, the bundle took the desktop path and every
+// call died on POST /wails/runtime 405. Assert the marker is not script-borne.
 func TestIndexCarriesWebMarker(t *testing.T) {
-	s := testServer(t, &fakeSource{}, nil)
-	c := login(t, s, "alice", "correct-horse")
+	srv := testServer(t, &fakeSource{}, nil)
+	c := login(t, srv, "alice", "correct-horse")
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.AddCookie(c)
 	rr := httptest.NewRecorder()
-	s.routes().ServeHTTP(rr, req)
+	srv.routes().ServeHTTP(rr, req)
 
 	body, _ := io.ReadAll(rr.Body)
-	if !strings.Contains(string(body), "__HERDR_WEB__") {
-		t.Errorf("index.html served without the web-mode marker: %s", body)
+	html := string(body)
+
+	if !strings.Contains(html, `name="herdr-mode"`) || !strings.Contains(html, `content="web"`) {
+		t.Errorf("index.html served without the web-mode meta marker: %s", html)
+	}
+	if strings.Contains(html, "__HERDR_WEB__") {
+		t.Error("marker is script-borne; the CSP will block it")
+	}
+}
+
+// Every inline script the server emits must carry the CSP nonce, or the
+// browser silently drops it.
+func TestInlineScriptsAreNonced(t *testing.T) {
+	assets := fstest.MapFS{"index.html": &fstest.MapFile{
+		Data: []byte(`<head></head><body><script>window.boot=1</script><script src="/a.js"></script></body>`),
+	}}
+	srv, err := New(&fakeSource{}, Config{
+		Provider: NewPasswordProvider("alice", "correct-horse"),
+		Policy:   SingleOperator{},
+		Assets:   assets,
+		Logger:   slog.New(slog.DiscardHandler),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := login(t, srv, "alice", "correct-horse")
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.AddCookie(c)
+	rr := httptest.NewRecorder()
+	srv.routes().ServeHTTP(rr, req)
+
+	html := rr.Body.String()
+	csp := rr.Header().Get("Content-Security-Policy")
+
+	if !strings.Contains(csp, "script-src") {
+		t.Error("CSP has no explicit script-src; the default-src fallback blocks all inline scripts")
+	}
+	if !strings.Contains(html, `<script nonce="`) {
+		t.Errorf("inline script was not nonced: %s", html)
+	}
+	// The nonce in the document must be the one the header authorises.
+	i := strings.Index(html, `<script nonce="`)
+	nonce := html[i+len(`<script nonce="`):]
+	nonce = nonce[:strings.Index(nonce, `"`)]
+	if !strings.Contains(csp, "'nonce-"+nonce+"'") {
+		t.Errorf("document nonce %q is not present in CSP %q", nonce, csp)
 	}
 }
 
