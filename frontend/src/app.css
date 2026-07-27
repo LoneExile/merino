@@ -892,24 +892,32 @@ html.desktop .app {
   display: grid;
   align-items: end;
   justify-items: center;
+  /* Keep palette/sheet off the phone bezel — left + right gutter. */
+  padding-inline: max(var(--space-sm), env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
+  padding-bottom: max(var(--space-sm), env(safe-area-inset-bottom, 0px));
+  box-sizing: border-box;
 }
 
 .scrim--top {
   align-items: start;
-  padding-top: 10dvh;
+  padding-top: max(10dvh, env(safe-area-inset-top, 0px));
+  padding-bottom: 0; /* top-aligned palette doesn't need bottom inset */
 }
 
 .sheet,
 .palette {
   width: min(34rem, 100%);
+  max-width: 100%;
   background: var(--color-paper);
   border: 1px solid var(--color-rule);
   box-shadow: var(--shadow-sheet);
   animation: rise var(--dur-base) var(--ease-out);
+  border-radius: var(--radius-surface);
 }
 
 .sheet {
-  border-radius: var(--radius-surface) var(--radius-surface) 0 0;
+  /* Bottom sheet still hugs the bottom edge of the padded scrim. */
+  border-radius: var(--radius-surface) var(--radius-surface) var(--radius-surface) var(--radius-surface);
   max-height: 88dvh;
   display: grid;
   grid-template-rows: auto 1fr;
@@ -919,6 +927,7 @@ html.desktop .app {
 @media (min-width: 40rem) {
   .scrim {
     align-items: center;
+    padding: var(--space-md);
   }
   .sheet {
     border-radius: var(--radius-surface);
