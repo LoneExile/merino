@@ -35,10 +35,64 @@ export interface PaneViewProps {
  * bottom contract and the horizontal pan position must not fight each
  * other — see the layout effect below.
  */
+/** Full-screen image preview — chips and terminal thumbs open this. */
+function ImageLightbox({
+  src,
+  alt,
+  onClose,
+}: {
+  src: string;
+  alt: string;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      className="lightbox"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Image preview"
+      onClick={onClose}
+    >
+      <button type="button" className="lightbox__close btn btn--icon" aria-label="Close preview" onClick={onClose}>
+        <svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true">
+          <path
+            d="m4 4 8 8M12 4l-8 8"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.75"
+            strokeLinecap="round"
+          />
+        </svg>
+      </button>
+      <img
+        className="lightbox__img"
+        src={src}
+        alt={alt}
+        onClick={(e) => e.stopPropagation()}
+      />
+      {alt ? <p className="lightbox__cap mono">{alt}</p> : null}
+    </div>
+  );
+}
+
 export function PaneView({ client, agent, wrap, onBack, onRename }: PaneViewProps) {
   // pinned is declared below; the stream hook only needs it to release a
   // history hold when the user returns to the live tail — initialise true.
   const [pinned, setPinned] = useState(true);
+  const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
   const { text, loaded, live, error, loadingMore, canLoadMore, loadMore } = usePaneStream(
     client,
     agent.paneId,
@@ -218,15 +272,22 @@ export function PaneView({ client, agent, wrap, onBack, onRename }: PaneViewProp
               {text
                 ? splitPasteImages(text).map((piece, pi) =>
                     piece.kind === "img" ? (
-                      <span key={`img-${pi}`} className="term__img-wrap">
+                      <button
+                        key={`img-${pi}`}
+                        type="button"
+                        className="term__img-wrap"
+                        onClick={() =>
+                          setLightbox({ src: pasteImageURL(piece.name), alt: piece.path })
+                        }
+                      >
                         <img
                           className="term__img"
                           src={pasteImageURL(piece.name)}
                           alt={piece.path}
-                          title={piece.path}
+                          title="Tap to enlarge"
                           loading="lazy"
                         />
-                      </span>
+                      </button>
                     ) : (
                       parseAnsi(piece.text).map((seg, i) => (
                         <span
@@ -266,6 +327,10 @@ export function PaneView({ client, agent, wrap, onBack, onRename }: PaneViewProp
       </div>
 
       <Composer client={client} agent={agent} onSent={() => setPinned(true)} />
+
+      {lightbox && (
+        <ImageLightbox src={lightbox.src} alt={lightbox.alt} onClose={() => setLightbox(null)} />
+      )}
     </section>
   );
 }
@@ -327,6 +392,7 @@ function Composer({ client, agent, onSent }: ComposerProps) {
   const [caret, setCaret] = useState(0);
   const [pending, setPending] = useState<PendingAttach[]>([]);
   const [attachBusy, setAttachBusy] = useState(false);
+  const [chipPreview, setChipPreview] = useState<PendingAttach | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   // Range of the active "/token" inside value when the menu is open.
   const slashRange = useRef<{ start: number; end: number } | null>(null);
@@ -410,24 +476,57 @@ function Composer({ client, agent, onSent }: ComposerProps) {
         setErr(`At most ${MAX_ATTACH} images per message`);
         return;
       }
-      if (!blob.type.startsWith("image/")) {
-        setErr("Only images can be attached");
+      const nameGuess = nameHint || (blob instanceof File ? blob.name : "") || "image.jpg";
+      if (/\.(heic|heif)$/i.test(nameGuess) || /image\/hei[cf]/i.test(blob.type || "")) {
+        setErr("HEIC photos aren’t supported — choose JPEG or PNG (or disable “High Efficiency” in Camera settings).");
         return;
       }
+      const looksImage =
+        (blob.type && blob.type.startsWith("image/")) ||
+        /\.(png|jpe?g|gif|webp)$/i.test(nameGuess);
+      if (!looksImage) {
+        setErr("Only PNG, JPEG, GIF, or WebP images can be attached");
+        return;
+      }
+      // Build a preview URL first (FileReader is more reliable than object URLs
+      // for some mobile camera/gallery picks).
+      const preview = await new Promise<string>((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onload = () => resolve(String(fr.result || ""));
+        fr.onerror = () => reject(fr.error ?? new Error("preview failed"));
+        fr.readAsDataURL(blob);
+      }).catch(() => URL.createObjectURL(blob));
+
       setAttachBusy(true);
       setErr(null);
       try {
-        const { path, mime } = await client.attachImage(agent.paneId, blob);
-        const preview = URL.createObjectURL(blob);
-        const name = nameHint || path.split("/").pop() || "image";
+        // Ensure the server gets a usable MIME when the OS leaves type empty.
+        let upload = blob;
+        if (!blob.type || blob.type === "application/octet-stream") {
+          const ext = nameGuess.split(".").pop()?.toLowerCase();
+          const mime =
+            ext === "png"
+              ? "image/png"
+              : ext === "gif"
+                ? "image/gif"
+                : ext === "webp"
+                  ? "image/webp"
+                  : "image/jpeg";
+          upload = new File([blob], nameGuess, { type: mime });
+        }
+        const { path, mime } = await client.attachImage(agent.paneId, upload);
+        const name = nameGuess.split("/").pop() || path.split("/").pop() || "image";
         setPending((prev) => {
-          if (prev.length >= MAX_ATTACH) {
-            URL.revokeObjectURL(preview);
-            return prev;
-          }
+          if (prev.length >= MAX_ATTACH) return prev;
           return [
             ...prev,
-            { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, path, mime, preview, name },
+            {
+              id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+              path,
+              mime: mime || upload.type,
+              preview,
+              name,
+            },
           ];
         });
       } catch (e) {
@@ -442,7 +541,9 @@ function Composer({ client, agent, onSent }: ComposerProps) {
   // Revoke object URLs on unmount / clear.
   useEffect(() => {
     return () => {
-      for (const p of pending) URL.revokeObjectURL(p.preview);
+      for (const p of pending) {
+        if (p.preview.startsWith("blob:")) URL.revokeObjectURL(p.preview);
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only on unmount
   }, []);
@@ -635,17 +736,32 @@ function Composer({ client, agent, onSent }: ComposerProps) {
         <ul className="composer__attach" aria-label="Attached images">
           {pending.map((p) => (
             <li key={p.id} className="composer__chip">
-              <img src={p.preview} alt="" className="composer__chip-thumb" />
-              <span className="composer__chip-name mono" title={p.path}>
-                {p.name}
-              </span>
+              <button
+                type="button"
+                className="composer__chip-hit"
+                onClick={() => setChipPreview(p)}
+                aria-label={`Preview ${p.name}`}
+              >
+                <img
+                  src={p.preview}
+                  alt=""
+                  className="composer__chip-thumb"
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).classList.add("is-broken");
+                  }}
+                />
+                <span className="composer__chip-name mono" title={p.path}>
+                  {p.name}
+                </span>
+              </button>
               <button
                 type="button"
                 className="composer__chip-x"
                 aria-label={`Remove ${p.name}`}
                 onClick={() => {
-                  URL.revokeObjectURL(p.preview);
+                  if (p.preview.startsWith("blob:")) URL.revokeObjectURL(p.preview);
                   setPending((prev) => prev.filter((x) => x.id !== p.id));
+                  setChipPreview((cur) => (cur?.id === p.id ? null : cur));
                 }}
               >
                 ×
@@ -662,7 +778,7 @@ function Composer({ client, agent, onSent }: ComposerProps) {
               <input
                 ref={fileRef}
                 type="file"
-                accept="image/png,image/jpeg,image/gif,image/webp"
+                accept="image/png,image/jpeg,image/jpg,image/gif,image/webp,image/*"
                 multiple
                 hidden
                 onChange={(e) => {
@@ -822,6 +938,14 @@ function Composer({ client, agent, onSent }: ComposerProps) {
             Send
           </button>
         </div>
+      )}
+
+      {chipPreview && (
+        <ImageLightbox
+          src={chipPreview.preview}
+          alt={chipPreview.name}
+          onClose={() => setChipPreview(null)}
+        />
       )}
 
       {value.length > MAX_TEXT - 100 && (
