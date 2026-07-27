@@ -18,7 +18,7 @@
 //
 // Bump CACHE_VERSION whenever SHELL_URLS changes, so `activate` evicts the
 // old cache instead of accumulating dead entries forever.
-const CACHE_VERSION = "v1";
+const CACHE_VERSION = "v2";
 const CACHE_NAME = `herdr-shell-${CACHE_VERSION}`;
 
 // The minimal shell needed to boot the app while offline. Hashed build

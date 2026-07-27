@@ -187,6 +187,76 @@ func TestPWAAssetsAreReachableWithoutSession(t *testing.T) {
 	}
 }
 
+// Icons must revalidate, not stick in a heuristic cache forever.
+//
+// The favicon used to ship with no Cache-Control and no ETag. Browsers and
+// Cloudflare then kept the previous tiled sheep for days after a bare-sheep
+// rebuild, so the tab strip never updated. The contract is: first GET returns
+// an ETag + Cache-Control: no-cache + the body; a second GET with that ETag
+// returns 304 and no body.
+func TestIconAssetRevalidatesWithETag(t *testing.T) {
+	const payload = "\x89PNG\r\n\x1a\nbare-sheep"
+	assets := fstest.MapFS{
+		"index.html":     &fstest.MapFile{Data: []byte("<head></head>")},
+		"favicon-64.png": &fstest.MapFile{Data: []byte(payload)},
+	}
+	s, err := New(&fakeSource{}, Config{
+		Provider: NewPasswordProvider("alice", "correct-horse", DirectIP, false),
+		Policy:   SingleOperator{},
+		Assets:   assets,
+		Logger:   slog.New(slog.DiscardHandler),
+	})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+	srv := httptest.NewServer(s.routes())
+	defer srv.Close()
+
+	first, err := http.Get(srv.URL + "/favicon-64.png")
+	if err != nil {
+		t.Fatalf("first GET: %v", err)
+	}
+	body, _ := io.ReadAll(first.Body)
+	first.Body.Close()
+	if first.StatusCode != http.StatusOK {
+		t.Fatalf("first GET status = %d, want 200", first.StatusCode)
+	}
+	if got := string(body); got != payload {
+		t.Fatalf("first GET body = %q, want %q", got, payload)
+	}
+	if cc := first.Header.Get("Cache-Control"); cc != "no-cache" {
+		t.Errorf("Cache-Control = %q, want no-cache", cc)
+	}
+	etag := first.Header.Get("ETag")
+	if etag == "" {
+		t.Fatal("first GET missing ETag")
+	}
+	if !strings.HasPrefix(etag, `"`) || !strings.HasSuffix(etag, `"`) {
+		t.Errorf("ETag = %q, want a quoted strong validator", etag)
+	}
+
+	req, err := http.NewRequest(http.MethodGet, srv.URL+"/favicon-64.png", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("If-None-Match", etag)
+	second, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("revalidate GET: %v", err)
+	}
+	reBody, _ := io.ReadAll(second.Body)
+	second.Body.Close()
+	if second.StatusCode != http.StatusNotModified {
+		t.Errorf("revalidate status = %d, want 304", second.StatusCode)
+	}
+	if len(reBody) != 0 {
+		t.Errorf("revalidate body = %q, want empty on 304", reBody)
+	}
+	if got := second.Header.Get("ETag"); got != etag {
+		t.Errorf("revalidate ETag = %q, want %q", got, etag)
+	}
+}
+
 // The unauthenticated surface must stay exactly that list. Anything carrying
 // user data must still demand a session.
 func TestNonPWAPathsStillRequireSession(t *testing.T) {

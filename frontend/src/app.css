@@ -467,7 +467,12 @@ body {
   padding: var(--space-sm);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
-  line-height: 1.45;
+  /* 1, not 1.45. ANSI cell backgrounds and box-drawing characters only
+   * paint the glyph cell. Any leading above 1 leaves a transparent gap
+   * between rows, which reads as horizontal "line breaks" / dashed
+   * borders through every shaded prompt and every ─/│ run. Real terminal
+   * emulators (xterm.js, VS Code) use 1 for the same reason. */
+  line-height: 1;
   color: var(--color-term-ink);
   /* pre, not pre-wrap: this app's live panes run wide (288 columns is
    * typical), far past any phone viewport. Box-drawing output is

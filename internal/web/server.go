@@ -3,7 +3,9 @@ package web
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -644,6 +646,18 @@ func (s *Server) handleManifest(w http.ResponseWriter, r *http.Request, _ Identi
 // host OS's mime database — so these two PWA entry points can never be
 // served with a type the browser refuses to treat as a service worker or
 // manifest, and never silently swallowed by handleStatic's SPA fallback.
+//
+// Caching:
+//
+//   - noCache=true (service worker): Cache-Control: no-cache with no
+//     validator. A stale SW is worse than a slow one — every fetch must hit
+//     the origin.
+//   - noCache=false (icons, manifest): strong ETag from the bytes +
+//     Cache-Control: no-cache. Browsers and Cloudflare still store the
+//     response, but every use revalidates; an unchanged icon returns 304
+//     (no body). Without a validator the previous no-header default left
+//     heuristic caches holding a favicon for days, so a bare-sheep rebuild
+//     never reached the tab strip.
 func (s *Server) serveAsset(w http.ResponseWriter, r *http.Request, name, contentType string, noCache bool) {
 	if s.cfg.Assets == nil {
 		http.Error(w, "no assets", http.StatusNotFound)
@@ -661,6 +675,20 @@ func (s *Server) serveAsset(w http.ResponseWriter, r *http.Request, name, conten
 		// connection) must never be allowed to serve last week's sw.js and
 		// silently stop an update from ever installing.
 		w.Header().Set("Cache-Control", "no-cache")
+		_, _ = w.Write(raw)
+		return
+	}
+	sum := sha256.Sum256(raw)
+	etag := `"` + hex.EncodeToString(sum[:16]) + `"`
+	w.Header().Set("ETag", etag)
+	w.Header().Set("Cache-Control", "no-cache")
+	if match := r.Header.Get("If-None-Match"); match != "" {
+		for _, candidate := range strings.Split(match, ",") {
+			if strings.TrimSpace(candidate) == etag {
+				w.WriteHeader(http.StatusNotModified)
+				return
+			}
+		}
 	}
 	_, _ = w.Write(raw)
 }
