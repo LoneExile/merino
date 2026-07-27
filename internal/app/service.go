@@ -43,6 +43,12 @@ type AgentsService struct {
 	onCounts  func(Counts)
 	coalescer *Coalescer
 
+	// onBlockedUser is the optional external hook (Web Push). The store's
+	// edge-triggered callback always runs publish first so the tray jumps
+	// the moment a pane becomes blocked, without waiting for the coalesce
+	// window — then forwards to this hook if set.
+	onBlockedUser func(Agent)
+
 	ctx  context.Context
 	conn Conn
 
@@ -85,6 +91,16 @@ func NewAgentsService(
 		conn:     Conn{Socket: client.Socket()},
 	}
 	s.coalescer = NewCoalescer(coalesceWindow, s.publish)
+	// Edge-triggered: the moment a pane becomes blocked, publish NOW so the
+	// tray sheep jumps on the same event tick. The coalescer still collapses
+	// high-volume pane.updated storms for ordinary churn; blocked is rare
+	// and attention-critical, so it bypasses the debounce.
+	store.SetOnBlocked(func(a Agent) {
+		s.publish()
+		if s.onBlockedUser != nil {
+			s.onBlockedUser(a)
+		}
+	})
 	return s
 }
 
@@ -94,11 +110,11 @@ func NewAgentsService(
 // goroutine; nil (the default) until then, which is exactly correct for
 // every existing caller and test that has no notifier to attach.
 //
-// Delegates straight to Store, which is where old-vs-new status is actually
-// observed: SetStatus, UpsertPane and Replace each detect the transition
-// directly, so this service does no polling or diffing of its own.
+// The tray/frontend publish on the blocked edge is already wired inside
+// NewAgentsService and does not depend on this hook. fn is the external
+// side-effect path (Web Push).
 func (s *AgentsService) OnBlocked(fn func(Agent)) {
-	s.store.SetOnBlocked(fn)
+	s.onBlockedUser = fn
 }
 
 // ServiceName identifies the service in Wails logs.

@@ -113,3 +113,36 @@ func TestAgentsServiceOnBlockedForwardsToStore(t *testing.T) {
 		t.Fatalf("OnBlocked callback = %v, want exactly one call naming p1", got)
 	}
 }
+
+// TestBlockedEdgePublishesImmediately proves the tray does not wait for the
+// coalesce window when a pane becomes blocked. Without this, a busy herd
+// resets the coalescer and the sheep jumps late (or not until the burst
+// ends). The edge path must call onCounts in the same SetStatus stack.
+func TestBlockedEdgePublishesImmediately(t *testing.T) {
+	counts := make(chan Counts, 4)
+	s := NewAgentsService(
+		herdr.New("/nonexistent.sock"),
+		slog.New(slog.DiscardHandler),
+		nil,
+		func(c Counts) { counts <- c },
+	)
+	s.store.Replace([]herdr.PaneInfo{pane("p1", "omp", herdr.StatusWorking)})
+	// Drain any publish Replace may have triggered via changed() — it goes
+	// through the coalescer, so it may or may not have landed yet. We only
+	// care about the blocked edge below.
+	select {
+	case <-counts:
+	default:
+	}
+
+	s.store.SetStatus("p1", herdr.StatusBlocked, "omp")
+
+	select {
+	case c := <-counts:
+		if c.Blocked != 1 {
+			t.Fatalf("onCounts Blocked = %d, want 1 right after SetStatus", c.Blocked)
+		}
+	default:
+		t.Fatal("onCounts was not called synchronously on the blocked edge")
+	}
+}
