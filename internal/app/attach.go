@@ -18,7 +18,7 @@ const MaxAttachBatch = 4
 
 // attachDir is where staged paste images land. Under the user cache so
 // reboot/OS cleaners may reclaim, but stable for the agent to open.
-func attachDir() (string, error) {
+func AttachDir() (string, error) {
 	base, err := os.UserCacheDir()
 	if err != nil || base == "" {
 		base = os.TempDir()
@@ -51,7 +51,7 @@ func pruneAttachDir(dir string, olderThan time.Duration) {
 }
 
 // sniffsMIME from magic bytes. Only image types agents commonly accept.
-func sniffImageMIME(data []byte) (mime, ext string, ok bool) {
+func SniffImageMIME(data []byte) (mime, ext string, ok bool) {
 	if len(data) < 12 {
 		return "", "", false
 	}
@@ -81,7 +81,7 @@ func StageImage(declaredMIME string, data []byte) (path string, mime string, err
 	if len(data) > MaxAttachBytes {
 		return "", "", fmt.Errorf("%w: image %d bytes exceeds %d", ErrTooLong, len(data), MaxAttachBytes)
 	}
-	mime, ext, ok := sniffImageMIME(data)
+	mime, ext, ok := SniffImageMIME(data)
 	if !ok {
 		return "", "", fmt.Errorf("%w: not a supported image (png/jpeg/gif/webp)", ErrNotAllowed)
 	}
@@ -96,7 +96,7 @@ func StageImage(declaredMIME string, data []byte) (path string, mime string, err
 		}
 	}
 
-	dir, err := attachDir()
+	dir, err := AttachDir()
 	if err != nil {
 		return "", "", err
 	}

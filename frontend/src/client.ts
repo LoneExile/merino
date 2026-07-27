@@ -206,34 +206,6 @@ async function getJSON<T>(url: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-async function postJSONResult<T>(url: string, body?: unknown): Promise<T> {
-  const res = await fetch(url, {
-    method: "POST",
-    credentials: "same-origin",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body ?? {}),
-  });
-  if (res.status === 401) {
-    markAuthDead();
-    throw new Error("unauthenticated");
-  }
-  if (!res.ok) {
-    const detail = (await res.text()).trim();
-    throw new Error(detail || `${res.status} ${res.statusText}`);
-  }
-  return (await res.json()) as T;
-}
-
-async function blobToBase64(blob: Blob): Promise<string> {
-  const buf = await blob.arrayBuffer();
-  const bytes = new Uint8Array(buf);
-  let binary = "";
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-  }
-  return btoa(binary);
-}
 
 async function postJSON(url: string, body?: unknown): Promise<void> {
   const res = await fetch(url, {
@@ -378,11 +350,34 @@ async function httpClient(): Promise<Client> {
     respond: (paneId, text) => postJSON(`/api/panes/${pane(paneId)}/respond`, { text }),
     sendText: (paneId, text) => postJSON(`/api/panes/${pane(paneId)}/text`, { text }),
     attachImage: async (paneId, blob) => {
-      const data = await blobToBase64(blob);
-      return postJSONResult<{ path: string; mime: string }>(
-        `/api/panes/${pane(paneId)}/attach`,
-        { mime: blob.type || "application/octet-stream", data },
-      );
+      // Multipart — more reliable on mobile than multi-MB base64 JSON.
+      const fd = new FormData();
+      const name =
+        blob instanceof File && blob.name
+          ? blob.name
+          : `paste.${(blob.type || "image/png").split("/")[1] || "png"}`;
+      fd.append("file", blob, name);
+      if (blob.type) fd.append("mime", blob.type);
+      const res = await fetch(`/api/panes/${pane(paneId)}/attach`, {
+        method: "POST",
+        credentials: "same-origin",
+        body: fd,
+      });
+      if (res.status === 401) {
+        markAuthDead();
+        throw new Error("unauthenticated");
+      }
+      if (!res.ok) {
+        let detail = (await res.text()).trim();
+        try {
+          const j = JSON.parse(detail) as { error?: string };
+          if (j.error) detail = j.error;
+        } catch {
+          /* keep raw */
+        }
+        throw new Error(detail || `${res.status} ${res.statusText}`);
+      }
+      return (await res.json()) as { path: string; mime: string };
     },
     sendKeys: (paneId, keys) => postJSON(`/api/panes/${pane(paneId)}/keys`, { keys }),
     focus: (paneId) => postJSON(`/api/panes/${pane(paneId)}/focus`),

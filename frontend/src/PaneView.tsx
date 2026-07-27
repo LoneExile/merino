@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Agent } from "../bindings/github.com/LoneExile/herdr-tunnel/internal/app";
 import type { Client, SlashCommand } from "./client";
 import { usePaneStream } from "./usePaneStream";
 import { StatusDot } from "./StatusDot";
 import { parseAnsi } from "./ansi";
+import { pasteImageURL, splitPasteImages } from "./pasteImages";
 
 /** Mirrors app.MaxFreeTextLen so the limit is felt while typing, not as a 400. */
 const MAX_TEXT = 1000;
@@ -109,7 +110,6 @@ export function PaneView({ client, agent, wrap, onBack, onRename }: PaneViewProp
   // whether the poll saw new content would be wasted work almost every
   // tick, since usePaneStream/StreamPaneOutputANSI already suppress
   // unchanged screens before `text` ever updates.
-  const segments = useMemo(() => parseAnsi(text), [text]);
 
   return (
     <section className="pane" aria-label={`${agent.agent} terminal`}>
@@ -216,15 +216,29 @@ export function PaneView({ client, agent, wrap, onBack, onRename }: PaneViewProp
           {loaded ? (
             <pre className={`term${wrap ? " term--wrap" : ""}`}>
               {text
-                ? segments.map((seg, i) => (
-                    <span
-                      key={i}
-                      className={seg.style.backgroundColor ? "term__bg" : undefined}
-                      style={seg.style}
-                    >
-                      {seg.text}
-                    </span>
-                  ))
+                ? splitPasteImages(text).map((piece, pi) =>
+                    piece.kind === "img" ? (
+                      <span key={`img-${pi}`} className="term__img-wrap">
+                        <img
+                          className="term__img"
+                          src={pasteImageURL(piece.name)}
+                          alt={piece.path}
+                          title={piece.path}
+                          loading="lazy"
+                        />
+                      </span>
+                    ) : (
+                      parseAnsi(piece.text).map((seg, i) => (
+                        <span
+                          key={`${pi}-${i}`}
+                          className={seg.style.backgroundColor ? "term__bg" : undefined}
+                          style={seg.style}
+                        >
+                          {seg.text}
+                        </span>
+                      ))
+                    ),
+                  )
                 : "(this pane has produced no output)"}
             </pre>
           ) : (

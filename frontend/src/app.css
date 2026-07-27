@@ -677,6 +677,24 @@ html.desktop .app {
   min-height: 0;
 }
 
+.term__img-wrap {
+  display: block;
+  margin: var(--space-xs) 0;
+  max-width: 100%;
+}
+
+.term__img {
+  display: block;
+  max-width: min(100%, 36rem);
+  max-height: 50vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-control);
+  background: var(--color-paper-2);
+}
+
 .term {
   margin: 0;
   padding: var(--space-sm);

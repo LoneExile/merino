@@ -209,6 +209,7 @@ func (s *Server) routes() http.Handler {
 
 	if s.cfg.Writer != nil {
 		s.mountWrites(mux)
+		s.mountPaste(mux)
 	}
 
 	if s.push != nil {
