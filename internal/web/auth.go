@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"errors"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -41,6 +42,11 @@ type Provider interface {
 type PasswordProvider struct {
 	user     string
 	passHash [32]byte
+	// ip resolves the client address for throttling. Injected so the caller
+	// decides whether proxy headers are trustworthy; getting that wrong either
+	// lets an attacker rotate past the throttle or lumps every remote user
+	// into one bucket.
+	ip IPResolver
 
 	mu       sync.Mutex
 	failures map[string]*attemptRecord
@@ -66,10 +72,14 @@ const (
 // acceptable only because the hash is never persisted or transmitted — it
 // exists to compare against a value supplied through the environment at
 // startup. Do not reuse this pattern for a stored credential.
-func NewPasswordProvider(user, password string) *PasswordProvider {
+func NewPasswordProvider(user, password string, ip IPResolver) *PasswordProvider {
+	if ip == nil {
+		ip = DirectIP
+	}
 	return &PasswordProvider{
 		user:     user,
 		passHash: sha256.Sum256([]byte(password)),
+		ip:       ip,
 		failures: make(map[string]*attemptRecord),
 	}
 }
@@ -128,7 +138,7 @@ func (p *PasswordProvider) Mount(mux *http.ServeMux, success func(http.ResponseW
 	})
 
 	mux.HandleFunc("POST /login", func(w http.ResponseWriter, r *http.Request) {
-		client := clientIP(r)
+		client := p.ip(r)
 		if p.throttled(client) {
 			w.WriteHeader(http.StatusTooManyRequests)
 			writeLoginPage(w, "Too many attempts. Wait a minute and try again.")
@@ -154,14 +164,37 @@ func (p *PasswordProvider) Mount(mux *http.ServeMux, success func(http.ResponseW
 	})
 }
 
-// clientIP extracts a throttling key. Deliberately ignores X-Forwarded-For:
-// this server binds to a LAN address directly, so a header-supplied value
-// would be attacker-controlled and would defeat the throttle. Revisit when it
-// runs behind the Cloudflare tunnel, where the header becomes trustworthy.
-func clientIP(r *http.Request) string {
-	host := r.RemoteAddr
-	if i := strings.LastIndex(host, ":"); i > 0 {
-		host = host[:i]
+// IPResolver extracts the client address used for throttling and logging.
+type IPResolver func(*http.Request) string
+
+// DirectIP reads the peer address. Correct when the server is reached
+// directly, as on a LAN.
+func DirectIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
 	}
 	return host
+}
+
+// ProxiedIP reads the client address from Cloudflare's headers.
+//
+// Only safe when every request provably arrives through the tunnel. Reached
+// directly, these headers are attacker-supplied: a caller could send a fresh
+// CF-Connecting-IP per attempt and never trip the login throttle.
+//
+// CF-Connecting-IP is preferred over X-Forwarded-For because Cloudflare
+// overwrites it, whereas XFF is a client-appendable list whose leftmost entry
+// is whatever the caller put there.
+func ProxiedIP(r *http.Request) string {
+	if ip := r.Header.Get("CF-Connecting-IP"); ip != "" {
+		return ip
+	}
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		if first, _, ok := strings.Cut(xff, ","); ok {
+			return strings.TrimSpace(first)
+		}
+		return strings.TrimSpace(xff)
+	}
+	return DirectIP(r)
 }

@@ -38,8 +38,14 @@ type Config struct {
 	Provider Provider
 	// Policy authorises what an authenticated user may see.
 	Policy Policy
-	// Secure marks cookies Secure; enable behind TLS.
-	Secure bool
+	// BehindProxy declares that every request arrives through a trusted
+	// TLS-terminating proxy such as a Cloudflare tunnel. It makes session
+	// cookies Secure and makes Cloudflare's client-IP headers authoritative
+	// for login throttling.
+	//
+	// Never enable it while the port is also reachable directly: the headers
+	// are then attacker-supplied and the throttle becomes trivially bypassable.
+	BehindProxy bool
 	// Assets is the built frontend, served at /.
 	Assets fs.FS
 	Logger *slog.Logger
@@ -57,6 +63,15 @@ type Server struct {
 	clients map[chan []byte]struct{}
 }
 
+// clientIP resolves the caller's address, honouring proxy headers only when
+// the operator has declared the server sits behind one.
+func (s *Server) clientIP(r *http.Request) string {
+	if s.cfg.BehindProxy {
+		return ProxiedIP(r)
+	}
+	return DirectIP(r)
+}
+
 // New builds the server. It does not listen until Start is called.
 func New(src Source, cfg Config) (*Server, error) {
 	if cfg.Addr == "" {
@@ -71,7 +86,7 @@ func New(src Source, cfg Config) (*Server, error) {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
-	sessions, err := NewSessions(cfg.Secure)
+	sessions, err := NewSessions(cfg.BehindProxy)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +112,7 @@ func (s *Server) routes() http.Handler {
 
 	s.cfg.Provider.Mount(mux, func(w http.ResponseWriter, r *http.Request, id Identity) {
 		s.sessions.Issue(w, id)
-		s.log.Info("web login", "user", id.Name, "provider", id.Provider, "ip", clientIP(r))
+		s.log.Info("web login", "user", id.Name, "provider", id.Provider, "ip", s.clientIP(r))
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 	})
 

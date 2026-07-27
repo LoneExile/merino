@@ -36,6 +36,10 @@ func init() {
 }
 
 func main() {
+	behindProxy := flag.Bool("behind-proxy", false,
+		"the server sits behind a trusted TLS-terminating proxy such as a Cloudflare tunnel; "+
+			"marks cookies Secure and trusts CF-Connecting-IP for login throttling. "+
+			"Never enable this while the port is also reachable directly")
 	listen := flag.String("listen", "",
 		"serve the read-only web dashboard on this address, e.g. 127.0.0.1:8730 "+
 			"or 0.0.0.0:8730 for other devices on your network (disabled when empty)")
@@ -75,7 +79,7 @@ func main() {
 	agents := app.NewAgentsService(client, logger, emit, onCounts)
 
 	if *listen != "" {
-		srv, err := startWeb(agents, *listen, assets, logger)
+		srv, err := startWeb(agents, *listen, *behindProxy, assets, logger)
 		if err != nil {
 			logger.Error("web dashboard failed to start", "err", err)
 			os.Exit(1)
@@ -253,7 +257,7 @@ func showPanel(tray *application.SystemTray, panel *application.WebviewWindow) {
 // Disabled unless --listen is given, and never defaults to a public bind: the
 // operator has to type the address, so exposing the herd to the LAN is always
 // a deliberate act rather than something that happens by forgetting a flag.
-func startWeb(src web.Source, addr string, assets embed.FS, logger *slog.Logger) (*web.Server, error) {
+func startWeb(src web.Source, addr string, behindProxy bool, assets embed.FS, logger *slog.Logger) (*web.Server, error) {
 	user := os.Getenv("HERDR_TUNNEL_USER")
 	pass := os.Getenv("HERDR_TUNNEL_PASS")
 	if user == "" || pass == "" {
@@ -269,15 +273,13 @@ func startWeb(src web.Source, addr string, assets embed.FS, logger *slog.Logger)
 
 	srv, err := web.New(src, web.Config{
 		Addr:     addr,
-		Provider: web.NewPasswordProvider(user, pass),
+		Provider: web.NewPasswordProvider(user, pass, ipResolver(behindProxy)),
 		// One human, one password, their own machine. Swap for web.RequireRole
 		// when Keycloak makes more than one identity possible.
-		Policy: web.SingleOperator{},
-		// Plain HTTP on the LAN cannot set Secure cookies or the browser will
-		// discard them. Behind the Cloudflare tunnel this becomes true.
-		Secure: false,
-		Assets: dist,
-		Logger: logger,
+		Policy:      web.SingleOperator{},
+		BehindProxy: behindProxy,
+		Assets:      dist,
+		Logger:      logger,
 	})
 	if err != nil {
 		return nil, err
@@ -287,9 +289,25 @@ func startWeb(src web.Source, addr string, assets embed.FS, logger *slog.Logger)
 	}
 
 	if h, _, splitErr := net.SplitHostPort(addr); splitErr == nil && (h == "0.0.0.0" || h == "" || h == "::") {
-		logger.Warn("web dashboard is reachable from your whole network",
-			"addr", addr,
-			"note", "traffic is unencrypted HTTP; use a tunnel before exposing it beyond the LAN")
+		if behindProxy {
+			logger.Warn("web dashboard is published to the public internet",
+				"addr", addr,
+				"note", "a single password is the only barrier; put an identity proxy in front of it")
+		} else {
+			logger.Warn("web dashboard is reachable from your whole network",
+				"addr", addr,
+				"note", "traffic is unencrypted HTTP; use a tunnel before exposing it beyond the LAN")
+		}
 	}
 	return srv, nil
+}
+
+// ipResolver picks how the client address is determined. Proxy headers are
+// only believed when the operator has declared a proxy, because reached
+// directly they are just strings the caller chose.
+func ipResolver(behindProxy bool) web.IPResolver {
+	if behindProxy {
+		return web.ProxiedIP
+	}
+	return web.DirectIP
 }

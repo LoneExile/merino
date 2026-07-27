@@ -1,6 +1,7 @@
 package web
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -31,7 +32,7 @@ func testServer(t *testing.T, src Source, policy Policy) *Server {
 		policy = SingleOperator{}
 	}
 	s, err := New(src, Config{
-		Provider: NewPasswordProvider("alice", "correct-horse"),
+		Provider: NewPasswordProvider("alice", "correct-horse", DirectIP),
 		Policy:   policy,
 		Assets:   fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("<head></head>")}},
 		Logger:   slog.New(slog.DiscardHandler),
@@ -52,7 +53,7 @@ func TestNewRequiresProviderAndPolicy(t *testing.T) {
 	if _, err := New(&fakeSource{}, Config{Policy: SingleOperator{}}); err == nil {
 		t.Error("server without a Provider should be refused")
 	}
-	if _, err := New(&fakeSource{}, Config{Provider: NewPasswordProvider("a", "b")}); err == nil {
+	if _, err := New(&fakeSource{}, Config{Provider: NewPasswordProvider("a", "b", DirectIP)}); err == nil {
 		t.Error("server without a Policy should be refused")
 	}
 }
@@ -269,7 +270,7 @@ func TestInlineScriptsAreNonced(t *testing.T) {
 		Data: []byte(`<head></head><body><script>window.boot=1</script><script src="/a.js"></script></body>`),
 	}}
 	srv, err := New(&fakeSource{}, Config{
-		Provider: NewPasswordProvider("alice", "correct-horse"),
+		Provider: NewPasswordProvider("alice", "correct-horse", DirectIP),
 		Policy:   SingleOperator{},
 		Assets:   assets,
 		Logger:   slog.New(slog.DiscardHandler),
@@ -363,5 +364,63 @@ func TestRequireRolePolicy(t *testing.T) {
 	}
 	if p.CanView(nobody, app.Agent{}) || p.CanControl(nobody, app.Agent{}) {
 		t.Error("roleless identity must be denied")
+	}
+}
+
+// Proxy headers must only be believed when the operator has declared a proxy.
+// Trusting them on a directly-reachable port lets a caller rotate the throttle
+// key on every attempt and brute-force the password unimpeded.
+func TestIPResolution(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/login", nil)
+	req.RemoteAddr = "192.0.2.10:54321"
+	req.Header.Set("CF-Connecting-IP", "203.0.113.7")
+	req.Header.Set("X-Forwarded-For", "198.51.100.4, 203.0.113.7")
+
+	if got := DirectIP(req); got != "192.0.2.10" {
+		t.Errorf("DirectIP = %q, want the peer address 192.0.2.10 — headers must be ignored", got)
+	}
+	if got := ProxiedIP(req); got != "203.0.113.7" {
+		t.Errorf("ProxiedIP = %q, want CF-Connecting-IP 203.0.113.7", got)
+	}
+
+	// Without Cloudflare's header, fall back to the leftmost XFF entry.
+	req.Header.Del("CF-Connecting-IP")
+	if got := ProxiedIP(req); got != "198.51.100.4" {
+		t.Errorf("ProxiedIP without CF header = %q, want leftmost XFF 198.51.100.4", got)
+	}
+
+	// With no headers at all, both agree on the peer.
+	bare := httptest.NewRequest(http.MethodPost, "/login", nil)
+	bare.RemoteAddr = "192.0.2.10:1234"
+	if DirectIP(bare) != "192.0.2.10" || ProxiedIP(bare) != "192.0.2.10" {
+		t.Error("with no proxy headers both resolvers should return the peer address")
+	}
+}
+
+// The throttle must key on the resolved client, so a spoofed header cannot
+// reset the counter when the server is NOT behind a proxy.
+func TestThrottleIgnoresSpoofedHeadersWhenDirect(t *testing.T) {
+	s := testServer(t, &fakeSource{}, nil) // built with DirectIP
+
+	attempt := func(spoof string) int {
+		form := url.Values{"username": {"alice"}, "password": {"wrong"}}
+		req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("CF-Connecting-IP", spoof) // attacker-supplied
+		req.RemoteAddr = "192.0.2.99:5000"
+		rr := httptest.NewRecorder()
+		s.routes().ServeHTTP(rr, req)
+		return rr.Code
+	}
+
+	// Rotate the spoofed header every time; the throttle must still engage
+	// because it keys on the real peer.
+	var last int
+	for i := range lockoutAfter + 2 {
+		last = attempt(fmt.Sprintf("203.0.113.%d", i))
+	}
+	if last != http.StatusTooManyRequests {
+		t.Errorf("after %d attempts got %d, want 429 — rotating CF-Connecting-IP bypassed the throttle",
+			lockoutAfter+2, last)
 	}
 }
