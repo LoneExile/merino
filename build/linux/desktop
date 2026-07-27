@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Name=Herdr Tunnel
+Comment=Menubar dashboard for herdr agents
+# The Exec line includes %u to pass the URL to the application
+Exec=/usr/local/bin/herdr-tunnel %u
+Terminal=false
+Type=Application
+Icon=herdr-tunnel
+Categories=Utility;
+StartupWMClass=herdr-tunnel
+
+ 

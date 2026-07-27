@@ -1,0 +1,290 @@
+/* Theme tokens. Everything visual reads from these, so adding themes later is
+   a matter of overriding one block rather than touching components. */
+:root {
+  --bg: #0c0e14;
+  --bg-elev: #141822;
+  --bg-hover: #1b2130;
+  --border: #232a39;
+  --text: #e6e9ef;
+  --text-dim: #8b93a7;
+  --accent: #6aa2ff;
+
+  --ok: #4ade80;
+  --warn: #fbbf24;
+  --alert: #f87171;
+  --idle: #6b7280;
+
+  --radius: 10px;
+  --gap: 10px;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f7f8fa;
+    --bg-elev: #ffffff;
+    --bg-hover: #eef1f6;
+    --border: #dfe3ea;
+    --text: #131720;
+    --text-dim: #5c6577;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* header */
+.header {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+
+.header-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--alert);
+}
+
+.dot[data-on="1"] {
+  background: var(--ok);
+}
+
+.header-meta {
+  color: var(--text-dim);
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+/* list */
+.list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.section-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  margin: 12px 6px 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.section-title-alert {
+  color: var(--alert);
+}
+
+.count {
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
+/* rows */
+.row {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 9px 10px;
+  margin-bottom: 6px;
+  transition: background 120ms ease, transform 120ms ease;
+}
+
+.row:hover {
+  background: var(--bg-hover);
+}
+
+.row:active {
+  transform: scale(0.995);
+}
+
+.row-blocked {
+  border-color: color-mix(in oklab, var(--alert) 55%, var(--border));
+}
+
+.row-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+}
+
+.row-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.row-title {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  font-weight: 600;
+}
+
+.row-project {
+  color: var(--text-dim);
+  font-weight: 400;
+  font-size: 12px;
+}
+
+.row-sub {
+  color: var(--text-dim);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row-actions,
+.row-approvals {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+/* pills */
+.pill {
+  flex: 0 0 auto;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  margin-top: 2px;
+}
+
+.pill-blocked {
+  color: var(--alert);
+  background: color-mix(in oklab, var(--alert) 16%, transparent);
+  border-color: color-mix(in oklab, var(--alert) 40%, transparent);
+}
+
+.pill-working {
+  color: var(--warn);
+  background: color-mix(in oklab, var(--warn) 16%, transparent);
+}
+
+.pill-done {
+  color: var(--ok);
+  background: color-mix(in oklab, var(--ok) 16%, transparent);
+}
+
+.pill-idle,
+.pill-unknown {
+  color: var(--idle);
+  background: color-mix(in oklab, var(--idle) 18%, transparent);
+}
+
+/* buttons */
+.btn {
+  font: inherit;
+  font-size: 11px;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 3px 9px;
+  cursor: pointer;
+}
+
+.btn:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.btn-ok {
+  color: var(--ok);
+  border-color: color-mix(in oklab, var(--ok) 45%, var(--border));
+}
+
+.btn-no {
+  color: var(--alert);
+  border-color: color-mix(in oklab, var(--alert) 45%, var(--border));
+}
+
+/* misc */
+.empty {
+  text-align: center;
+  color: var(--text-dim);
+  padding: 40px 16px;
+}
+
+.empty-sub {
+  font-size: 11px;
+  margin-top: 4px;
+  opacity: 0.8;
+}
+
+.banner {
+  padding: 7px 12px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.banner-error {
+  background: color-mix(in oklab, var(--alert) 20%, transparent);
+  color: var(--alert);
+}
+
+.drawer {
+  flex: 0 0 45%;
+  border-top: 1px solid var(--border);
+  background: var(--bg-elev);
+  display: flex;
+  flex-direction: column;
+}
+
+.drawer-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.drawer-body {
+  margin: 0;
+  padding: 10px;
+  overflow: auto;
+  font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # macOS is the primary target: the app is a menubar client and the Wails
+    # build needs the platform webview toolchain.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: gofmt
+        run: |
+          # Scoped to our own sources; the generated build/ scaffolding is not
+          # ours to reformat.
+          unformatted=$(gofmt -l . ./internal 2>/dev/null | grep -v '^build/' || true)
+          if [ -n "$unformatted" ]; then
+            echo "::error::gofmt drift in:"; echo "$unformatted"; exit 1
+          fi
+
+      # The frontend must be built before ANY Go step. main.go embeds
+      # frontend/dist with `//go:embed`, and that directive fails at type-check
+      # time when the directory is absent — breaking `go vet` and `go build`
+      # with a confusing "pattern ... no matching files found".
+      - name: Frontend install
+        working-directory: frontend
+        run: npm ci
+
+      - name: Frontend typecheck
+        working-directory: frontend
+        run: npm run typecheck
+
+      - name: Frontend build
+        working-directory: frontend
+        run: npm run build
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: Go build
+        run: go build ./...
+
+      - name: Go test
+        # Tests requiring a live herdr socket skip automatically when none is
+        # present, so this stays green on CI runners.
+        run: go test ./... -count=1 -race
+
+      - name: Package binary
+        run: go build -o bin/herdr-tunnel .
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: herdr-tunnel-macos
+          path: bin/herdr-tunnel
+          retention-days: 7

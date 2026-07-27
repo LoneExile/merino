@@ -1,0 +1,14 @@
+.task
+bin
+frontend/dist
+frontend/node_modules
+build/linux/appimage/build
+build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
+
+# Generated from Go sources by `wails3 generate bindings`.
+# Committed intentionally: the frontend typechecks against them in CI, where
+# generating would require a full Go toolchain run first.
+!frontend/bindings
+
+# macOS
+.DS_Store
