@@ -20,6 +20,13 @@ export interface SettingsSheetProps {
   onPref: (p: ThemePref) => void;
   wrap: boolean;
   onWrap: (w: boolean) => void;
+  termFont: {
+    px: number;
+    zoomIn: () => void;
+    zoomOut: () => void;
+    canZoomIn: boolean;
+    canZoomOut: boolean;
+  };
   onClose: () => void;
 }
 
@@ -72,6 +79,7 @@ export function SettingsSheet({
   onPref,
   wrap,
   onWrap,
+  termFont,
   onClose,
 }: SettingsSheetProps) {
   const [pushStatus, setPushStatus] = useState<PushStatus>("checking");
@@ -228,6 +236,32 @@ export function SettingsSheet({
                 {o.label}
               </button>
             ))}
+          </div>
+        </div>
+        <div className="settings-row">
+          <div className="settings-row__meta">
+            <span className="settings-row__label">Terminal size</span>
+            <span className="settings-row__hint">{termFont.px}px monospaced</span>
+          </div>
+          <div className="seg seg--compact" role="group" aria-label="Terminal font size">
+            <button
+              type="button"
+              className="seg__opt"
+              disabled={!termFont.canZoomOut}
+              onClick={() => termFont.zoomOut()}
+              aria-label="Decrease font size"
+            >
+              A−
+            </button>
+            <button
+              type="button"
+              className="seg__opt"
+              disabled={!termFont.canZoomIn}
+              onClick={() => termFont.zoomIn()}
+              aria-label="Increase font size"
+            >
+              A+
+            </button>
           </div>
         </div>
       </section>
@@ -524,6 +558,22 @@ export function SettingsSheet({
               <kbd>Esc</kbd>
             </span>
             <span className="settings-keys__label">Close / back</span>
+          </li>
+          <li>
+            <span className="settings-keys__combo">
+              <kbd>⌘</kbd>
+              <kbd>F</kbd>
+            </span>
+            <span className="settings-keys__label">Find in pane</span>
+          </li>
+          <li>
+            <span className="settings-keys__combo">
+              <kbd>⌘</kbd>
+              <kbd>+</kbd>
+              <span className="settings-keys__sep">/</span>
+              <kbd>−</kbd>
+            </span>
+            <span className="settings-keys__label">Terminal font size</span>
           </li>
         </ul>
       </section>

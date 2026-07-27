@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Agent } from "../bindings/github.com/LoneExile/herdr-tunnel/internal/app";
 import type { Client, SlashCommand } from "./client";
 import { usePaneStream } from "./usePaneStream";
 import { StatusDot } from "./StatusDot";
 import { parseAnsi } from "./ansi";
 import { pasteImageURL, splitPasteImages } from "./pasteImages";
+import type { useTermFontPref } from "./termFontPref";
+import { findMatches, stripAnsi } from "./termSearch";
 
 /** Mirrors app.MaxFreeTextLen so the limit is felt while typing, not as a 400. */
 const MAX_TEXT = 1000;
@@ -16,6 +18,7 @@ export interface PaneViewProps {
   client: Client;
   agent: Agent;
   wrap: boolean;
+  termFont: ReturnType<typeof useTermFontPref>;
   onBack: () => void;
   onRename: (agent: Agent) => void;
 }
@@ -88,11 +91,108 @@ function ImageLightbox({
   );
 }
 
-export function PaneView({ client, agent, wrap, onBack, onRename }: PaneViewProps) {
+
+/** Render pane text with optional search highlights + inline paste images. */
+function renderTermBody(
+  text: string,
+  matches: { start: number; end: number }[],
+  activeIdx: number,
+  onImg: (src: string, alt: string) => void,
+) {
+  const pieces = splitPasteImages(text);
+  // Map match ranges from full plain text; pieces of kind text need local offsets.
+  let plainCursor = 0;
+  const nodes: React.ReactNode[] = [];
+
+  pieces.forEach((piece, pi) => {
+    if (piece.kind === "img") {
+      // Path characters count in plain text too.
+      plainCursor += stripAnsi(piece.path).length;
+      nodes.push(
+        <button
+          key={`img-${pi}`}
+          type="button"
+          className="term__img-wrap"
+          onClick={() => onImg(pasteImageURL(piece.name), piece.path)}
+        >
+          <img
+            className="term__img"
+            src={pasteImageURL(piece.name)}
+            alt={piece.path}
+            title="Tap to enlarge"
+            loading="lazy"
+          />
+        </button>,
+      );
+      return;
+    }
+
+    const segs = parseAnsi(piece.text);
+    let localPlain = 0;
+    const piecePlainLen = stripAnsi(piece.text).length;
+    const piecePlainStart = plainCursor;
+
+    segs.forEach((seg, si) => {
+      let rest = seg.text;
+      let restPlainAt = piecePlainStart + localPlain;
+      // localPlain advances by visible chars only (seg.text has no escapes).
+      while (rest.length > 0) {
+        const abs = restPlainAt;
+        // Next match boundary strictly after abs, or end of rest.
+        let cutPlain = abs + rest.length;
+        let mark: "none" | "hit" | "active" = "none";
+        for (let mi = 0; mi < matches.length; mi++) {
+          const m = matches[mi]!;
+          if (abs >= m.end || abs + rest.length <= m.start) continue;
+          if (abs >= m.start && abs < m.end) {
+            mark = mi === activeIdx ? "active" : "hit";
+            cutPlain = Math.min(cutPlain, m.end);
+            break;
+          }
+          if (m.start > abs) {
+            cutPlain = Math.min(cutPlain, m.start);
+            break;
+          }
+        }
+        const take = Math.max(1, cutPlain - abs);
+        const chunk = rest.slice(0, take);
+        rest = rest.slice(take);
+        restPlainAt += take;
+        localPlain += take;
+        const cls = [
+          seg.style.backgroundColor ? "term__bg" : "",
+          mark === "hit" ? "term__hit" : "",
+          mark === "active" ? "term__hit term__hit--active" : "",
+        ]
+          .filter(Boolean)
+          .join(" ");
+        nodes.push(
+          <span
+            key={`${pi}-${si}-${abs}`}
+            className={cls || undefined}
+            style={seg.style}
+            data-match-active={mark === "active" ? "true" : undefined}
+          >
+            {chunk}
+          </span>,
+        );
+      }
+    });
+    plainCursor += piecePlainLen;
+  });
+
+  return nodes;
+}
+
+export function PaneView({ client, agent, wrap, termFont, onBack, onRename }: PaneViewProps) {
   // pinned is declared below; the stream hook only needs it to release a
   // history hold when the user returns to the live tail — initialise true.
   const [pinned, setPinned] = useState(true);
   const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQ, setSearchQ] = useState("");
+  const [matchIdx, setMatchIdx] = useState(0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const { text, loaded, live, error, loadingMore, canLoadMore, loadMore } = usePaneStream(
     client,
     agent.paneId,
@@ -100,6 +200,14 @@ export function PaneView({ client, agent, wrap, onBack, onRename }: PaneViewProp
   );
   const scroller = useRef<HTMLDivElement>(null);
   const [menu, setMenu] = useState(false);
+
+  const plainText = useMemo(() => stripAnsi(text), [text]);
+  const searchMatches = useMemo(
+    () => (searchOpen ? findMatches(plainText, searchQ) : []),
+    [searchOpen, plainText, searchQ],
+  );
+  const safeMatchIdx =
+    searchMatches.length === 0 ? 0 : ((matchIdx % searchMatches.length) + searchMatches.length) % searchMatches.length;
 
   // Last user-set horizontal scroll position. Tracked separately from
   // `pinned` (which is vertical-only) and restored on every text update so a
@@ -152,6 +260,21 @@ export function PaneView({ client, agent, wrap, onBack, onRename }: PaneViewProp
     el.scrollLeft = scrollLeftRef.current;
   }, [text, pinned]);
 
+  // Keep the active search hit visible in the scrollport.
+  useLayoutEffect(() => {
+    if (!searchOpen || searchMatches.length === 0) return;
+    const el = scroller.current?.querySelector("[data-match-active=\"true\"]");
+    el?.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
+  }, [searchOpen, safeMatchIdx, searchMatches.length, text]);
+
+  // Focus the find field when opened.
+  useEffect(() => {
+    if (searchOpen) {
+      const t = window.setTimeout(() => searchInputRef.current?.focus(), 10);
+      return () => window.clearTimeout(t);
+    }
+  }, [searchOpen]);
+
   const onScroll = useCallback(() => {
     const el = scroller.current;
     if (!el) return;
@@ -166,11 +289,78 @@ export function PaneView({ client, agent, wrap, onBack, onRename }: PaneViewProp
     }
   }, [canLoadMore, loadingMore, loadMore]);
 
-  // Re-parsed only when the text actually changes, not on every render — a
-  // 300-line ANSI-styled screen re-parsed on every poll tick regardless of
-  // whether the poll saw new content would be wasted work almost every
-  // tick, since usePaneStream/StreamPaneOutputANSI already suppress
-  // unchanged screens before `text` ever updates.
+  const openSearch = useCallback(() => {
+    setSearchOpen(true);
+    setMenu(false);
+  }, []);
+
+  const closeSearch = useCallback(() => {
+    setSearchOpen(false);
+    setSearchQ("");
+    setMatchIdx(0);
+  }, []);
+
+  const goMatch = useCallback(
+    (dir: -1 | 1) => {
+      if (searchMatches.length === 0) return;
+      setMatchIdx((i) => {
+        const n = searchMatches.length;
+        return (i + dir + n * 8) % n;
+      });
+    },
+    [searchMatches.length],
+  );
+
+  // Expand loaded history when find has zero hits and more is available.
+  useEffect(() => {
+    if (!searchOpen || !searchQ.trim()) return;
+    if (searchMatches.length > 0) return;
+    if (!canLoadMore || loadingMore) return;
+    const el = scroller.current;
+    if (el) {
+      stickTopRef.current = { height: el.scrollHeight, top: el.scrollTop };
+    }
+    setPinned(false);
+    loadMore();
+  }, [searchOpen, searchQ, searchMatches.length, canLoadMore, loadingMore, loadMore]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && (e.key === "f" || e.key === "F")) {
+        e.preventDefault();
+        openSearch();
+        return;
+      }
+      if (mod && (e.key === "=" || e.key === "+")) {
+        e.preventDefault();
+        termFont.zoomIn();
+        return;
+      }
+      if (mod && e.key === "-") {
+        e.preventDefault();
+        termFont.zoomOut();
+        return;
+      }
+      if (mod && e.key === "0") {
+        e.preventDefault();
+        termFont.setPx(12);
+        return;
+      }
+      if (!searchOpen) return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeSearch();
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        goMatch(e.shiftKey ? -1 : 1);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [searchOpen, openSearch, closeSearch, goMatch, termFont]);
 
   return (
     <section className="pane" aria-label={`${agent.agent} terminal`}>
@@ -202,6 +392,41 @@ export function PaneView({ client, agent, wrap, onBack, onRename }: PaneViewProp
               reconnecting
             </span>
           )}
+          <button
+            type="button"
+            className={`btn btn--icon${searchOpen ? " is-on" : ""}`}
+            aria-label="Find in pane"
+            title="Find (⌘F)"
+            aria-pressed={searchOpen}
+            onClick={() => (searchOpen ? closeSearch() : openSearch())}
+          >
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+              <circle cx="7" cy="7" r="4.25" fill="none" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M10.2 10.2 13.5 13.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
+          <div className="pane__zoom" role="group" aria-label="Terminal font size">
+            <button
+              type="button"
+              className="btn btn--icon"
+              aria-label="Decrease font size"
+              title="Smaller (⌘-)"
+              disabled={!termFont.canZoomOut}
+              onClick={() => termFont.zoomOut()}
+            >
+              <span className="pane__zoom-label" aria-hidden="true">A−</span>
+            </button>
+            <button
+              type="button"
+              className="btn btn--icon"
+              aria-label="Increase font size"
+              title="Larger (⌘+)"
+              disabled={!termFont.canZoomIn}
+              onClick={() => termFont.zoomIn()}
+            >
+              <span className="pane__zoom-label pane__zoom-label--lg" aria-hidden="true">A+</span>
+            </button>
+          </div>
           <div className="menu">
             <button
               className="btn btn--icon"
@@ -220,6 +445,13 @@ export function PaneView({ client, agent, wrap, onBack, onRename }: PaneViewProp
               <>
                 <div className="menu__scrim" onClick={() => setMenu(false)} />
                 <div className="menu__list" role="menu">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => openSearch()}
+                  >
+                    Find in pane…
+                  </button>
                   {client.focus && (
                     <button
                       role="menuitem"
@@ -261,6 +493,62 @@ export function PaneView({ client, agent, wrap, onBack, onRename }: PaneViewProp
         </div>
       </header>
 
+      {searchOpen && (
+        <div className="pane__find" role="search">
+          <input
+            ref={searchInputRef}
+            className="pane__find-input"
+            type="search"
+            value={searchQ}
+            placeholder="Find in loaded output…"
+            aria-label="Find in loaded output"
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+            onChange={(e) => {
+              setSearchQ(e.target.value);
+              setMatchIdx(0);
+            }}
+          />
+          <span className="pane__find-count mono" aria-live="polite">
+            {searchQ.trim()
+              ? searchMatches.length
+                ? `${safeMatchIdx + 1}/${searchMatches.length}`
+                : canLoadMore
+                  ? "0 — loading older…"
+                  : "0"
+              : "—"}
+          </span>
+          <button
+            type="button"
+            className="btn btn--icon"
+            aria-label="Previous match"
+            disabled={searchMatches.length === 0}
+            onClick={() => goMatch(-1)}
+          >
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+              <path d="M4 10 8 6l4 4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            className="btn btn--icon"
+            aria-label="Next match"
+            disabled={searchMatches.length === 0}
+            onClick={() => goMatch(1)}
+          >
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+              <path d="M4 6 8 10l4-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+          <button type="button" className="btn btn--icon" aria-label="Close find" onClick={closeSearch}>
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+              <path d="m4 4 8 8M12 4l-8 8" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+      )}
+
       <div className="pane__body">
         <div className="pane__screen" ref={scroller} onScroll={onScroll} tabIndex={0}>
           {loadingMore && (
@@ -282,35 +570,8 @@ export function PaneView({ client, agent, wrap, onBack, onRename }: PaneViewProp
           {loaded ? (
             <pre className={`term${wrap ? " term--wrap" : ""}`}>
               {text
-                ? splitPasteImages(text).map((piece, pi) =>
-                    piece.kind === "img" ? (
-                      <button
-                        key={`img-${pi}`}
-                        type="button"
-                        className="term__img-wrap"
-                        onClick={() =>
-                          setLightbox({ src: pasteImageURL(piece.name), alt: piece.path })
-                        }
-                      >
-                        <img
-                          className="term__img"
-                          src={pasteImageURL(piece.name)}
-                          alt={piece.path}
-                          title="Tap to enlarge"
-                          loading="lazy"
-                        />
-                      </button>
-                    ) : (
-                      parseAnsi(piece.text).map((seg, i) => (
-                        <span
-                          key={`${pi}-${i}`}
-                          className={seg.style.backgroundColor ? "term__bg" : undefined}
-                          style={seg.style}
-                        >
-                          {seg.text}
-                        </span>
-                      ))
-                    ),
+                ? renderTermBody(text, searchMatches, safeMatchIdx, (src, alt) =>
+                    setLightbox({ src, alt }),
                   )
                 : "(this pane has produced no output)"}
             </pre>

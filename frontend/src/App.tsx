@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Agent } from "../bindings/github.com/LoneExile/herdr-tunnel/internal/app";
 import { useHerd } from "./useHerd";
 import { useTheme } from "./theme";
+import { useTermFontPref } from "./termFontPref";
 import { useWrapPref } from "./wrapPref";
 import { PaneView } from "./PaneView";
 import { StatusDot, statusLabel } from "./StatusDot";
@@ -21,6 +22,7 @@ export default function App() {
   const { client, session, agents, ready, live, error } = useHerd();
   const { pref, actual, setPref } = useTheme();
   const { wrap, setWrap } = useWrapPref();
+  const termFont = useTermFontPref();
   const [openPane, setOpenPane] = useState<string | null>(null);
   const [overlay, setOverlay] = useState<Overlay>(null);
   const [renaming, setRenaming] = useState<Agent | null>(null);
@@ -202,6 +204,7 @@ export default function App() {
           client={client}
           agent={current}
           wrap={wrap}
+          termFont={termFont}
           onBack={() => setOpenPane(null)}
           onRename={(a) => setRenaming(a)}
         />
@@ -263,6 +266,7 @@ export default function App() {
           wrap={wrap}
           onWrap={setWrap}
           onPref={setPref}
+          termFont={termFont}
           onClose={closeOverlay}
         />
       )}
