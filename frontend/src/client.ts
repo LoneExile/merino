@@ -205,17 +205,36 @@ async function httpClient(): Promise<Client> {
 
     subscribe(onAgents, onError) {
       // EventSource reconnects on its own, which is most of why this is SSE
-      // rather than a WebSocket.
+      // rather than a WebSocket. On each (re)open we re-seed the agent list so
+      // a phone that slept through a burst of events still catches up.
       const es = new EventSource("/api/events", { withCredentials: true });
+      let sawError = false;
+      const pull = () => {
+        void getJSON<Agent[]>("/api/agents")
+          .then((list) => {
+            if (Array.isArray(list)) onAgents(list);
+          })
+          .catch((err) => onError?.(err));
+      };
       es.addEventListener("agents", (ev) => {
         try {
           const parsed: unknown = JSON.parse((ev as MessageEvent<string>).data);
           if (Array.isArray(parsed)) onAgents(parsed as Agent[]);
+          sawError = false;
         } catch (err) {
           onError?.(err);
         }
       });
-      es.onerror = (err) => onError?.(err);
+      es.onopen = () => {
+        if (sawError) pull();
+        sawError = false;
+      };
+      es.onerror = (err) => {
+        sawError = true;
+        onError?.(err);
+      };
+      // First paint: stream may be quiet until something changes.
+      pull();
       return () => es.close();
     },
 

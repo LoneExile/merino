@@ -175,7 +175,7 @@ const insecureMsg = "This page was loaded over plain HTTP. " +
 func (p *PasswordProvider) Mount(mux *http.ServeMux, success func(http.ResponseWriter, *http.Request, Identity)) {
 	mux.HandleFunc("GET /login", func(w http.ResponseWriter, r *http.Request) {
 		if insecureTransport(r, p.behindProxy) {
-			writeLoginPage(w, insecureMsg)
+			writeLoginPage(w, r, insecureMsg)
 			return
 		}
 		// Phone scanned a QR: /login?token=… redeems in one GET so the
@@ -184,28 +184,28 @@ func (p *PasswordProvider) Mount(mux *http.ServeMux, success func(http.ResponseW
 			if p.redeemToken(w, r, tok, success) {
 				return
 			}
-			writeLoginPage(w, "That sign-in link expired or was already used. Ask the desktop app for a new QR.")
+			writeLoginPage(w, r, "That sign-in link expired or was already used. Ask the desktop app for a new QR.")
 			return
 		}
-		writeLoginPage(w, "")
+		writeLoginPage(w, r, "")
 	})
 
 	mux.HandleFunc("POST /login", func(w http.ResponseWriter, r *http.Request) {
 		if insecureTransport(r, p.behindProxy) {
 			// Refuse rather than issue a cookie the browser will throw away.
 			w.WriteHeader(http.StatusBadRequest)
-			writeLoginPage(w, insecureMsg)
+			writeLoginPage(w, r, insecureMsg)
 			return
 		}
 		client := p.ip(r)
 		if p.throttled(client) {
 			w.WriteHeader(http.StatusTooManyRequests)
-			writeLoginPage(w, "Too many attempts. Wait a minute and try again.")
+			writeLoginPage(w, r, "Too many attempts. Wait a minute and try again.")
 			return
 		}
 		if err := r.ParseForm(); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
-			writeLoginPage(w, "Malformed request.")
+			writeLoginPage(w, r, "Malformed request.")
 			return
 		}
 		// Token form field (manual paste fallback from the QR sheet).
@@ -215,7 +215,7 @@ func (p *PasswordProvider) Mount(mux *http.ServeMux, success func(http.ResponseW
 			}
 			p.recordFailure(client)
 			w.WriteHeader(http.StatusUnauthorized)
-			writeLoginPage(w, "That sign-in code expired or was already used.")
+			writeLoginPage(w, r, "That sign-in code expired or was already used.")
 			return
 		}
 		user := r.PostFormValue("username")
@@ -225,7 +225,7 @@ func (p *PasswordProvider) Mount(mux *http.ServeMux, success func(http.ResponseW
 			p.recordFailure(client)
 			// Deliberately vague: do not reveal which field was wrong.
 			w.WriteHeader(http.StatusUnauthorized)
-			writeLoginPage(w, "Incorrect username or password.")
+			writeLoginPage(w, r, "Incorrect username or password.")
 			return
 		}
 		p.clearFailures(client)

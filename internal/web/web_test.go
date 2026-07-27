@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -142,13 +143,16 @@ func TestLoginRejectsBadCredentials(t *testing.T) {
 func TestLoginDoesNotEnumerateUsers(t *testing.T) {
 	s := testServer(t, &fakeSource{}, nil)
 
+	// Each response carries a fresh CSP nonce, so raw bodies always differ.
+	// Strip nonces before comparing the user-visible content.
+	stripNonce := regexp.MustCompile(`nonce="[^"]*"`)
 	body := func(user, pass string) string {
 		form := url.Values{"username": {user}, "password": {pass}}
 		req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 		s.routes().ServeHTTP(rr, req)
-		return rr.Body.String()
+		return stripNonce.ReplaceAllString(rr.Body.String(), `nonce="X"`)
 	}
 	if body("alice", "wrong") != body("nobody", "wrong") {
 		t.Error("responses differ for existing vs unknown user; that enumerates accounts")

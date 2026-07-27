@@ -18,7 +18,7 @@ const GROUPS: { key: string; label: string }[] = [
 ];
 
 export default function App() {
-  const { client, session, agents, ready, error } = useHerd();
+  const { client, session, agents, ready, live, error } = useHerd();
   const { pref, actual, setPref } = useTheme();
   const { wrap, setWrap } = useWrapPref();
   const [openPane, setOpenPane] = useState<string | null>(null);
@@ -105,64 +105,93 @@ export default function App() {
   }, [agents]);
 
   return (
-    <div className="app">
-      <header className="rail">
-        <div className="rail__brand">
-          <img className="rail__mark" src="/favicon-64.png" alt="" width="18" height="18" />
-          <span className="rail__name">Herdr</span>
-        </div>
+    <div className={`app${current ? " app--pane" : ""}`}>
+      {/* Global chrome stays on the board. Inside a pane the pane header is
+          the only top bar — two stacked rails ate half the phone keyboard. */}
+      {!current && (
+        <header className="rail">
+          <div className="rail__brand">
+            <img className="rail__mark" src="/favicon-64.png" alt="" width="16" height="16" />
+            <span className="rail__name">Herdr</span>
+            <span
+              className={`rail__pulse${live ? " is-live" : ""}${!ready ? " is-boot" : ""}`}
+              title={live ? "Live" : ready ? "Reconnecting" : "Connecting"}
+              aria-label={live ? "Live" : ready ? "Reconnecting" : "Connecting"}
+            />
+          </div>
 
-        <p className="rail__summary mono" aria-live="polite">
-          {!ready
-            ? "connecting…"
-            : counts.blocked > 0
-              ? `${counts.blocked} need${counts.blocked === 1 ? "s" : ""} you`
-              : `${counts.working}/${counts.total} working`}
-        </p>
+          <p className="rail__summary mono" aria-live="polite">
+            {!ready
+              ? "…"
+              : !live
+                ? "reconnecting"
+                : counts.blocked > 0
+                  ? `${counts.blocked} need${counts.blocked === 1 ? "s" : ""} you`
+                  : `${counts.working}/${counts.total}`}
+          </p>
 
-        <div className="rail__actions">
-          <button
-            className="btn btn--icon"
-            onClick={() => setOverlay("palette")}
-            aria-label="Command palette"
-            title="Jump to an agent (⌘K)"
-          >
-            <span className="mono kbd-hint">⌘K</span>
-          </button>
-          {client?.sessions && (
+          <div className="rail__actions">
             <button
               className="btn btn--icon"
-              onClick={() => setOverlay("sessions")}
-              aria-label="Switch session"
-              title="Session"
+              onClick={() => setOverlay("palette")}
+              aria-label="Command palette"
+              title="Jump to an agent (⌘K)"
+            >
+              <span className="mono kbd-hint">⌘K</span>
+            </button>
+            {client?.sessions && (
+              <button
+                className="btn btn--icon"
+                onClick={() => setOverlay("sessions")}
+                aria-label="Switch session"
+                title="Session"
+              >
+                <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                  <rect
+                    x="2"
+                    y="3"
+                    width="12"
+                    height="4"
+                    rx="1.2"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.4"
+                  />
+                  <rect
+                    x="2"
+                    y="9"
+                    width="12"
+                    height="4"
+                    rx="1.2"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.4"
+                  />
+                </svg>
+              </button>
+            )}
+            <button
+              className="btn btn--icon"
+              onClick={() => setOverlay("settings")}
+              aria-label="Settings"
+              title="Settings"
             >
               <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-                <rect x="2" y="3" width="12" height="4" rx="1.2" fill="none" stroke="currentColor" strokeWidth="1.4" />
-                <rect x="2" y="9" width="12" height="4" rx="1.2" fill="none" stroke="currentColor" strokeWidth="1.4" />
+                <circle cx="8" cy="8" r="2.4" fill="none" stroke="currentColor" strokeWidth="1.4" />
+                <path
+                  d="M8 1.6v1.6M8 12.8v1.6M14.4 8h-1.6M3.2 8H1.6M12.5 3.5l-1.1 1.1M4.6 11.4l-1.1 1.1M12.5 12.5l-1.1-1.1M4.6 4.6 3.5 3.5"
+                  stroke="currentColor"
+                  strokeWidth="1.4"
+                  strokeLinecap="round"
+                />
               </svg>
             </button>
-          )}
-          <button
-            className="btn btn--icon"
-            onClick={() => setOverlay("settings")}
-            aria-label="Settings"
-            title="Settings"
-          >
-            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-              <circle cx="8" cy="8" r="2.4" fill="none" stroke="currentColor" strokeWidth="1.4" />
-              <path
-                d="M8 1.6v1.6M8 12.8v1.6M14.4 8h-1.6M3.2 8H1.6M12.5 3.5l-1.1 1.1M4.6 11.4l-1.1 1.1M12.5 12.5l-1.1-1.1M4.6 4.6 3.5 3.5"
-                stroke="currentColor"
-                strokeWidth="1.4"
-                strokeLinecap="round"
-              />
-            </svg>
-          </button>
-        </div>
-      </header>
+          </div>
+        </header>
+      )}
 
       {error && (
-        <p className="banner" role="alert">
+        <p className={`banner${live ? "" : " banner--soft"}`} role="status">
           {error}
         </p>
       )}

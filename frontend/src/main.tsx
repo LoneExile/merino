@@ -12,8 +12,29 @@ applyStoredTheme();
 
 // Desktop menubar panel gets rounded-corner chrome (see app.css html.desktop).
 // Web mode keeps full-viewport square chrome.
-if (document.querySelector('meta[name="herdr-mode"]')?.getAttribute("content") !== "web") {
+const isWebMode =
+  document.querySelector('meta[name="herdr-mode"]')?.getAttribute("content") === "web";
+if (!isWebMode) {
   document.documentElement.classList.add("desktop");
+}
+
+// Mobile soft keyboards do not shrink 100dvh / layout viewport on most
+// browsers — the composer sits under the keys. visualViewport.height is the
+// actually-visible area; keep --app-height in sync so .app fits above it.
+// Desktop Wails webview already has a fixed panel size — do not touch it.
+if (isWebMode) {
+  const syncViewportHeight = () => {
+    const vv = window.visualViewport;
+    const height = vv?.height ?? window.innerHeight;
+    const offsetTop = vv?.offsetTop ?? 0;
+    const root = document.documentElement;
+    root.style.setProperty("--app-height", `${Math.round(height)}px`);
+    root.style.setProperty("--app-offset-top", `${Math.round(offsetTop)}px`);
+  };
+  syncViewportHeight();
+  window.visualViewport?.addEventListener("resize", syncViewportHeight);
+  window.visualViewport?.addEventListener("scroll", syncViewportHeight);
+  window.addEventListener("orientationchange", syncViewportHeight);
 }
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
@@ -34,7 +55,7 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
 // Registration must never block or fail boot: a browser without SW support,
 // a build without /sw.js, or a transient install error should all just
 // leave the app running without offline/installable support.
-const isWebMode = document.querySelector('meta[name="herdr-mode"]')?.getAttribute("content") === "web";
+// isWebMode is defined above (desktop class + viewport height).
 
 if ("serviceWorker" in navigator && isWebMode) {
   window.addEventListener("load", () => {

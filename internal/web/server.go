@@ -307,6 +307,8 @@ func securityHeaders(next http.Handler) http.Handler {
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Referrer-Policy", "no-referrer")
+		// Camera is used only on /login for in-PWA QR scan (BarcodeDetector).
+		h.Set("Permissions-Policy", "camera=(self), microphone=(), geolocation=()")
 		// script-src must be explicit. Relying on the default-src fallback
 		// blocks every inline script — including the ones this server injects,
 		// which silently broke browser-mode detection until a real browser
