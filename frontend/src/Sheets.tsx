@@ -172,75 +172,112 @@ export function SettingsSheet({
   };
 
   return (
-    <Sheet title="Settings" onClose={onClose}>
-      <fieldset className="field">
-        <legend>Appearance</legend>
-        <div className="seg" role="radiogroup" aria-label="Theme">
-          {THEMES.map((t) => (
-            <button
-              key={t.id}
-              role="radio"
-              aria-checked={pref === t.id}
-              className={`seg__opt${pref === t.id ? " is-on" : ""}`}
-              onClick={() => onPref(t.id)}
-            >
-              {t.label}
-            </button>
-          ))}
+    <Sheet
+      title="Settings"
+      subtitle={
+        isDesktop
+          ? `Desktop · ${session?.user ?? "local"}`
+          : `Browser · ${session?.user ?? "—"}`
+      }
+      panelClass="sheet--settings"
+      onClose={onClose}
+    >
+      <section className="settings-block" aria-labelledby="set-appear">
+        <header className="settings-block__head">
+          <h3 id="set-appear">Appearance</h3>
+        </header>
+        <div className="settings-row">
+          <div className="settings-row__meta">
+            <span className="settings-row__label">Theme</span>
+            <span className="settings-row__hint">
+              {pref === "system" ? `Follows device · ${actual}` : `Locked · ${pref}`}
+            </span>
+          </div>
+          <div className="seg seg--compact" role="radiogroup" aria-label="Theme">
+            {THEMES.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="radio"
+                aria-checked={pref === t.id}
+                className={`seg__opt${pref === t.id ? " is-on" : ""}`}
+                onClick={() => onPref(t.id)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
         </div>
-        <p className="hint">
-          {pref === "system"
-            ? `Following your device — currently ${actual}.`
-            : `Always ${pref}.`}
-        </p>
-      </fieldset>
-
-      <fieldset className="field">
-        <legend>Terminal</legend>
-        <div className="seg" role="radiogroup" aria-label="Wrap long lines">
-          {WRAP_OPTS.map((o) => (
-            <button
-              key={String(o.value)}
-              role="radio"
-              aria-checked={wrap === o.value}
-              className={`seg__opt${wrap === o.value ? " is-on" : ""}`}
-              onClick={() => onWrap(o.value)}
-            >
-              {o.label}
-            </button>
-          ))}
+        <div className="settings-row">
+          <div className="settings-row__meta">
+            <span className="settings-row__label">Line wrap</span>
+            <span className="settings-row__hint">
+              {wrap ? "Long lines fold to the pane width" : "Scroll sideways for long lines"}
+            </span>
+          </div>
+          <div className="seg seg--compact" role="radiogroup" aria-label="Wrap long lines">
+            {WRAP_OPTS.map((o) => (
+              <button
+                key={String(o.value)}
+                type="button"
+                role="radio"
+                aria-checked={wrap === o.value}
+                className={`seg__opt${wrap === o.value ? " is-on" : ""}`}
+                onClick={() => onWrap(o.value)}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
         </div>
-        <p className="hint">
-          {wrap
-            ? "Wrap long lines: long output wraps to fit the screen."
-            : "Wrap long lines: off. Long output keeps its width — scroll the terminal sideways to read it."}
-        </p>
-      </fieldset>
+      </section>
 
       {client?.pushSubscribe && (
-        <fieldset className="field">
-          <legend>Notifications</legend>
-          {pushStatus === "unsupported" && <p className="hint">Not supported in this browser.</p>}
+        <section className="settings-block" aria-labelledby="set-push">
+          <header className="settings-block__head">
+            <h3 id="set-push">Alerts</h3>
+            <span
+              className={`settings-pill${
+                pushStatus === "subscribed"
+                  ? " settings-pill--ok"
+                  : pushStatus === "denied"
+                    ? " settings-pill--warn"
+                    : ""
+              }`}
+            >
+              {pushStatus === "checking"
+                ? "…"
+                : pushStatus === "subscribed"
+                  ? "On"
+                  : pushStatus === "denied"
+                    ? "Blocked"
+                    : pushStatus === "unsupported"
+                      ? "N/A"
+                      : "Off"}
+            </span>
+          </header>
+          {pushStatus === "unsupported" && (
+            <p className="settings-copy">Push is not available in this browser.</p>
+          )}
           {pushStatus === "denied" && (
-            <p className="hint hint--warn">
-              Blocked by the browser. Allow notifications for this site in your browser or system
-              settings, then reopen Settings.
+            <p className="settings-copy settings-copy--warn">
+              Notifications are blocked. Allow them for this site in system settings, then reopen.
             </p>
           )}
           {(pushStatus === "off" || pushStatus === "checking") && (
             <button
               type="button"
-              className="btn"
+              className="btn btn--solid"
               disabled={pushBusy || pushStatus === "checking"}
               onClick={() => void enableNotifications()}
             >
-              Enable notifications
+              {pushBusy ? "Enabling…" : "Enable notifications"}
             </button>
           )}
           {pushStatus === "subscribed" && (
             <>
-              <p className="hint">
-                You will be notified here the moment an agent needs you, even with the app closed.
+              <p className="settings-copy">
+                Notified the moment an agent needs you — even with the app closed.
               </p>
               <button
                 type="button"
@@ -248,7 +285,7 @@ export function SettingsSheet({
                 disabled={pushBusy}
                 onClick={() => void disableNotifications()}
               >
-                Turn off notifications
+                Turn off
               </button>
             </>
           )}
@@ -257,94 +294,113 @@ export function SettingsSheet({
               {pushErr}
             </p>
           )}
-          <p className="hint">
-            On iPhone this only works after adding Herdr Tunnel to your Home Screen (Share → Add
-            to Home Screen) and opening it from there — Safari does not deliver push to a page
-            open in a regular tab.
+          <p className="settings-copy settings-copy--quiet">
+            iPhone: Home Screen install required (Share → Add to Home Screen). Safari tabs do not
+            receive push.
           </p>
-        </fieldset>
+        </section>
       )}
 
-      {isDesktop && client?.setLaunchAtLogin && (
-        <fieldset className="field">
-          <legend>Startup</legend>
-          <label className="toggle">
-            <input
-              type="checkbox"
-              checked={loginLaunch === true}
-              disabled={loginLaunchBusy || loginLaunch === null}
-              onChange={(e) => {
-                const on = e.target.checked;
-                setLoginLaunchBusy(true);
-                setLoginLaunchErr(null);
-                void client.setLaunchAtLogin?.(on).then(
-                  () => setLoginLaunch(on),
-                  (err: unknown) =>
-                    setLoginLaunchErr(err instanceof Error ? err.message : String(err)),
-                ).finally(() => setLoginLaunchBusy(false));
-              }}
-            />
-            <span>Launch at login</span>
-          </label>
-          <p className="hint">Open Herdr Tunnel when you sign in to this Mac.</p>
+      {isDesktop && (client?.setLaunchAtLogin || client?.checkUpdate) && (
+        <section className="settings-block" aria-labelledby="set-machine">
+          <header className="settings-block__head">
+            <h3 id="set-machine">This Mac</h3>
+          </header>
+          {client?.setLaunchAtLogin && (
+            <div className="settings-row settings-row--toggle">
+              <div className="settings-row__meta">
+                <span className="settings-row__label">Launch at login</span>
+                <span className="settings-row__hint">Open with your user session</span>
+              </div>
+              <label className="switch">
+                <input
+                  type="checkbox"
+                  checked={loginLaunch === true}
+                  disabled={loginLaunchBusy || loginLaunch === null}
+                  onChange={(e) => {
+                    const on = e.target.checked;
+                    setLoginLaunchBusy(true);
+                    setLoginLaunchErr(null);
+                    void client
+                      .setLaunchAtLogin?.(on)
+                      .then(
+                        () => setLoginLaunch(on),
+                        (err: unknown) =>
+                          setLoginLaunchErr(err instanceof Error ? err.message : String(err)),
+                      )
+                      .finally(() => setLoginLaunchBusy(false));
+                  }}
+                />
+                <span className="switch__ui" aria-hidden="true" />
+                <span className="sr-only">Launch at login</span>
+              </label>
+            </div>
+          )}
           {loginLaunchErr && (
             <p className="composer__err" role="alert">
               {loginLaunchErr}
             </p>
           )}
-        </fieldset>
-      )}
-
-      {isDesktop && client?.checkUpdate && (
-        <fieldset className="field">
-          <legend>Updates</legend>
-          <button
-            type="button"
-            className="btn"
-            disabled={updateBusy}
-            onClick={() => {
-              setUpdateBusy(true);
-              setUpdateErr(null);
-              void client.checkUpdate?.().then(
-                (info) => setUpdate(info),
-                (err: unknown) => setUpdateErr(err instanceof Error ? err.message : String(err)),
-              ).finally(() => setUpdateBusy(false));
-            }}
-          >
-            {updateBusy ? "Checking…" : "Check for updates"}
-          </button>
-          {update && (
-            <dl className="facts">
-              <dt>Installed</dt>
-              <dd className="mono">{update.current || "—"}</dd>
-              <dt>Latest</dt>
-              <dd className="mono">{update.latest || "—"}</dd>
-            </dl>
+          {client?.checkUpdate && (
+            <div className="settings-stack">
+              <button
+                type="button"
+                className="btn"
+                disabled={updateBusy}
+                onClick={() => {
+                  setUpdateBusy(true);
+                  setUpdateErr(null);
+                  void client
+                    .checkUpdate?.()
+                    .then(
+                      (info) => setUpdate(info),
+                      (err: unknown) =>
+                        setUpdateErr(err instanceof Error ? err.message : String(err)),
+                    )
+                    .finally(() => setUpdateBusy(false));
+                }}
+              >
+                {updateBusy ? "Checking…" : "Check for updates"}
+              </button>
+              {update && (
+                <dl className="facts facts--dense">
+                  <div>
+                    <dt>Installed</dt>
+                    <dd className="mono">{update.current || "—"}</dd>
+                  </div>
+                  <div>
+                    <dt>Latest</dt>
+                    <dd className="mono">{update.latest || "—"}</dd>
+                  </div>
+                </dl>
+              )}
+              {update?.newer && (
+                <p className="settings-copy">
+                  <a href={update.releaseUrl} target="_blank" rel="noreferrer">
+                    Open release {update.latest} ↗
+                  </a>
+                </p>
+              )}
+              {update && !update.newer && update.latest && (
+                <p className="settings-copy settings-copy--quiet">Up to date.</p>
+              )}
+              {updateErr && (
+                <p className="composer__err" role="alert">
+                  {updateErr}
+                </p>
+              )}
+            </div>
           )}
-          {update?.newer && (
-            <p className="hint">
-              <a href={update.releaseUrl} target="_blank" rel="noreferrer">
-                Open release {update.latest}
-              </a>
-            </p>
-          )}
-          {update && !update.newer && update.latest && (
-            <p className="hint">You are on the latest release.</p>
-          )}
-          {updateErr && (
-            <p className="composer__err" role="alert">
-              {updateErr}
-            </p>
-          )}
-        </fieldset>
+        </section>
       )}
 
       {isDesktop && client?.mintPairing && (
-        <fieldset className="field">
-          <legend>Phone sign-in</legend>
-          <p className="hint">
-            Scan from your phone to sign in without typing the password. Codes expire in two
-            minutes and work once.
+        <section className="settings-block" aria-labelledby="set-pair">
+          <header className="settings-block__head">
+            <h3 id="set-pair">Phone sign-in</h3>
+          </header>
+          <p className="settings-copy">
+            One-shot QR. Expires in two minutes. No password typing on the phone.
           </p>
           <label className="field__label" htmlFor="pair-base">
             Public URL
@@ -361,7 +417,7 @@ export function SettingsSheet({
           />
           <button
             type="button"
-            className="btn btn--primary"
+            className="btn btn--solid"
             disabled={pairBusy}
             onClick={() => {
               setPairBusy(true);
@@ -381,13 +437,19 @@ export function SettingsSheet({
               })();
             }}
           >
-            {pairBusy ? "Minting…" : "Show QR code"}
+            {pairBusy ? "Minting…" : pair ? "Refresh QR" : "Show QR code"}
           </button>
           {pair && (
             <div className="pair">
-              <img className="pair__qr" src={pair.qrPng} alt="Sign-in QR code" width={192} height={192} />
+              <img
+                className="pair__qr"
+                src={pair.qrPng}
+                alt="Sign-in QR code"
+                width={192}
+                height={192}
+              />
               <p className="hint mono pair__token">{pair.token}</p>
-              <p className="hint">
+              <p className="settings-copy settings-copy--quiet">
                 Expires {new Date(pair.expiresAt * 1000).toLocaleTimeString()}. Paste the code on
                 the login page if you cannot scan.
               </p>
@@ -398,56 +460,81 @@ export function SettingsSheet({
               {pairErr}
             </p>
           )}
-        </fieldset>
+        </section>
       )}
 
-      <fieldset className="field">
-        <legend>This server</legend>
-        <dl className="facts">
-          <dt>Signed in</dt>
-          <dd className="mono">{session?.user ?? "—"}</dd>
-          <dt>Auth</dt>
-          <dd className="mono">{session?.provider ?? "—"}</dd>
-          <dt>Transport</dt>
-          <dd className="mono">{client?.kind ?? "—"}</dd>
-          <dt>Writes</dt>
-          <dd className="mono">{session?.readOnly ? "disabled" : "enabled"}</dd>
-          <dt>Live output</dt>
-          <dd className="mono">{client?.streamPane ? "streaming" : "polling"}</dd>
+      <section className="settings-block" aria-labelledby="set-conn">
+        <header className="settings-block__head">
+          <h3 id="set-conn">Connection</h3>
+          {!session?.readOnly && <span className="settings-pill settings-pill--warn">Writes on</span>}
+          {session?.readOnly && <span className="settings-pill">Read-only</span>}
+        </header>
+        <dl className="facts facts--dense">
+          <div>
+            <dt>User</dt>
+            <dd className="mono">{session?.user ?? "—"}</dd>
+          </div>
+          <div>
+            <dt>Auth</dt>
+            <dd className="mono">{session?.provider ?? "—"}</dd>
+          </div>
+          <div>
+            <dt>Transport</dt>
+            <dd className="mono">{client?.kind ?? "—"}</dd>
+          </div>
+          <div>
+            <dt>Live output</dt>
+            <dd className="mono">{client?.streamPane ? "stream" : "poll"}</dd>
+          </div>
         </dl>
         {!session?.readOnly && (
-          <p className="hint hint--warn">
-            This dashboard can type into your terminals. Every write is recorded
-            in the audit log on the host.
+          <p className="settings-copy settings-copy--warn">
+            This dashboard can type into terminals. Writes are recorded in the host audit log.
           </p>
         )}
-      </fieldset>
+      </section>
 
-      <fieldset className="field">
-        <legend>Keyboard</legend>
-        <dl className="facts">
-          <dt>
-            <kbd>⌘</kbd> <kbd>K</kbd>
-          </dt>
-          <dd>Jump to an agent</dd>
-          <dt>
-            <kbd>Enter</kbd>
-          </dt>
-          <dd>Send reply</dd>
-          <dt>
-            <kbd>Shift</kbd> <kbd>Enter</kbd>
-          </dt>
-          <dd>Newline</dd>
-          <dt>
-            <kbd>Esc</kbd>
-          </dt>
-          <dd>Close / back</dd>
+      <section className="settings-block" aria-labelledby="set-keys">
+        <header className="settings-block__head">
+          <h3 id="set-keys">Shortcuts</h3>
+        </header>
+        <dl className="facts facts--keys">
+          <div>
+            <dt>
+              <kbd>⌘</kbd>
+              <kbd>K</kbd>
+            </dt>
+            <dd>Jump to agent</dd>
+          </div>
+          <div>
+            <dt>
+              <kbd>Enter</kbd>
+            </dt>
+            <dd>Send reply</dd>
+          </div>
+          <div>
+            <dt>
+              <kbd>⇧</kbd>
+              <kbd>Enter</kbd>
+            </dt>
+            <dd>Newline</dd>
+          </div>
+          <div>
+            <dt>
+              <kbd>Esc</kbd>
+            </dt>
+            <dd>Close / back</dd>
+          </div>
         </dl>
-      </fieldset>
+      </section>
 
-      <p className="sheet__foot mono">
-        <a href="/logout">Sign out</a>
-      </p>
+      {!isDesktop && (
+        <p className="sheet__foot">
+          <a className="btn btn--ghost-danger" href="/logout">
+            Sign out
+          </a>
+        </p>
+      )}
     </Sheet>
   );
 }

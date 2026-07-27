@@ -2,6 +2,10 @@ import { useCallback, useEffect, useRef, type ReactNode } from "react";
 
 export interface SheetProps {
   title: string;
+  /** Optional one-line context under the title (e.g. transport). */
+  subtitle?: string;
+  /** Extra class on the panel (e.g. sheet--settings). */
+  panelClass?: string;
   onClose: () => void;
   children: ReactNode;
 }
@@ -17,7 +21,7 @@ const FOCUSABLE =
  * a settings panel that traps focus differently from a rename dialog is a bug
  * a keyboard user finds immediately.
  */
-export function Sheet({ title, onClose, children }: SheetProps) {
+export function Sheet({ title, subtitle, panelClass, onClose, children }: SheetProps) {
   const panel = useRef<HTMLDivElement>(null);
   const restoreTo = useRef<HTMLElement | null>(null);
 
@@ -68,7 +72,7 @@ export function Sheet({ title, onClose, children }: SheetProps) {
   return (
     <div className="scrim" onMouseDown={onClose}>
       <div
-        className="sheet"
+        className={["sheet", panelClass].filter(Boolean).join(" ")}
         role="dialog"
         aria-modal="true"
         aria-label={title}
@@ -77,8 +81,11 @@ export function Sheet({ title, onClose, children }: SheetProps) {
         onKeyDown={onKeyDown}
       >
         <header className="sheet__head">
-          <h2>{title}</h2>
-          <button className="btn btn--icon" onClick={onClose} aria-label="Close">
+          <div className="sheet__titles">
+            <h2>{title}</h2>
+            {subtitle ? <p className="sheet__sub mono">{subtitle}</p> : null}
+          </div>
+          <button type="button" className="btn btn--icon" onClick={onClose} aria-label="Close">
             <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
               <path
                 d="m4 4 8 8M12 4l-8 8"
