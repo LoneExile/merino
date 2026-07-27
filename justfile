@@ -79,7 +79,7 @@ tunnel pass user="lex" port="8730": build
     @test -n "{{pass}}" || { echo "usage: just tunnel <password>  [user] [port]"; exit 1; }
     HERDR_TUNNEL_USER={{user}} HERDR_TUNNEL_PASS={{pass}} \
     {{ if sock == "" { "" } else { "HERDR_SOCK=" + sock } }} \
-    {{binary}} --listen 0.0.0.0:{{port}} --behind-proxy --allow-writes
+    {{binary}} --listen 0.0.0.0:{{port}} --behind-proxy --allow-writes --allow-session-switch
 
 # Vite hot-reload (frontend only; Go changes need `just app`)
 dev:
