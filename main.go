@@ -299,7 +299,7 @@ func startWeb(src web.Source, addr string, behindProxy, allowWrites bool, assets
 
 	srv, err := web.New(src, web.Config{
 		Addr:     addr,
-		Provider: web.NewPasswordProvider(user, pass, ipResolver(behindProxy)),
+		Provider: web.NewPasswordProvider(user, pass, ipResolver(behindProxy), behindProxy),
 		// One human, one password, their own machine. Swap for web.RequireRole
 		// when Keycloak makes more than one identity possible.
 		Policy:      web.SingleOperator{},

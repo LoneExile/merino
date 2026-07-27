@@ -32,7 +32,7 @@ func testServer(t *testing.T, src Source, policy Policy) *Server {
 		policy = SingleOperator{}
 	}
 	s, err := New(src, Config{
-		Provider: NewPasswordProvider("alice", "correct-horse", DirectIP),
+		Provider: NewPasswordProvider("alice", "correct-horse", DirectIP, false),
 		Policy:   policy,
 		Assets:   fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("<head></head>")}},
 		Logger:   slog.New(slog.DiscardHandler),
@@ -53,7 +53,7 @@ func TestNewRequiresProviderAndPolicy(t *testing.T) {
 	if _, err := New(&fakeSource{}, Config{Policy: SingleOperator{}}); err == nil {
 		t.Error("server without a Provider should be refused")
 	}
-	if _, err := New(&fakeSource{}, Config{Provider: NewPasswordProvider("a", "b", DirectIP)}); err == nil {
+	if _, err := New(&fakeSource{}, Config{Provider: NewPasswordProvider("a", "b", DirectIP, false)}); err == nil {
 		t.Error("server without a Policy should be refused")
 	}
 }
@@ -270,7 +270,7 @@ func TestInlineScriptsAreNonced(t *testing.T) {
 		Data: []byte(`<head></head><body><script>window.boot=1</script><script src="/a.js"></script></body>`),
 	}}
 	srv, err := New(&fakeSource{}, Config{
-		Provider: NewPasswordProvider("alice", "correct-horse", DirectIP),
+		Provider: NewPasswordProvider("alice", "correct-horse", DirectIP, false),
 		Policy:   SingleOperator{},
 		Assets:   assets,
 		Logger:   slog.New(slog.DiscardHandler),

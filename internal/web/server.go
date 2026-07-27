@@ -124,6 +124,10 @@ func (s *Server) routes() http.Handler {
 	s.cfg.Provider.Mount(mux, func(w http.ResponseWriter, r *http.Request, id Identity) {
 		s.sessions.Issue(w, id)
 		s.log.Info("web login", "user", id.Name, "provider", id.Provider, "ip", s.clientIP(r))
+		s.log.Debug("login transport",
+			"xForwardedProto", r.Header.Get("X-Forwarded-Proto"),
+			"cfVisitor", r.Header.Get("CF-Visitor"),
+			"cfConnectingIP", r.Header.Get("CF-Connecting-IP"))
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 	})
 

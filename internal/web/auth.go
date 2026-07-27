@@ -42,6 +42,9 @@ type Provider interface {
 type PasswordProvider struct {
 	user     string
 	passHash [32]byte
+	// behindProxy mirrors the server setting; the provider needs it to know
+	// whether a Secure cookie can survive this request.
+	behindProxy bool
 	// ip resolves the client address for throttling. Injected so the caller
 	// decides whether proxy headers are trustworthy; getting that wrong either
 	// lets an attacker rotate past the throttle or lumps every remote user
@@ -72,15 +75,16 @@ const (
 // acceptable only because the hash is never persisted or transmitted — it
 // exists to compare against a value supplied through the environment at
 // startup. Do not reuse this pattern for a stored credential.
-func NewPasswordProvider(user, password string, ip IPResolver) *PasswordProvider {
+func NewPasswordProvider(user, password string, ip IPResolver, behindProxy bool) *PasswordProvider {
 	if ip == nil {
 		ip = DirectIP
 	}
 	return &PasswordProvider{
-		user:     user,
-		passHash: sha256.Sum256([]byte(password)),
-		ip:       ip,
-		failures: make(map[string]*attemptRecord),
+		user:        user,
+		passHash:    sha256.Sum256([]byte(password)),
+		ip:          ip,
+		behindProxy: behindProxy,
+		failures:    make(map[string]*attemptRecord),
 	}
 }
 
@@ -131,13 +135,54 @@ func (p *PasswordProvider) verify(user, password string) bool {
 	return userOK&passOK == 1
 }
 
+// insecureTransport reports whether a Secure cookie set on this request would
+// be discarded by the browser.
+//
+// Cloudflare sets X-Forwarded-Proto to the scheme the client actually used.
+// When it says http, the login will "succeed", the browser will silently drop
+// the Secure session cookie, and the next request will bounce back to the
+// login form with no explanation whatsoever. Detect it and say so, rather
+// than letting the user retype a correct password indefinitely.
+func insecureTransport(r *http.Request, behindProxy bool) bool {
+	if !behindProxy {
+		return false // plain HTTP is expected on a LAN; cookies are not Secure
+	}
+	// Two signals, because which one a cloudflared deployment sets is not
+	// guaranteed. Checking both avoids depending on an assumption that has
+	// already bitten once with CF-Connecting-IP.
+	if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
+		return !strings.EqualFold(proto, "https")
+	}
+	// CF-Visitor is a small JSON object, e.g. {"scheme":"https"}.
+	if v := r.Header.Get("CF-Visitor"); v != "" {
+		return !strings.Contains(v, `"https"`)
+	}
+	// Neither header present: cannot tell, so do not block a working login.
+	return false
+}
+
+// insecureMsg explains a failure that is otherwise completely silent.
+const insecureMsg = "This page was loaded over plain HTTP. " +
+	"Sign-in needs HTTPS, because the session cookie is marked Secure and " +
+	"your browser will discard it otherwise. Reload using https:// and try again."
+
 // Mount registers the login form and its submission handler.
 func (p *PasswordProvider) Mount(mux *http.ServeMux, success func(http.ResponseWriter, *http.Request, Identity)) {
 	mux.HandleFunc("GET /login", func(w http.ResponseWriter, r *http.Request) {
+		if insecureTransport(r, p.behindProxy) {
+			writeLoginPage(w, insecureMsg)
+			return
+		}
 		writeLoginPage(w, "")
 	})
 
 	mux.HandleFunc("POST /login", func(w http.ResponseWriter, r *http.Request) {
+		if insecureTransport(r, p.behindProxy) {
+			// Refuse rather than issue a cookie the browser will throw away.
+			w.WriteHeader(http.StatusBadRequest)
+			writeLoginPage(w, insecureMsg)
+			return
+		}
 		client := p.ip(r)
 		if p.throttled(client) {
 			w.WriteHeader(http.StatusTooManyRequests)

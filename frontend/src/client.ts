@@ -64,13 +64,48 @@ async function getJSON<T>(url: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-/** HTTP + SSE client for the browser dashboard. Read-only by construction. */
-function httpClient(): Client {
-  return {
-    kind: "web",
-    readOnly: true,
+async function postJSON(url: string, body?: unknown): Promise<void> {
+  const res = await fetch(url, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body ?? {}),
+  });
+  if (res.status === 401) {
+    window.location.href = "/login";
+    throw new Error("unauthenticated");
+  }
+  if (!res.ok) {
+    // The server returns the guard's own message, which names the rule that
+    // refused. Surface it verbatim: "not in the allowlist" is actionable,
+    // "request failed" is not.
+    const detail = await res
+      .json()
+      .then((j: unknown) =>
+        j !== null && typeof j === "object" && "error" in j ? String(j.error) : "",
+      )
+      .catch(() => "");
+    throw new Error(detail || `${res.status} ${res.statusText}`);
+  }
+}
 
-    session: () => getJSON<Session>("/api/session"),
+/**
+ * HTTP + SSE client for the browser dashboard.
+ *
+ * Whether writes are available is decided by the SERVER and reported through
+ * /api/session — the routes simply do not exist when it runs read-only. The
+ * write methods are attached only when the server says so, which is what makes
+ * `client.respond` a meaningful capability check in the UI rather than a
+ * decoration.
+ */
+async function httpClient(): Promise<Client> {
+  const session = await getJSON<Session>("/api/session");
+
+  const base: Client = {
+    kind: "web",
+    readOnly: session.readOnly,
+
+    session: async () => session,
     list: () => getJSON<Agent[]>("/api/agents"),
 
     async read(paneId: string, lines: number) {
@@ -95,6 +130,16 @@ function httpClient(): Client {
       es.onerror = (err) => onError?.(err);
       return () => es.close();
     },
+  };
+
+  if (session.readOnly) return base;
+
+  const pane = (id: string) => encodeURIComponent(id);
+  return {
+    ...base,
+    respond: (paneId, text) => postJSON(`/api/panes/${pane(paneId)}/respond`, { text }),
+    focus: (paneId) => postJSON(`/api/panes/${pane(paneId)}/focus`),
+    interrupt: (paneId) => postJSON(`/api/panes/${pane(paneId)}/interrupt`),
   };
 }
 
