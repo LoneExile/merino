@@ -148,6 +148,9 @@
 
   --radius-control: 6px;
   --radius-surface: 10px;
+  /* Menubar panel outer clip. Larger than surface so the chrome reads as a
+   * system popover rather than a card floating inside a square window. */
+  --radius-panel: 14px;
   --radius-pill: 999px;
 
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);

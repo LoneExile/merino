@@ -57,9 +57,9 @@ export function List(): $CancellablePromise<$models.Agent[] | null> {
  * goroutine; nil (the default) until then, which is exactly correct for
  * every existing caller and test that has no notifier to attach.
  * 
- * Delegates straight to Store, which is where old-vs-new status is actually
- * observed: SetStatus, UpsertPane and Replace each detect the transition
- * directly, so this service does no polling or diffing of its own.
+ * The tray/frontend publish on the blocked edge is already wired inside
+ * NewAgentsService and does not depend on this hook. fn is the external
+ * side-effect path (Web Push).
  */
 export function OnBlocked(fn: any): $CancellablePromise<void> {
     return $Call.ByID(335758706, fn);

@@ -1,6 +1,14 @@
 import { useEffect, useState } from "react";
 import type { Agent } from "../bindings/github.com/LoneExile/herdr-tunnel/internal/app";
-import type { Client, HerdrSession, RenameKind, Session, SessionList } from "./client";
+import type {
+  Client,
+  HerdrSession,
+  PairingTicket,
+  RenameKind,
+  Session,
+  SessionList,
+  UpdateInfo,
+} from "./client";
 import { Sheet } from "./Sheet";
 import type { ThemePref } from "./theme";
 
@@ -70,11 +78,43 @@ export function SettingsSheet({
   const [pushErr, setPushErr] = useState<string | null>(null);
   const [pushBusy, setPushBusy] = useState(false);
 
+  const isDesktop = client?.kind === "desktop";
+  const [loginLaunch, setLoginLaunch] = useState<boolean | null>(null);
+  const [loginLaunchErr, setLoginLaunchErr] = useState<string | null>(null);
+  const [loginLaunchBusy, setLoginLaunchBusy] = useState(false);
+
+  const [update, setUpdate] = useState<UpdateInfo | null>(null);
+  const [updateErr, setUpdateErr] = useState<string | null>(null);
+  const [updateBusy, setUpdateBusy] = useState(false);
+
+  const [pair, setPair] = useState<PairingTicket | null>(null);
+  const [pairErr, setPairErr] = useState<string | null>(null);
+  const [pairBusy, setPairBusy] = useState(false);
+  const [pairBase, setPairBase] = useState(
+    () => localStorage.getItem("herdr.pairBase") ?? "https://herdr-tunnel.0dl.me",
+  );
+
   useEffect(() => {
     let alive = true;
     void checkPushStatus(client).then((status) => {
       if (alive) setPushStatus(status);
     });
+    return () => {
+      alive = false;
+    };
+  }, [client]);
+
+  useEffect(() => {
+    if (!client?.launchAtLogin) return;
+    let alive = true;
+    void client.launchAtLogin().then(
+      (on) => {
+        if (alive) setLoginLaunch(on);
+      },
+      (e: unknown) => {
+        if (alive) setLoginLaunchErr(e instanceof Error ? e.message : String(e));
+      },
+    );
     return () => {
       alive = false;
     };
@@ -222,6 +262,142 @@ export function SettingsSheet({
             to Home Screen) and opening it from there — Safari does not deliver push to a page
             open in a regular tab.
           </p>
+        </fieldset>
+      )}
+
+      {isDesktop && client?.setLaunchAtLogin && (
+        <fieldset className="field">
+          <legend>Startup</legend>
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={loginLaunch === true}
+              disabled={loginLaunchBusy || loginLaunch === null}
+              onChange={(e) => {
+                const on = e.target.checked;
+                setLoginLaunchBusy(true);
+                setLoginLaunchErr(null);
+                void client.setLaunchAtLogin?.(on).then(
+                  () => setLoginLaunch(on),
+                  (err: unknown) =>
+                    setLoginLaunchErr(err instanceof Error ? err.message : String(err)),
+                ).finally(() => setLoginLaunchBusy(false));
+              }}
+            />
+            <span>Launch at login</span>
+          </label>
+          <p className="hint">Open Herdr Tunnel when you sign in to this Mac.</p>
+          {loginLaunchErr && (
+            <p className="composer__err" role="alert">
+              {loginLaunchErr}
+            </p>
+          )}
+        </fieldset>
+      )}
+
+      {isDesktop && client?.checkUpdate && (
+        <fieldset className="field">
+          <legend>Updates</legend>
+          <button
+            type="button"
+            className="btn"
+            disabled={updateBusy}
+            onClick={() => {
+              setUpdateBusy(true);
+              setUpdateErr(null);
+              void client.checkUpdate?.().then(
+                (info) => setUpdate(info),
+                (err: unknown) => setUpdateErr(err instanceof Error ? err.message : String(err)),
+              ).finally(() => setUpdateBusy(false));
+            }}
+          >
+            {updateBusy ? "Checking…" : "Check for updates"}
+          </button>
+          {update && (
+            <dl className="facts">
+              <dt>Installed</dt>
+              <dd className="mono">{update.current || "—"}</dd>
+              <dt>Latest</dt>
+              <dd className="mono">{update.latest || "—"}</dd>
+            </dl>
+          )}
+          {update?.newer && (
+            <p className="hint">
+              <a href={update.releaseUrl} target="_blank" rel="noreferrer">
+                Open release {update.latest}
+              </a>
+            </p>
+          )}
+          {update && !update.newer && update.latest && (
+            <p className="hint">You are on the latest release.</p>
+          )}
+          {updateErr && (
+            <p className="composer__err" role="alert">
+              {updateErr}
+            </p>
+          )}
+        </fieldset>
+      )}
+
+      {isDesktop && client?.mintPairing && (
+        <fieldset className="field">
+          <legend>Phone sign-in</legend>
+          <p className="hint">
+            Scan from your phone to sign in without typing the password. Codes expire in two
+            minutes and work once.
+          </p>
+          <label className="field__label" htmlFor="pair-base">
+            Public URL
+          </label>
+          <input
+            id="pair-base"
+            className="field__input"
+            value={pairBase}
+            onChange={(e) => setPairBase(e.target.value)}
+            placeholder="https://herdr-tunnel.0dl.me"
+            spellCheck={false}
+            autoCapitalize="off"
+            autoCorrect="off"
+          />
+          <button
+            type="button"
+            className="btn btn--primary"
+            disabled={pairBusy}
+            onClick={() => {
+              setPairBusy(true);
+              setPairErr(null);
+              const base = pairBase.trim();
+              localStorage.setItem("herdr.pairBase", base);
+              void (async () => {
+                try {
+                  if (client.setPairingBaseURL) await client.setPairingBaseURL(base);
+                  const ticket = await client.mintPairing?.();
+                  if (ticket) setPair(ticket);
+                } catch (err) {
+                  setPairErr(err instanceof Error ? err.message : String(err));
+                } finally {
+                  setPairBusy(false);
+                }
+              })();
+            }}
+          >
+            {pairBusy ? "Minting…" : "Show QR code"}
+          </button>
+          {pair && (
+            <div className="pair">
+              <img className="pair__qr" src={pair.qrPng} alt="Sign-in QR code" width={192} height={192} />
+              <p className="hint mono pair__token">{pair.token}</p>
+              <p className="hint">
+                Expires {new Date(pair.expiresAt * 1000).toLocaleTimeString()}. Paste the code on
+                the login page if you cannot scan.
+              </p>
+            </div>
+          )}
+          {pairErr && (
+            <p className="composer__err" role="alert">
+              {pairErr}
+            </p>
+          )}
         </fieldset>
       )}
 

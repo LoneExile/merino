@@ -50,6 +50,8 @@ type PasswordProvider struct {
 	// lets an attacker rotate past the throttle or lumps every remote user
 	// into one bucket.
 	ip IPResolver
+	// pairing, when set, accepts short-lived one-shot tokens (QR login).
+	pairing *Pairing
 
 	mu       sync.Mutex
 	failures map[string]*attemptRecord
@@ -90,6 +92,9 @@ func NewPasswordProvider(user, password string, ip IPResolver, behindProxy bool)
 
 func (p *PasswordProvider) Name() string      { return "password" }
 func (p *PasswordProvider) LoginPath() string { return "/login" }
+
+// SetPairing attaches the short-lived QR/token store. Nil disables token login.
+func (p *PasswordProvider) SetPairing(pair *Pairing) { p.pairing = pair }
 
 // throttled reports whether this client should be refused outright, and
 // records the attempt.
@@ -173,6 +178,15 @@ func (p *PasswordProvider) Mount(mux *http.ServeMux, success func(http.ResponseW
 			writeLoginPage(w, insecureMsg)
 			return
 		}
+		// Phone scanned a QR: /login?token=… redeems in one GET so the
+		// camera-app open does not require a second tap on Submit.
+		if tok := r.URL.Query().Get("token"); tok != "" {
+			if p.redeemToken(w, r, tok, success) {
+				return
+			}
+			writeLoginPage(w, "That sign-in link expired or was already used. Ask the desktop app for a new QR.")
+			return
+		}
 		writeLoginPage(w, "")
 	})
 
@@ -194,6 +208,16 @@ func (p *PasswordProvider) Mount(mux *http.ServeMux, success func(http.ResponseW
 			writeLoginPage(w, "Malformed request.")
 			return
 		}
+		// Token form field (manual paste fallback from the QR sheet).
+		if tok := r.PostFormValue("token"); tok != "" {
+			if p.redeemToken(w, r, tok, success) {
+				return
+			}
+			p.recordFailure(client)
+			w.WriteHeader(http.StatusUnauthorized)
+			writeLoginPage(w, "That sign-in code expired or was already used.")
+			return
+		}
 		user := r.PostFormValue("username")
 		pass := r.PostFormValue("password")
 
@@ -207,6 +231,20 @@ func (p *PasswordProvider) Mount(mux *http.ServeMux, success func(http.ResponseW
 		p.clearFailures(client)
 		success(w, r, Identity{Subject: p.user, Name: p.user, Provider: p.Name()})
 	})
+}
+
+// redeemToken burns a one-shot pairing token and, on success, issues a session
+// as the single configured user. Returns true when the request was handled
+// (success or hard failure already written).
+func (p *PasswordProvider) redeemToken(w http.ResponseWriter, r *http.Request, tok string, success func(http.ResponseWriter, *http.Request, Identity)) bool {
+	if p.pairing == nil {
+		return false
+	}
+	if !p.pairing.Consume(tok) {
+		return false
+	}
+	success(w, r, Identity{Subject: p.user, Name: p.user, Provider: "pairing"})
+	return true
 }
 
 // IPResolver extracts the client address used for throttling and logging.

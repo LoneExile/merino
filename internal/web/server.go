@@ -82,6 +82,11 @@ type Config struct {
 	// app.DefaultAuditPath); left empty in tests so they never touch a real
 	// VAPID keypair or subscription file on disk.
 	PushDir string
+	// Pairing enables short-lived QR/token phone login. Nil disables it.
+	Pairing *Pairing
+	// PublicBaseURL is the origin encoded into pairing QR links when set
+	// (e.g. https://herdr-tunnel.0dl.me). Empty yields a path-only URL.
+	PublicBaseURL string
 }
 
 // Server is the read-only HTTP dashboard.
@@ -95,6 +100,8 @@ type Server struct {
 	// failed to initialise — see New. Every push-aware code path checks this
 	// rather than assuming a non-empty Config.PushDir implies success.
 	push *pushManager
+	// pairing is nil when Config.Pairing was not set.
+	pairing *Pairing
 
 	mu      sync.Mutex
 	clients map[chan []byte]struct{}
@@ -139,6 +146,10 @@ func New(src Source, cfg Config) (*Server, error) {
 		sessions: sessions,
 		log:      cfg.Logger,
 		clients:  make(map[chan []byte]struct{}),
+		pairing:  cfg.Pairing,
+	}
+	if s.pairing != nil && cfg.PublicBaseURL != "" {
+		s.pairing.SetBaseURL(cfg.PublicBaseURL)
 	}
 
 	// Push failing to initialise must never take the dashboard down over a
@@ -175,6 +186,7 @@ func (s *Server) routes() http.Handler {
 			"cfConnectingIP", r.Header.Get("CF-Connecting-IP"))
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 	})
+	s.mountPairing(mux)
 
 	mux.HandleFunc("POST /logout", func(w http.ResponseWriter, r *http.Request) {
 		s.sessions.Clear(w)

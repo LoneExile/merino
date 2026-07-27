@@ -122,18 +122,42 @@ frontend/bindings/          generated from Go (committed; do not hand-edit)
 
 ## Configuration
 
-| Variable      | Purpose                                            |
-| ------------- | -------------------------------------------------- |
-| `HERDR_SOCK`  | Override the socket path (default `~/.config/herdr/herdr.sock`) |
-| `HERDR_TUNNEL_DEBUG` | Enable debug logging                                |
+| Variable / flag | Purpose |
+| --- | --- |
+| `HERDR_SOCK` | Override the socket path (default `~/.config/herdr/herdr.sock`) |
+| `HERDR_TUNNEL_DEBUG` | Enable debug logging |
+| `--listen ADDR` | Serve the browser dashboard (e.g. `127.0.0.1:8730` or `0.0.0.0:8730`) |
+| `HERDR_TUNNEL_USER` / `HERDR_TUNNEL_PASS` | Required whenever `--listen` is set |
+| `--behind-proxy` | Trust `X-Forwarded-*` / CF headers; mark cookies Secure |
+| `--allow-writes` | Let signed-in browsers approve / type / interrupt |
+| `--allow-session-switch` | Let signed-in browsers repoint the herdr session |
+| `HERDR_TUNNEL_PUBLIC_URL` | Public origin embedded in phone QR links (e.g. `https://herdr-tunnel.example`) |
+
+Quick starts:
+
+```bash
+just web <password>          # LAN dashboard
+just tunnel <password>       # behind a TLS tunnel (--behind-proxy)
+```
+
+### Phone sign-in (QR)
+
+With `--listen` running and a public URL (Cloudflare tunnel, etc.), open
+**Settings → Phone sign-in** in the menu-bar panel. Mint a QR; scan it on the
+phone. The code is single-use and expires in two minutes. If you cannot scan,
+paste the short code into the **Phone code** field on `/login`.
+
+Desktop Settings also exposes **Launch at login** and **Check for updates**
+(GitHub Releases). Tag a release (`v*`) to trigger `.github/workflows/release.yml`.
 
 ## Status
 
 Working: live agent list grouped by workspace, blocked-first ordering, tray
-label with counts, approvals, interrupt, focus, and recent pane output.
+label with counts, approvals, interrupt, focus, live pane output, browser
+dashboard (password + QR pairing), Web Push, launch-at-login, GitHub update
+check, tagged macOS release packaging.
 
-Not built yet: remote access (Cloudflare tunnel / phone), Telegram, web push,
-multi-machine over SSH.
+Not built yet: Telegram bot, multi-machine over SSH.
 
 ## License
 

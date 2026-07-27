@@ -10,6 +10,11 @@ import "./app.css";
 // desktop, genuinely unpleasant on a phone at night.
 applyStoredTheme();
 
+// Desktop menubar panel gets rounded-corner chrome (see app.css html.desktop).
+// Web mode keeps full-viewport square chrome.
+if (document.querySelector('meta[name="herdr-mode"]')?.getAttribute("content") !== "web") {
+  document.documentElement.classList.add("desktop");
+}
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <ErrorBoundary>

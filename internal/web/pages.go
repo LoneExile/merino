@@ -31,6 +31,9 @@ var loginTmpl = template.Must(template.New("login").Parse(`<!DOCTYPE html>
            background:var(--accent); border:0; border-radius:8px; cursor:pointer; }
   .err { margin-top:14px; padding:8px 10px; border-radius:8px; font-size:12px;
          color:var(--alert); background:color-mix(in oklab, var(--alert) 16%, transparent); }
+  .or { display:flex; align-items:center; gap:10px; margin:18px 0 4px; color:var(--dim); font-size:11px;
+        text-transform:uppercase; letter-spacing:.06em; }
+  .or::before, .or::after { content:""; flex:1; height:1px; background:var(--border); }
 </style>
 </head>
 <body>
@@ -38,9 +41,13 @@ var loginTmpl = template.Must(template.New("login").Parse(`<!DOCTYPE html>
     <h1>Herdr Tunnel</h1>
     <p class="sub">Sign in to view your agents.</p>
     <label for="username">Username</label>
-    <input id="username" name="username" autocomplete="username" autocapitalize="none" autocorrect="off" required autofocus>
+    <input id="username" name="username" autocomplete="username" autocapitalize="none" autocorrect="off">
     <label for="password">Password</label>
-    <input id="password" name="password" type="password" autocomplete="current-password" required>
+    <input id="password" name="password" type="password" autocomplete="current-password">
+    <div class="or">or</div>
+    <label for="token">Phone code</label>
+    <input id="token" name="token" autocomplete="one-time-code" autocapitalize="none" autocorrect="off"
+           spellcheck="false" placeholder="Paste code from desktop QR">
     <button type="submit">Sign in</button>
     {{if .Error}}<div class="err">{{.Error}}</div>{{end}}
   </form>

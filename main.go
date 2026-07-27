@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/LoneExile/herdr-tunnel/internal/app"
+	"github.com/LoneExile/herdr-tunnel/internal/desktop"
 	"github.com/LoneExile/herdr-tunnel/internal/herdr"
 	"github.com/LoneExile/herdr-tunnel/internal/trayicon"
 	"github.com/LoneExile/herdr-tunnel/internal/web"
@@ -68,6 +69,8 @@ func main() {
 		tray     *application.SystemTray
 		webSrv   *web.Server
 		animator *trayicon.Animator
+		pairing  *web.Pairing
+		desk     *desktop.Settings
 	)
 
 	emit := func(name string, data ...any) {
@@ -92,19 +95,23 @@ func main() {
 	agents := app.NewAgentsService(client, logger, emit, onCounts)
 
 	if *listen != "" {
-		srv, err := startWeb(agents, *listen, *behindProxy, *allowWrites, *allowSessionSwitch, assets, logger)
+		srv, pair, err := startWeb(agents, *listen, *behindProxy, *allowWrites, *allowSessionSwitch, assets, logger)
 		if err != nil {
 			logger.Error("web dashboard failed to start", "err", err)
 			os.Exit(1)
 		}
 		webSrv = srv
+		pairing = pair
 	}
+
+	desk = desktop.NewSettings(nil, "dev.apinant.herdr-tunnel", "0.1.0", "LoneExile/herdr-tunnel", pairing)
 
 	wailsApp = application.New(application.Options{
 		Name:        "Herdr Tunnel",
 		Description: "Menubar dashboard for herdr agents",
 		Services: []application.Service{
 			application.NewService(agents),
+			application.NewService(desk),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
@@ -119,6 +126,9 @@ func main() {
 		},
 	})
 
+	// Autostart needs the live App pointer (SMAppService / LaunchAgent).
+	desk.Auto = desktop.NewAutostart(wailsApp, "dev.apinant.herdr-tunnel")
+
 	// A menubar panel, not an app window: frameless (no traffic lights),
 	// fixed size, floating above normal windows and visible on whichever
 	// Space is active.
@@ -126,6 +136,10 @@ func main() {
 	// Min/Max size are deliberately NOT clamped. DisableResize already stops
 	// the user resizing, and hard clamps would also block the programmatic
 	// SetSize that showPanel uses to re-assert the size and force a repaint.
+	//
+	// BackgroundColour is fully transparent so CSS border-radius on #root can
+	// show the desktop through the corners (otherwise the opaque NSWindow
+	// fill paints a square halo behind the rounded webview).
 	panel := wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:             "panel",
 		Title:            "Herdr Tunnel",
@@ -135,15 +149,13 @@ func main() {
 		AlwaysOnTop:      true,
 		Frameless:        true,
 		DisableResize:    true,
-		BackgroundColour: application.NewRGB(12, 14, 20),
+		BackgroundColour: application.NewRGBA(0, 0, 0, 0),
 		URL:              "/",
 		Mac: application.MacWindow{
-			// Opaque, not translucent. On a frameless window the vibrancy view
-			// that MacBackdropTranslucent installs can end up compositing over
-			// the webview, painting the panel as a flat dark rectangle. The
-			// stylesheet already supplies an opaque background, so nothing is
-			// lost by dropping it.
-			Backdrop:           application.MacBackdropNormal,
+			// Transparent backdrop so the CSS-rounded panel corners are not
+			// painted over by an opaque window fill. The stylesheet supplies
+			// the paper colour inside the rounded clip.
+			Backdrop:           application.MacBackdropTransparent,
 			TitleBar:           application.MacTitleBarHidden,
 			WindowLevel:        application.MacWindowLevelFloating,
 			CollectionBehavior: application.MacWindowCollectionBehaviorCanJoinAllSpaces | application.MacWindowCollectionBehaviorTransient,
@@ -290,18 +302,18 @@ func showPanel(tray *application.SystemTray, panel *application.WebviewWindow) {
 // Disabled unless --listen is given, and never defaults to a public bind: the
 // operator has to type the address, so exposing the herd to the LAN is always
 // a deliberate act rather than something that happens by forgetting a flag.
-func startWeb(src web.Source, addr string, behindProxy, allowWrites, allowSessionSwitch bool, assets embed.FS, logger *slog.Logger) (*web.Server, error) {
+func startWeb(src web.Source, addr string, behindProxy, allowWrites, allowSessionSwitch bool, assets embed.FS, logger *slog.Logger) (*web.Server, *web.Pairing, error) {
 	user := os.Getenv("HERDR_TUNNEL_USER")
 	pass := os.Getenv("HERDR_TUNNEL_PASS")
 	if user == "" || pass == "" {
-		return nil, errors.New(
+		return nil, nil, errors.New(
 			"HERDR_TUNNEL_USER and HERDR_TUNNEL_PASS must be set to serve the web dashboard; " +
 				"refusing to expose agent state without a login")
 	}
 
 	dist, err := fs.Sub(assets, "frontend/dist")
 	if err != nil {
-		return nil, fmt.Errorf("locate frontend assets: %w", err)
+		return nil, nil, fmt.Errorf("locate frontend assets: %w", err)
 	}
 
 	// The audit log is opened whenever the dashboard runs, not only when
@@ -318,7 +330,7 @@ func startWeb(src web.Source, addr string, behindProxy, allowWrites, allowSessio
 	)
 	if a, auditErr := app.NewAudit(app.DefaultAuditPath()); auditErr != nil {
 		if allowWrites {
-			return nil, auditErr
+			return nil, nil, auditErr
 		}
 		logger.Warn("could not open audit log; push subscriptions will not be recorded",
 			"path", app.DefaultAuditPath(), "err", auditErr)
@@ -328,7 +340,7 @@ func startWeb(src web.Source, addr string, behindProxy, allowWrites, allowSessio
 	if allowWrites {
 		w, castOK := src.(web.Writer)
 		if !castOK {
-			return nil, errors.New("source does not support writes")
+			return nil, nil, errors.New("source does not support writes")
 		}
 		writer = w
 		logger.Warn("web dashboard can write to your agents",
@@ -348,32 +360,38 @@ func startWeb(src web.Source, addr string, behindProxy, allowWrites, allowSessio
 	if allowSessionSwitch {
 		sw, castOK := src.(web.SessionSwitcher)
 		if !castOK {
-			return nil, errors.New("source does not support session switching")
+			return nil, nil, errors.New("source does not support session switching")
 		}
 		switcher = sw
 		logger.Warn("web dashboard can switch herdr sessions",
 			"note", "repointing the session changes which agents every signed-in browser sees")
 	}
 
+	pairing := web.NewPairing(os.Getenv("HERDR_TUNNEL_PUBLIC_URL"))
+	provider := web.NewPasswordProvider(user, pass, ipResolver(behindProxy), behindProxy)
+	provider.SetPairing(pairing)
+
 	srv, err := web.New(src, web.Config{
 		Addr:     addr,
-		Provider: web.NewPasswordProvider(user, pass, ipResolver(behindProxy), behindProxy),
+		Provider: provider,
 		// One human, one password, their own machine. Swap for web.RequireRole
 		// when Keycloak makes more than one identity possible.
-		Policy:      web.SingleOperator{},
-		BehindProxy: behindProxy,
-		Assets:      dist,
-		Logger:      logger,
-		Writer:      writer,
-		Audit:       audit,
-		Sessions:    sessions,
-		Switcher:    switcher,
+		Policy:        web.SingleOperator{},
+		BehindProxy:   behindProxy,
+		Assets:        dist,
+		Logger:        logger,
+		Writer:        writer,
+		Audit:         audit,
+		Sessions:      sessions,
+		Switcher:      switcher,
+		Pairing:       pairing,
+		PublicBaseURL: os.Getenv("HERDR_TUNNEL_PUBLIC_URL"),
 		// Same directory the audit log above resolves to, so an operator who
 		// already knows where one lives knows where to find the other.
 		PushDir: filepath.Dir(app.DefaultAuditPath()),
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Wire the edge-triggered blocked-transition hook straight into push.
@@ -386,7 +404,7 @@ func startWeb(src web.Source, addr string, behindProxy, allowWrites, allowSessio
 	}
 
 	if err := srv.Start(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if h, _, splitErr := net.SplitHostPort(addr); splitErr == nil && (h == "0.0.0.0" || h == "" || h == "::") {
@@ -400,7 +418,7 @@ func startWeb(src web.Source, addr string, behindProxy, allowWrites, allowSessio
 				"note", "traffic is unencrypted HTTP; use a tunnel before exposing it beyond the LAN")
 		}
 	}
-	return srv, nil
+	return srv, pairing, nil
 }
 
 // ipResolver picks how the client address is determined. Proxy headers are

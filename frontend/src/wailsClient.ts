@@ -12,6 +12,7 @@ import {
   AgentsService,
   type Agent,
 } from "../bindings/github.com/LoneExile/herdr-tunnel/internal/app";
+import * as DesktopSettings from "../bindings/github.com/LoneExile/herdr-tunnel/internal/desktop/settings";
 import type { Client, Session, SessionList } from "./client";
 
 const EVENT_AGENTS_CHANGED = "agents:changed";
@@ -104,5 +105,30 @@ export function wailsClient(): Client {
       };
     },
     switchSession: (id: string) => AgentsService.SwitchSession(id),
+
+    launchAtLogin: () => DesktopSettings.LaunchAtLogin(),
+    setLaunchAtLogin: (on: boolean) => DesktopSettings.SetLaunchAtLogin(on),
+    checkUpdate: async () => {
+      const u = await DesktopSettings.CheckUpdate();
+      return {
+        current: u.current,
+        latest: u.latest,
+        newer: u.newer,
+        releaseUrl: u.releaseUrl,
+        body: u.body,
+        published: u.published,
+        checkedAt: u.checkedAt,
+      };
+    },
+    mintPairing: async () => {
+      const t = await DesktopSettings.MintPairing();
+      return {
+        url: t.url,
+        token: t.token,
+        qrPng: t.qrPng,
+        expiresAt: t.expiresAt,
+      };
+    },
+    setPairingBaseURL: (base: string) => DesktopSettings.SetPairingBaseURL(base),
   };
 }

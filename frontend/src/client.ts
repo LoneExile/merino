@@ -106,6 +106,30 @@ export interface Client {
   pushKey?(): Promise<string>;
   pushSubscribe?(sub: PushSubscriptionJSON): Promise<void>;
   pushUnsubscribe?(endpoint: string): Promise<void>;
+
+  /** Desktop-only. Absent on the browser transport. */
+  launchAtLogin?(): Promise<boolean>;
+  setLaunchAtLogin?(on: boolean): Promise<void>;
+  checkUpdate?(): Promise<UpdateInfo>;
+  mintPairing?(): Promise<PairingTicket>;
+  setPairingBaseURL?(base: string): Promise<void>;
+}
+
+export interface UpdateInfo {
+  current: string;
+  latest: string;
+  newer: boolean;
+  releaseUrl: string;
+  body: string;
+  published: string;
+  checkedAt: number;
+}
+
+export interface PairingTicket {
+  url: string;
+  token: string;
+  qrPng: string;
+  expiresAt: number;
 }
 
 /**
