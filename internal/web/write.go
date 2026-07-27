@@ -1,8 +1,13 @@
 package web
 
 import (
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
+	"path/filepath"
+	"strings"
 
 	"github.com/LoneExile/herdr-tunnel/internal/app"
 )
@@ -28,6 +33,10 @@ type Writer interface {
 	RenamePane(paneID, name string) error
 	RenameTab(tabID, name string) error
 	RenameWorkspace(workspaceID, name string) error
+	// AttachImage stages image bytes on the host and returns the absolute
+	// path. Used for clipboard-paste / file-picker images so agents can open
+	// the file the same way a terminal Ctrl+V paste does.
+	AttachImage(paneID, mime string, data []byte) (path string, err error)
 }
 
 // mountWrites registers the write routes. Called only when a Writer is set.
@@ -40,6 +49,7 @@ func (s *Server) mountWrites(mux *http.ServeMux) {
 	mux.Handle("POST /api/panes/{id}/rename", s.authed(s.handleRenamePane))
 	mux.Handle("POST /api/tabs/{id}/rename", s.authed(s.handleRenameTab))
 	mux.Handle("POST /api/workspaces/{id}/rename", s.authed(s.handleRenameWorkspace))
+	mux.Handle("POST /api/panes/{id}/attach", s.authed(s.handleAttach))
 }
 
 // authorizeWrite resolves the pane and checks the identity may control it.
@@ -235,4 +245,81 @@ func (s *Server) handleRenameWorkspace(w http.ResponseWriter, r *http.Request, i
 		return
 	}
 	s.finish(w, r, id, "rename_workspace", workspaceID, body.Name, s.cfg.Writer.RenameWorkspace(workspaceID, body.Name))
+}
+
+// handleAttach stages an image on the host for a pane and returns the path.
+//
+// Accepts either multipart/form-data (field "file") or JSON
+// {"mime":"image/png","data":"<base64>"}. The staged path is what the agent
+// will open — matching terminal clipboard-image paste behaviour.
+func (s *Server) handleAttach(w http.ResponseWriter, r *http.Request, id Identity) {
+	paneID, ok := s.authorizeWrite(w, r, id, "attach")
+	if !ok {
+		return
+	}
+
+	const maxBody = app.MaxAttachBytes + 512<<10 // room for multipart overhead
+	r.Body = http.MaxBytesReader(w, r.Body, maxBody)
+
+	var (
+		data []byte
+		mime string
+		err  error
+	)
+
+	ct := r.Header.Get("Content-Type")
+	if strings.HasPrefix(ct, "multipart/form-data") {
+		if err = r.ParseMultipartForm(maxBody); err != nil {
+			s.audit(r, id, "attach", paneID, "", false, "multipart: "+err.Error())
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "malformed multipart body"})
+			return
+		}
+		f, hdr, ferr := r.FormFile("file")
+		if ferr != nil {
+			s.audit(r, id, "attach", paneID, "", false, "file: "+ferr.Error())
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing file field"})
+			return
+		}
+		defer f.Close()
+		data, err = io.ReadAll(io.LimitReader(f, app.MaxAttachBytes+1))
+		if err != nil {
+			s.finish(w, r, id, "attach", paneID, "", err)
+			return
+		}
+		mime = hdr.Header.Get("Content-Type")
+		if mime == "" {
+			mime = r.FormValue("mime")
+		}
+	} else {
+		// Do NOT use decode[T] here — it caps the body at 8 KiB (form-sized).
+		// A base64 PNG is often megabytes; MaxBytesReader above already bounds us.
+		var body struct {
+			MIME string `json:"mime"`
+			Data string `json:"data"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			s.audit(r, id, "attach", paneID, "", false, "json: "+err.Error())
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "malformed request body"})
+			return
+		}
+		raw, berr := base64.StdEncoding.DecodeString(body.Data)
+		if berr != nil {
+			raw, berr = base64.RawURLEncoding.DecodeString(body.Data)
+		}
+		if berr != nil {
+			s.audit(r, id, "attach", paneID, "", false, "base64: "+berr.Error())
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid base64 data"})
+			return
+		}
+		data = raw
+		mime = body.MIME
+	}
+
+	path, err := s.cfg.Writer.AttachImage(paneID, mime, data)
+	if err != nil {
+		s.finish(w, r, id, "attach", paneID, fmt.Sprintf("bytes=%d mime=%s", len(data), mime), err)
+		return
+	}
+	s.audit(r, id, "attach", paneID, fmt.Sprintf("bytes=%d mime=%s path=%s", len(data), mime, filepath.Base(path)), true, "")
+	writeJSON(w, http.StatusOK, map[string]string{"path": path, "mime": mime})
 }

@@ -48,6 +48,14 @@ func (f *fakeWriter) RenameTab(tabID, name string) error {
 	f.calls = append(f.calls, "rename_tab:"+tabID+":"+name)
 	return f.err
 }
+func (f *fakeWriter) AttachImage(paneID, mime string, data []byte) (string, error) {
+	if f.err != nil {
+		return "", f.err
+	}
+	f.calls = append(f.calls, "attach:"+paneID)
+	return "/tmp/fake-paste.png", nil
+}
+
 func (f *fakeWriter) RenameWorkspace(workspaceID, name string) error {
 	f.calls = append(f.calls, "rename_workspace:"+workspaceID+":"+name)
 	return f.err
@@ -102,6 +110,7 @@ func TestWriteEndpointsRequireAuth(t *testing.T) {
 	for _, path := range []string{
 		"/api/panes/p1/respond", "/api/panes/p1/keys",
 		"/api/panes/p1/focus", "/api/panes/p1/interrupt",
+		"/api/panes/p1/attach",
 	} {
 		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{}`))
 		rr := httptest.NewRecorder()
@@ -314,4 +323,49 @@ func TestSessionReportsWriteMode(t *testing.T) {
 	rw, _ := writeServer(t, nil, &fakeWriter{})
 	check(rw, false)
 	check(testServer(t, &fakeSource{}, nil), true)
+}
+
+func TestAttachImageJSON(t *testing.T) {
+	wr := &fakeWriter{}
+	s, buf := writeServer(t, nil, wr)
+	c := login(t, s, "alice", "correct-horse")
+	// 1x1 PNG
+	png := "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+	body := `{"mime":"image/png","data":"` + png + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/panes/p1/attach", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(c)
+	rr := httptest.NewRecorder()
+	s.routes().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status %d body %s", rr.Code, rr.Body.String())
+	}
+	var out map[string]string
+	if err := json.NewDecoder(rr.Body).Decode(&out); err != nil {
+		t.Fatal(err)
+	}
+	if out["path"] == "" {
+		t.Fatalf("no path: %v", out)
+	}
+	if len(wr.calls) != 1 || !strings.HasPrefix(wr.calls[0], "attach:p1") {
+		t.Fatalf("calls %v", wr.calls)
+	}
+	if !strings.Contains(buf.String(), "attach") {
+		t.Fatalf("audit missing attach: %s", buf.String())
+	}
+}
+
+func TestAttachImageRejectsGarbage(t *testing.T) {
+	wr := &fakeWriter{err: errors.New("input not allowed: not a supported image (png/jpeg/gif/webp)")}
+	s, _ := writeServer(t, nil, wr)
+	c := login(t, s, "alice", "correct-horse")
+	body := `{"mime":"image/png","data":"bm90LWFuLWltYWdl"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/panes/p1/attach", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(c)
+	rr := httptest.NewRecorder()
+	s.routes().ServeHTTP(rr, req)
+	if rr.Code == http.StatusOK {
+		t.Fatalf("expected failure, got 200 %s", rr.Body.String())
+	}
 }

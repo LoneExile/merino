@@ -79,6 +79,22 @@ export function wailsClient(): Client {
 
     respond: (paneId: string, text: string) => AgentsService.Respond(paneId, text),
     sendText: (paneId: string, text: string) => AgentsService.SendText(paneId, text),
+    attachImage: async (paneId: string, blob: Blob) => {
+      const buf = await blob.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      let binary = "";
+      const chunk = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+      }
+      const data = btoa(binary);
+      const path = await AgentsService.AttachImageB64(
+        paneId,
+        blob.type || "application/octet-stream",
+        data,
+      );
+      return { path: path ?? "", mime: blob.type || "application/octet-stream" };
+    },
     sendKeys: (paneId: string, keys: string[]) => AgentsService.SendKeys(paneId, keys),
     focus: (paneId: string) => AgentsService.Focus(paneId),
     interrupt: (paneId: string) => AgentsService.Interrupt(paneId),

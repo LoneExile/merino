@@ -119,6 +119,11 @@ export interface Client {
    */
   sendText?(paneId: string, text: string): Promise<void>;
   /**
+   * Stage an image on the host and return its absolute path. Agents open the
+   * file the same way a terminal clipboard-image paste does.
+   */
+  attachImage?(paneId: string, blob: Blob): Promise<{ path: string; mime: string }>;
+  /**
    * Press allowlisted keys in a pane (Esc, arrows, Enter, Tab, Ctrl+c, …).
    * Required for TUI menus that do not read free text — the Ask chooser,
    * for example, wants ↑/↓ + Enter or Esc, not a typed reply.
@@ -199,6 +204,35 @@ async function getJSON<T>(url: string): Promise<T> {
   }
   if (!res.ok) throw new Error(`${url}: ${res.status} ${res.statusText}`);
   return (await res.json()) as T;
+}
+
+async function postJSONResult<T>(url: string, body?: unknown): Promise<T> {
+  const res = await fetch(url, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body ?? {}),
+  });
+  if (res.status === 401) {
+    markAuthDead();
+    throw new Error("unauthenticated");
+  }
+  if (!res.ok) {
+    const detail = (await res.text()).trim();
+    throw new Error(detail || `${res.status} ${res.statusText}`);
+  }
+  return (await res.json()) as T;
+}
+
+async function blobToBase64(blob: Blob): Promise<string> {
+  const buf = await blob.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
 }
 
 async function postJSON(url: string, body?: unknown): Promise<void> {
@@ -343,6 +377,13 @@ async function httpClient(): Promise<Client> {
     ...pushMethods,
     respond: (paneId, text) => postJSON(`/api/panes/${pane(paneId)}/respond`, { text }),
     sendText: (paneId, text) => postJSON(`/api/panes/${pane(paneId)}/text`, { text }),
+    attachImage: async (paneId, blob) => {
+      const data = await blobToBase64(blob);
+      return postJSONResult<{ path: string; mime: string }>(
+        `/api/panes/${pane(paneId)}/attach`,
+        { mime: blob.type || "application/octet-stream", data },
+      );
+    },
     sendKeys: (paneId, keys) => postJSON(`/api/panes/${pane(paneId)}/keys`, { keys }),
     focus: (paneId) => postJSON(`/api/panes/${pane(paneId)}/focus`),
     interrupt: (paneId) => postJSON(`/api/panes/${pane(paneId)}/interrupt`),

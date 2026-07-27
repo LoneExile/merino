@@ -48,6 +48,19 @@ export function Interrupt(paneID: string): $CancellablePromise<void> {
 }
 
 /**
+ * AttachImageB64 stages a base64 image on the host and returns its path.
+ * Bound by name until bindings are regenerated with a stable ByID.
+ */
+export function AttachImageB64(paneID: string, mime: string, b64: string): $CancellablePromise<string> {
+    return $Call.ByName(
+        "github.com/LoneExile/herdr-tunnel/internal/app.AgentsService.AttachImageB64",
+        paneID,
+        mime,
+        b64,
+    );
+}
+
+/**
  * List returns the current agents, most urgent first.
  */
 export function List(): $CancellablePromise<$models.Agent[]> {

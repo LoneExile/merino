@@ -262,6 +262,16 @@ interface ComposerProps {
   onSent: () => void;
 }
 
+interface PendingAttach {
+  id: string;
+  path: string;
+  mime: string;
+  preview: string;
+  name: string;
+}
+
+const MAX_ATTACH = 4;
+
 /**
  * The reply box, fixed to the bottom of the pane view.
  *
@@ -301,6 +311,9 @@ function Composer({ client, agent, onSent }: ComposerProps) {
   const [slashIdx, setSlashIdx] = useState(0);
   // Caret position drives mid-string slash detection (not only draft-start).
   const [caret, setCaret] = useState(0);
+  const [pending, setPending] = useState<PendingAttach[]>([]);
+  const [attachBusy, setAttachBusy] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
   // Range of the active "/token" inside value when the menu is open.
   const slashRange = useRef<{ start: number; end: number } | null>(null);
   const slashOpen = slashHits.length > 0;
@@ -308,6 +321,7 @@ function Composer({ client, agent, onSent }: ComposerProps) {
   const canWrite = Boolean(client.sendText);
   const canKeys = Boolean(client.sendKeys);
   const canApprove = Boolean(client.respond) && agent.status === "blocked";
+  const canAttach = Boolean(client.attachImage) && canWrite;
 
   // Grow with the content up to a cap, so a long reply is readable while the
   // terminal keeps most of the screen.
@@ -374,16 +388,70 @@ function Composer({ client, agent, onSent }: ComposerProps) {
     });
   }, [value, caret]);
 
+
+  const stageBlob = useCallback(
+    async (blob: Blob, nameHint?: string) => {
+      if (!canAttach || !client.attachImage) return;
+      if (pending.length >= MAX_ATTACH) {
+        setErr(`At most ${MAX_ATTACH} images per message`);
+        return;
+      }
+      if (!blob.type.startsWith("image/")) {
+        setErr("Only images can be attached");
+        return;
+      }
+      setAttachBusy(true);
+      setErr(null);
+      try {
+        const { path, mime } = await client.attachImage(agent.paneId, blob);
+        const preview = URL.createObjectURL(blob);
+        const name = nameHint || path.split("/").pop() || "image";
+        setPending((prev) => {
+          if (prev.length >= MAX_ATTACH) {
+            URL.revokeObjectURL(preview);
+            return prev;
+          }
+          return [
+            ...prev,
+            { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, path, mime, preview, name },
+          ];
+        });
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : String(e));
+      } finally {
+        setAttachBusy(false);
+      }
+    },
+    [agent.paneId, canAttach, client, pending.length],
+  );
+
+  // Revoke object URLs on unmount / clear.
+  useEffect(() => {
+    return () => {
+      for (const p of pending) URL.revokeObjectURL(p.preview);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only on unmount
+  }, []);
+
   const send = useCallback(
     async (text: string, kind: "reply" | "approve") => {
-      const body = text.trim();
-      if (!body || busy) return;
+      const caption = text.trim();
+      const paths = kind === "reply" ? pending.map((p) => p.path) : [];
+      const body =
+        paths.length === 0
+          ? caption
+          : caption
+            ? `${paths.join("\n")}\n${caption}`
+            : paths.join("\n");
+      if (!body || busy || attachBusy) return;
       setBusy(true);
       setErr(null);
       const restore = value;
+      const restorePending = pending;
       if (kind === "reply") {
         setValue("");
         setSlashHits([]);
+        setPending([]);
       }
       try {
         // No trailing newline: the backend presses Enter as a key. A bare "\n"
@@ -391,15 +459,21 @@ function Composer({ client, agent, onSent }: ComposerProps) {
         // unsubmitted in the prompt.
         if (kind === "approve") await client.respond?.(agent.paneId, body);
         else await client.sendText?.(agent.paneId, body);
+        if (kind === "reply") {
+          for (const p of restorePending) URL.revokeObjectURL(p.preview);
+        }
         onSent();
       } catch (e) {
         setErr(e instanceof Error ? e.message : String(e));
-        if (kind === "reply") setValue(restore);
+        if (kind === "reply") {
+          setValue(restore);
+          setPending(restorePending);
+        }
       } finally {
         setBusy(false);
       }
     },
-    [agent.paneId, busy, client, onSent, value],
+    [agent.paneId, attachBusy, busy, client, onSent, pending, value],
   );
 
   // Allowlisted keys only (server-side guard). Used for TUI menus that do not
@@ -543,8 +617,74 @@ function Composer({ client, agent, onSent }: ComposerProps) {
         </ul>
       )}
 
+      {canWrite && canAttach && pending.length > 0 && (
+        <ul className="composer__attach" aria-label="Attached images">
+          {pending.map((p) => (
+            <li key={p.id} className="composer__chip">
+              <img src={p.preview} alt="" className="composer__chip-thumb" />
+              <span className="composer__chip-name mono" title={p.path}>
+                {p.name}
+              </span>
+              <button
+                type="button"
+                className="composer__chip-x"
+                aria-label={`Remove ${p.name}`}
+                onClick={() => {
+                  URL.revokeObjectURL(p.preview);
+                  setPending((prev) => prev.filter((x) => x.id !== p.id));
+                }}
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
       {canWrite && (
         <div className="composer__row">
+          {canAttach && (
+            <>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/png,image/jpeg,image/gif,image/webp"
+                multiple
+                hidden
+                onChange={(e) => {
+                  const files = e.target.files;
+                  if (!files) return;
+                  for (const f of Array.from(files)) void stageBlob(f, f.name);
+                  e.target.value = "";
+                }}
+              />
+              <button
+                type="button"
+                className="btn btn--icon"
+                disabled={busy || attachBusy || pending.length >= MAX_ATTACH}
+                title="Attach image"
+                aria-label="Attach image"
+                onClick={() => fileRef.current?.click()}
+              >
+                <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                  <path
+                    d="M4.5 9.5 8 6l3.5 3.5M8 6v7"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M3 3.5h10a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1z"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                  />
+                </svg>
+              </button>
+            </>
+          )}
           <textarea
             ref={box}
             className="composer__input"
@@ -554,7 +694,9 @@ function Composer({ client, agent, onSent }: ComposerProps) {
             disabled={busy}
             placeholder={
               agent.agent
-                ? `Message ${agent.agent}, or / for commands…`
+                ? canAttach
+                  ? `Message ${agent.agent} · paste image or /…`
+                  : `Message ${agent.agent}, or / for commands…`
                 : canKeys
                   ? `Reply, or Esc/↑/↓/Enter for menus…`
                   : `Reply to pane…`
@@ -572,6 +714,22 @@ function Composer({ client, agent, onSent }: ComposerProps) {
             }}
             onKeyUp={(e) => {
               setCaret(e.currentTarget.selectionStart ?? 0);
+            }}
+            onPaste={(e) => {
+              if (!canAttach) return;
+              const items = e.clipboardData?.items;
+              if (!items) return;
+              const images: File[] = [];
+              for (let i = 0; i < items.length; i++) {
+                const it = items[i]!;
+                if (it.kind === "file" && it.type.startsWith("image/")) {
+                  const f = it.getAsFile();
+                  if (f) images.push(f);
+                }
+              }
+              if (images.length === 0) return;
+              e.preventDefault();
+              for (const f of images) void stageBlob(f, f.name || "paste.png");
             }}
             onKeyDown={(e) => {
               if (e.nativeEvent.isComposing) return;
@@ -644,7 +802,7 @@ function Composer({ client, agent, onSent }: ComposerProps) {
           />
           <button
             className="btn btn--primary"
-            disabled={busy || !value.trim()}
+            disabled={busy || attachBusy || (!value.trim() && pending.length === 0)}
             onClick={() => void send(value, "reply")}
           >
             Send

@@ -841,6 +841,63 @@ html.desktop .app {
 }
 
 
+.composer__attach {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2xs);
+}
+
+.composer__chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 6px 4px 4px;
+  background: var(--color-paper-2);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-control);
+  min-height: 2.25rem;
+}
+
+.composer__chip-thumb {
+  width: 2rem;
+  height: 2rem;
+  object-fit: cover;
+  border-radius: 4px;
+  background: var(--color-paper-3);
+  flex: none;
+}
+
+.composer__chip-name {
+  font-size: var(--text-2xs);
+  color: var(--color-ink-2);
+  max-width: 9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer__chip-x {
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-ink-3);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.composer__chip-x:hover {
+  color: var(--color-ink);
+  background: var(--color-paper-3);
+}
+
 .composer__row {
   display: flex;
   gap: var(--space-2xs);
