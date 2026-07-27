@@ -176,7 +176,11 @@ export function PaneView({ client, agent, wrap, onBack, onRename }: PaneViewProp
           <pre className={`term${wrap ? " term--wrap" : ""}`}>
             {text
               ? segments.map((seg, i) => (
-                  <span key={i} style={seg.style}>
+                  <span
+                    key={i}
+                    className={seg.style.backgroundColor ? "term__bg" : undefined}
+                    style={seg.style}
+                  >
                     {seg.text}
                   </span>
                 ))

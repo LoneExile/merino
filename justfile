@@ -8,7 +8,8 @@
 #   just            list every recipe
 #   just dev        hot-reload frontend against the real herd
 #   just app        build + launch the menu-bar app
-#   just web        also serve the phone dashboard on the LAN
+#   just web PASS   phone dashboard on the LAN
+#   just tunnel PASS  behind a TLS tunnel
 #   just gate       everything CI runs
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
@@ -52,21 +53,30 @@ app: package
     open {{app_bundle}}
     @echo "running — look at the top-right of your menu bar"
 
-# Menu bar + phone dashboard on your LAN  (just web pass=secret)
-web user="lex" pass="" port="8730": build
+# Phone dashboard on the LAN.
+#
+# just 1.57 treats `key=value` as a positional STRING, not a named override
+# (`just tunnel pass=secret` sets user="pass=secret" and leaves pass empty).
+# Password is therefore the first argument:
+#
+#   just web herd-test-2026
+#   just web herd-test-2026 lex 8730
+web pass user="lex" port="8730": build
     # Foreground, so you get logs. The server itself requires the credentials;
     # it refuses to expose agents without a login.
-    @test -n "{{pass}}" || { echo "usage: just web pass=<password>  (or pass= a value)"; exit 1; }
+    @test -n "{{pass}}" || { echo "usage: just web <password>  [user] [port]"; exit 1; }
     HERDR_TUNNEL_USER={{user}} HERDR_TUNNEL_PASS={{pass}} \
     {{ if sock == "" { "" } else { "HERDR_SOCK=" + sock } }} \
     {{binary}} --listen 0.0.0.0:{{port}} --allow-writes --allow-session-switch
 
-# Serve behind a TLS tunnel  (just tunnel pass=secret)
-tunnel user="lex" pass="" port="8730": build
-    # --behind-proxy marks cookies Secure and trusts CF-Connecting-IP. Never
-    # use it while the port is ALSO reachable directly on the LAN: the login
-    # throttle then keys on a header the caller controls.
-    @test -n "{{pass}}" || { echo "usage: just tunnel pass=<password>"; exit 1; }
+# Serve behind a TLS tunnel (Secure cookies, trust CF-Connecting-IP).
+#
+#   just tunnel herd-test-2026
+#
+# Never use --behind-proxy while the port is ALSO reachable directly on the
+# LAN: the login throttle then keys on a header the caller controls.
+tunnel pass user="lex" port="8730": build
+    @test -n "{{pass}}" || { echo "usage: just tunnel <password>  [user] [port]"; exit 1; }
     HERDR_TUNNEL_USER={{user}} HERDR_TUNNEL_PASS={{pass}} \
     {{ if sock == "" { "" } else { "HERDR_SOCK=" + sock } }} \
     {{binary}} --listen 0.0.0.0:{{port}} --behind-proxy --allow-writes

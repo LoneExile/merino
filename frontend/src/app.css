@@ -467,12 +467,11 @@ body {
   padding: var(--space-sm);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
-  /* 1, not 1.45. ANSI cell backgrounds and box-drawing characters only
-   * paint the glyph cell. Any leading above 1 leaves a transparent gap
-   * between rows, which reads as horizontal "line breaks" / dashed
-   * borders through every shaded prompt and every ─/│ run. Real terminal
-   * emulators (xterm.js, VS Code) use 1 for the same reason. */
-  line-height: 1;
+  /* Readable leading. 1 crushed glyphs into each other (ascenders ate the
+   * line above); 1.45 left transparent stripes through every ANSI
+   * background. 1.35 is the compromise; backgrounds are stretched into the
+   * half-leading by .term__bg so the solid-cell look survives. */
+  line-height: 1.35;
   color: var(--color-term-ink);
   /* pre, not pre-wrap: this app's live panes run wide (288 columns is
    * typical), far past any phone viewport. Box-drawing output is
@@ -484,6 +483,27 @@ body {
    * default; "Wrap long lines" in Settings opts back into wrapping. */
   white-space: pre;
   tab-size: 2;
+  /* Ligatures / kerning turn "fi" and some box-drawing pairs into a single
+   * glyph of non-cell width, which is exactly the right-edge drift on TUI
+   * frames. Terminals do not ligate. */
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "calt" 0;
+  font-kerning: none;
+  text-rendering: optimizeSpeed;
+}
+
+/* ANSI cell backgrounds only paint the content box of an inline span. With
+ * line-height > 1 that leaves a transparent strip of half-leading above and
+ * below every shaded row — the "horizontal line break" artefact. Stretch
+ * the background into the leading (and pull the layout back with a matching
+ * negative margin) so shaded rows stay solid without going back to
+ * line-height: 1. box-decoration-break: clone keeps the fill on every
+ * fragment if a span ever wraps. */
+.term__bg {
+  padding-block: 0.175em;
+  margin-block: -0.175em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
 }
 
 /* "Wrap long lines" setting, opt-in, OFF by default (frontend/src/wrapPref.ts). */
