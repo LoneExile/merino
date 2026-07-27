@@ -163,3 +163,23 @@ func TestSubmitTextDoesNotPressEnterWhenTextFails(t *testing.T) {
 		t.Errorf("calls = %v, want only [pane.send_text]", got)
 	}
 }
+
+// AgentPrompt must hit the harness-aware agent.prompt method, not the
+// send_text + Enter sequence used for plain shells.
+func TestAgentPromptCallsAgentPrompt(t *testing.T) {
+	f := newFakeHerdr(t, "")
+	if err := f.client(t).AgentPrompt(context.Background(), "w1:p1", "/help"); err != nil {
+		t.Fatalf("AgentPrompt: %v", err)
+	}
+	if got := f.methods(); len(got) != 1 || got[0] != "agent.prompt" {
+		t.Fatalf("calls = %v, want [agent.prompt]", got)
+	}
+	// Params shape.
+	var params map[string]any
+	if err := json.Unmarshal(f.calls[0].Params, &params); err != nil {
+		t.Fatalf("params: %v", err)
+	}
+	if params["target"] != "w1:p1" || params["text"] != "/help" {
+		t.Fatalf("params = %v, want target=w1:p1 text=/help", params)
+	}
+}

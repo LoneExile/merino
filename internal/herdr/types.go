@@ -312,6 +312,13 @@ type paneSendKeysParams struct {
 	Keys   []string `json:"keys"`
 }
 
+// agentPromptParams is the harness-aware submit path (agent.prompt).
+// target accepts a pane_id; herdr routes to the agent running there.
+type agentPromptParams struct {
+	Target string `json:"target"`
+	Text   string `json:"text"`
+}
+
 type paneTarget struct {
 	PaneID string `json:"pane_id"`
 }

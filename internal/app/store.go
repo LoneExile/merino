@@ -238,6 +238,17 @@ func (s *Store) Has(paneID string) bool {
 	return ok
 }
 
+// Get returns the agent projection for a pane, if known.
+func (s *Store) Get(paneID string) (Agent, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	p, ok := s.panes[paneID]
+	if !ok {
+		return Agent{}, false
+	}
+	return agentFromPane(p), true
+}
+
 // Counts summarises the herd for the tray label.
 type Counts struct {
 	Total   int `json:"total"`

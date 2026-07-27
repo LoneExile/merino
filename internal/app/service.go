@@ -403,6 +403,12 @@ func (s *AgentsService) Respond(paneID, text string) error {
 // SendText writes arbitrary text and submits it, which is what a person typing
 // a reply expects. Higher trust than Respond: bounded by length only. Prefer
 // Respond where the answer is one of the canned options.
+//
+// Routing:
+//   - Pane hosts a coding agent (omp/pi/claude/grok/…) → herdr agent.prompt.
+//     That path is harness-aware, so slash commands (/help, /status, …) work
+//     the same way they do when typed in the agent TUI.
+//   - Plain shell pane → SubmitText (send_text + Enter).
 func (s *AgentsService) SendText(paneID, text string) error {
 	if err := s.guard.CheckPane(paneID); err != nil {
 		return err
@@ -410,8 +416,13 @@ func (s *AgentsService) SendText(paneID, text string) error {
 	if err := s.guard.CheckFreeText(text); err != nil {
 		return err
 	}
+	cli := s.currentClient()
+	if a, ok := s.store.Get(paneID); ok && a.Agent != "" {
+		s.log.Info("agent_prompt", "pane", paneID, "agent", a.Agent, "bytes", len(text))
+		return cli.AgentPrompt(s.ctx, paneID, text)
+	}
 	s.log.Info("send_text", "pane", paneID, "bytes", len(text))
-	return s.currentClient().SubmitText(s.ctx, paneID, text)
+	return cli.SubmitText(s.ctx, paneID, text)
 }
 
 // SendKeys presses allowlisted keys in a pane.

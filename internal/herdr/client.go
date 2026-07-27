@@ -361,6 +361,17 @@ func (c *Client) SendKeys(ctx context.Context, paneID string, keys ...string) er
 	return c.Call(ctx, "pane.send_keys", paneSendKeysParams{PaneID: paneID, Keys: keys}, nil)
 }
 
+// AgentPrompt submits text through herdr's harness-aware agent.prompt path.
+//
+// Prefer this over SubmitText for panes that host a coding agent (omp, pi,
+// claude, grok, …). agent.prompt understands each harness's input model, so
+// slash commands (/help, /status, /clear, …) and ordinary prompts both land
+// correctly. SubmitText (send_text + Enter) is the right tool for plain shell
+// panes and for canned approval keys that are not agent prompts.
+func (c *Client) AgentPrompt(ctx context.Context, target, text string) error {
+	return c.Call(ctx, "agent.prompt", agentPromptParams{Target: target, Text: text}, nil)
+}
+
 // FocusPane brings a pane to the foreground.
 func (c *Client) FocusPane(ctx context.Context, paneID string) error {
 	return c.Call(ctx, "pane.focus", paneTarget{PaneID: paneID}, nil)
