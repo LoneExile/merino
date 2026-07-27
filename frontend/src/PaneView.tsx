@@ -215,6 +215,29 @@ interface ComposerProps {
  * the error, because making someone retype a message the server refused is the
  * rudest possible way to report a refusal.
  */
+
+/**
+ * Find a slash token at caret.
+ * Token = "/" + non-whitespace, starting at a word boundary (start or after
+ * whitespace / newline). Returns null when the caret is not inside one.
+ */
+function slashTokenAt(
+  text: string,
+  caret: number,
+): { start: number; end: number; query: string } | null {
+  const pos = Math.max(0, Math.min(caret, text.length));
+  // Walk left to the start of the current non-space run.
+  let i = pos;
+  while (i > 0 && !/\s/.test(text[i - 1]!)) i--;
+  if (text[i] !== "/") return null;
+  // Token cannot contain whitespace; end is first whitespace or EOS.
+  let j = i + 1;
+  while (j < text.length && !/\s/.test(text[j]!)) j++;
+  // Caret must sit inside [i, j] (still editing this token).
+  if (pos < i || pos > j) return null;
+  return { start: i, end: j, query: text.slice(i + 1, j) };
+}
+
 function Composer({ client, agent, onSent }: ComposerProps) {
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
@@ -222,6 +245,10 @@ function Composer({ client, agent, onSent }: ComposerProps) {
   const box = useRef<HTMLTextAreaElement>(null);
   const [slashHits, setSlashHits] = useState<SlashCommand[]>([]);
   const [slashIdx, setSlashIdx] = useState(0);
+  // Caret position drives mid-string slash detection (not only draft-start).
+  const [caret, setCaret] = useState(0);
+  // Range of the active "/token" inside value when the menu is open.
+  const slashRange = useRef<{ start: number; end: number } | null>(null);
   const slashOpen = slashHits.length > 0;
 
   const canWrite = Boolean(client.sendText);
@@ -237,20 +264,23 @@ function Composer({ client, agent, onSent }: ComposerProps) {
     el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
   }, [value]);
 
-  // Slash typeahead: when the draft is a single "/" token (optionally with a
-  // prefix), query the catalog for this harness. Debounced so skills walk
-  // stays off the hot path.
+  // Slash typeahead at the caret: any "/token" whose start is a word boundary
+  // (start of draft or after whitespace). Mid-sentence "/help" works the same
+  // as a draft that is only "/hel".
   useEffect(() => {
     if (!client?.slashCommands || !canWrite) {
       setSlashHits([]);
+      slashRange.current = null;
       return;
     }
-    const m = value.match(/^\/(\S*)$/);
-    if (!m) {
+    const token = slashTokenAt(value, caret);
+    if (!token) {
       setSlashHits([]);
+      slashRange.current = null;
       return;
     }
-    const q = m[1];
+    slashRange.current = { start: token.start, end: token.end };
+    const q = token.query;
     let alive = true;
     const t = window.setTimeout(() => {
       void client.slashCommands?.(agent.agent || "", q, agent.cwd || undefined).then(
@@ -268,15 +298,27 @@ function Composer({ client, agent, onSent }: ComposerProps) {
       alive = false;
       window.clearTimeout(t);
     };
-  }, [value, client, agent.agent, agent.cwd, canWrite]);
+  }, [value, caret, client, agent.agent, agent.cwd, canWrite]);
 
   const applySlash = useCallback((cmd: SlashCommand) => {
-    setValue(cmd.value);
+    const range = slashRange.current ?? slashTokenAt(value, caret);
+    const start = range?.start ?? 0;
+    const end = range?.end ?? value.length;
+    const next = value.slice(0, start) + cmd.value + value.slice(end);
+    const newCaret = start + cmd.value.length;
+    setValue(next);
+    setCaret(newCaret);
     setSlashHits([]);
     setSlashIdx(0);
-    // Keep focus for continued typing (args after the command).
-    requestAnimationFrame(() => box.current?.focus());
-  }, []);
+    slashRange.current = null;
+    // Restore caret after React commits the new value.
+    requestAnimationFrame(() => {
+      const el = box.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(newCaret, newCaret);
+    });
+  }, [value, caret]);
 
   const send = useCallback(
     async (text: string, kind: "reply" | "approve") => {
@@ -432,7 +474,19 @@ function Composer({ client, agent, onSent }: ComposerProps) {
                   : `Reply to pane…`
             }
             aria-label={`Reply to ${agent.agent || "pane"}`}
-            onChange={(e) => setValue(e.target.value)}
+            onChange={(e) => {
+              setValue(e.target.value);
+              setCaret(e.target.selectionStart ?? e.target.value.length);
+            }}
+            onSelect={(e) => {
+              setCaret(e.currentTarget.selectionStart ?? 0);
+            }}
+            onClick={(e) => {
+              setCaret(e.currentTarget.selectionStart ?? 0);
+            }}
+            onKeyUp={(e) => {
+              setCaret(e.currentTarget.selectionStart ?? 0);
+            }}
             onKeyDown={(e) => {
               if (e.nativeEvent.isComposing) return;
 
