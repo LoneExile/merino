@@ -230,6 +230,61 @@ func (c *Client) ReadPaneFull(ctx context.Context, paneID string, source ReadSou
 	return resp.Read, nil
 }
 
+// PaneOutputPollInterval is how often StreamPaneOutput re-reads a watched
+// pane. A pane.read over the unix socket measures ~1.4ms p50, so one watcher
+// costs roughly 0.5% of a core — cheap enough to sit well inside human
+// perception without an accelerator.
+const PaneOutputPollInterval = 300 * time.Millisecond
+
+// StreamPaneOutput calls onText with a pane's visible text whenever it
+// changes, until ctx is cancelled. It returns nil on cancellation.
+//
+// This POLLS, deliberately, because herdr has no continuous output-push
+// primitive. The obvious candidate, a pane.output_matched subscription with a
+// catch-all regex, is not one — measured against herdr 0.7.5:
+//
+//   - It is ONE-SHOT. Three separate output changes on a subscribed pane
+//     deliver exactly one event; the connection stays open and never fires
+//     again. It is a "wait until output matches X" primitive, for things like
+//     blocking on a build to print PASS.
+//   - Re-subscribing after each event does not rescue it: `.+` matches the
+//     screen that is ALREADY there, so a resubscribe loop fires continuously
+//     regardless of output — 163 events across 4 real changes.
+//   - pane.scroll_changed is genuinely continuous but only reports scrolling,
+//     so it misses in-place repaints, which is most of what a TUI agent does.
+//
+// Polling catches every kind of change, pushes only on a real diff, and costs
+// nothing while a pane is idle.
+func (c *Client) StreamPaneOutput(ctx context.Context, paneID string, lines int, onText func(string)) error {
+	tick := time.NewTicker(PaneOutputPollInterval)
+	defer tick.Stop()
+
+	var last string
+	var primed bool
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-tick.C:
+		}
+
+		text, err := c.ReadPane(ctx, paneID, lines)
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+			// herdr restarts routinely and a pane can close under us. Neither
+			// is fatal to a watcher: keep polling and recover when it returns.
+			continue
+		}
+		if primed && text == last {
+			continue
+		}
+		last, primed = text, true
+		onText(text)
+	}
+}
+
 // SendText writes literal text into a pane. Callers MUST validate the text
 // against an allowlist first; this is unrestricted input to a live terminal.
 func (c *Client) SendText(ctx context.Context, paneID, text string) error {
@@ -267,6 +322,45 @@ func (c *Client) SendKeys(ctx context.Context, paneID string, keys ...string) er
 // FocusPane brings a pane to the foreground.
 func (c *Client) FocusPane(ctx context.Context, paneID string) error {
 	return c.Call(ctx, "pane.focus", paneTarget{PaneID: paneID}, nil)
+}
+
+// paneRenameParams, tabRenameParams and workspaceRenameParams carry the target
+// id alongside the new label.
+//
+// The field is "label", NOT "name". Verified against herdr 0.7.5's own schema
+// and a live socket: tab.rename and workspace.rename reject "name" outright
+// with `missing field \`label\``, and pane.rename — where label is optional —
+// accepts the call and silently renames nothing, which is the worse failure of
+// the two because it reports success.
+
+type paneRenameParams struct {
+	PaneID string `json:"pane_id"`
+	Label  string `json:"label"`
+}
+
+type tabRenameParams struct {
+	TabID string `json:"tab_id"`
+	Label string `json:"label"`
+}
+
+type workspaceRenameParams struct {
+	WorkspaceID string `json:"workspace_id"`
+	Label       string `json:"label"`
+}
+
+// RenamePane sets a pane's display name.
+func (c *Client) RenamePane(ctx context.Context, paneID, name string) error {
+	return c.Call(ctx, "pane.rename", paneRenameParams{PaneID: paneID, Label: name}, nil)
+}
+
+// RenameTab sets a tab's display name.
+func (c *Client) RenameTab(ctx context.Context, tabID, name string) error {
+	return c.Call(ctx, "tab.rename", tabRenameParams{TabID: tabID, Label: name}, nil)
+}
+
+// RenameWorkspace sets a workspace's display name.
+func (c *Client) RenameWorkspace(ctx context.Context, workspaceID, name string) error {
+	return c.Call(ctx, "workspace.rename", workspaceRenameParams{WorkspaceID: workspaceID, Label: name}, nil)
 }
 
 // newLineReader returns a scanner sized for herdr payloads.

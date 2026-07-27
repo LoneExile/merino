@@ -1,300 +1,226 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Agent } from "../bindings/github.com/LoneExile/herdr-tunnel/internal/app";
-import { AgentStatus } from "../bindings/github.com/LoneExile/herdr-tunnel/internal/herdr";
-import type { Client } from "./client";
 import { useHerd } from "./useHerd";
-import "./app.css";
+import { useTheme } from "./theme";
+import { PaneView } from "./PaneView";
+import { StatusDot, statusLabel } from "./StatusDot";
+import { Palette, type Command } from "./Palette";
+import { RenameSheet, SessionSheet, SettingsSheet } from "./Sheets";
 
-/** Canned replies the backend allowlist accepts (internal/app/guard.go). */
-const APPROVALS = [
-  { label: "Yes", value: "yes, single permission", kind: "ok" },
-  { label: "Trust", value: "trust, always allow", kind: "ok" },
-  { label: "No", value: "no (tab to edit)", kind: "no" },
-] as const;
+type Overlay = "settings" | "sessions" | "palette" | null;
 
-function StatusPill({ status }: { status: AgentStatus }) {
-  return <span className={`pill pill-${status || "unknown"}`}>{status || "unknown"}</span>;
-}
-
-function AgentRow({
-  agent,
-  client,
-  onOutput,
-  onError,
-}: {
-  agent: Agent;
-  client: Client;
-  onOutput: (a: Agent, text: string) => void;
-  onError: (msg: string) => void;
-}) {
-  const [busy, setBusy] = useState(false);
-
-  const run = useCallback(
-    async (fn: () => Promise<unknown>) => {
-      setBusy(true);
-      try {
-        await fn();
-      } catch (err) {
-        onError(err instanceof Error ? err.message : String(err));
-      } finally {
-        setBusy(false);
-      }
-    },
-    [onError],
-  );
-
-  // Write affordances only exist where the transport provides them. The web
-  // server has no write endpoints at all, so this is presentation matching
-  // reality rather than a permission check.
-  const canWrite = !client.readOnly && client.respond && client.focus && client.interrupt;
-
-  return (
-    <div className={`row ${agent.needsAttention ? "row-blocked" : ""}`}>
-      <div className="row-main">
-        <StatusPill status={agent.status} />
-        <div className="row-text">
-          <div className="row-title">
-            {agent.agent || "agent"}
-            <span className="row-project">{agent.project}</span>
-          </div>
-          <div className="row-sub" title={agent.cwd}>
-            {agent.paneId} · {agent.cwd}
-          </div>
-        </div>
-      </div>
-
-      {canWrite && agent.needsAttention && (
-        <div className="row-approvals">
-          {APPROVALS.map((a) => (
-            <button
-              key={a.value}
-              className={`btn btn-${a.kind}`}
-              disabled={busy}
-              onClick={() => run(() => client.respond!(agent.paneId, a.value))}
-            >
-              {a.label}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <div className="row-actions">
-        <button
-          className="btn"
-          disabled={busy}
-          onClick={() =>
-            run(async () => {
-              const text = await client.read(agent.paneId, 50);
-              onOutput(agent, text);
-            })
-          }
-        >
-          Output
-        </button>
-        {canWrite && (
-          <>
-            <button className="btn" disabled={busy} onClick={() => run(() => client.focus!(agent.paneId))}>
-              Focus
-            </button>
-            <button
-              className="btn btn-no"
-              disabled={busy}
-              onClick={() => run(() => client.interrupt!(agent.paneId))}
-              title="Send Ctrl+c"
-            >
-              Stop
-            </button>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/** Mirrors app.MaxFreeTextLen so the limit is felt while typing, not as a 400. */
-const MAX_REPLY = 1000;
-
-function PaneDrawer({
-  agent,
-  text,
-  client,
-  onText,
-  onClose,
-  onError,
-}: {
-  agent: Agent;
-  text: string;
-  client: Client;
-  onText: (text: string) => void;
-  onClose: () => void;
-  onError: (msg: string) => void;
-}) {
-  const [draft, setDraft] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  const refresh = useCallback(async () => {
-    try {
-      onText(await client.read(agent.paneId, 50));
-    } catch (err) {
-      onError(err instanceof Error ? err.message : String(err));
-    }
-  }, [agent.paneId, client, onText, onError]);
-
-  const send = useCallback(async () => {
-    const body = draft.trim();
-    if (!body || body.length > MAX_REPLY || !client.sendText) return;
-    setBusy(true);
-    try {
-      // No trailing newline: the backend presses Enter as a key. A bare "\n"
-      // is ignored by a TUI agent reading raw input, and the text would sit
-      // unsubmitted in the prompt.
-      await client.sendText(agent.paneId, body);
-      setDraft("");
-      // Give the agent a moment to react before showing the result.
-      await new Promise((r) => setTimeout(r, 600));
-      await refresh();
-    } catch (err) {
-      onError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  }, [draft, client, agent.paneId, refresh, onError]);
-
-  return (
-    <div className="drawer">
-      <div className="drawer-head">
-        <span>
-          {agent.agent} · {agent.paneId}
-        </span>
-        <div className="drawer-head-actions">
-          <button className="btn" onClick={() => void refresh()}>
-            Refresh
-          </button>
-          <button className="btn" onClick={onClose}>
-            Close
-          </button>
-        </div>
-      </div>
-      <pre className="drawer-body">{text || "(nothing on screen)"}</pre>
-      {client.sendText && (
-        <div className="drawer-reply">
-          <input
-            className="reply-input"
-            placeholder={`Reply to ${agent.agent}…`}
-            value={draft}
-            maxLength={MAX_REPLY}
-            disabled={busy}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void send();
-              }
-            }}
-          />
-          <button
-            className="btn btn-ok"
-            disabled={busy || !draft.trim() || draft.length > MAX_REPLY}
-            onClick={() => void send()}
-          >
-            Send
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
+/** Blocked first: the whole point of the dashboard is answering what is stuck. */
+const GROUPS: { key: string; label: string }[] = [
+  { key: "blocked", label: "Needs you" },
+  { key: "working", label: "Working" },
+  { key: "idle", label: "Idle" },
+];
 
 export default function App() {
-  const { client, session, agents, ready, error, setError } = useHerd();
-  const [output, setOutput] = useState<{ agent: Agent; text: string } | null>(null);
+  const { client, session, agents, ready, error } = useHerd();
+  const { pref, actual, setPref } = useTheme();
+  const [openPane, setOpenPane] = useState<string | null>(null);
+  const [overlay, setOverlay] = useState<Overlay>(null);
+  const [renaming, setRenaming] = useState<Agent | null>(null);
 
-  const blocked = useMemo(() => agents.filter((a) => a.needsAttention), [agents]);
-  const rest = useMemo(() => agents.filter((a) => !a.needsAttention), [agents]);
+  const current = useMemo(
+    () => agents.find((a) => a.paneId === openPane) ?? null,
+    [agents, openPane],
+  );
 
-  const byWorkspace = useMemo(() => {
-    const groups: Record<string, Agent[]> = {};
-    for (const a of rest) {
-      (groups[a.workspaceId] ??= []).push(a);
+  // The pane the user opened can vanish — the agent exits, or the session is
+  // switched underneath them. Fall back to the list rather than showing a
+  // terminal for something that no longer exists.
+  useEffect(() => {
+    if (openPane && ready && !current) setOpenPane(null);
+  }, [openPane, current, ready]);
+
+  const grouped = useMemo(() => {
+    const by = new Map<string, Agent[]>();
+    for (const a of agents) {
+      const k = GROUPS.some((g) => g.key === a.status) ? a.status : "idle";
+      const list = by.get(k);
+      if (list) list.push(a);
+      else by.set(k, [a]);
     }
-    return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
-  }, [rest]);
+    return by;
+  }, [agents]);
 
-  const working = agents.filter((a) => a.status === AgentStatus.StatusWorking).length;
+  const commands = useMemo<Command[]>(() => {
+    const cmds: Command[] = agents.map((a) => ({
+      id: `pane:${a.paneId}`,
+      label: `${a.agent || "pane"} · ${a.project || a.cwd || a.paneId}`,
+      hint: `${statusLabel(a.status)} · ${a.paneId}`,
+      run: () => setOpenPane(a.paneId),
+    }));
+    cmds.push(
+      { id: "cmd:settings", label: "Open settings", hint: "theme, server", run: () => setOverlay("settings") },
+      { id: "cmd:sessions", label: "Switch session", hint: "herdr session", run: () => setOverlay("sessions") },
+      {
+        id: "cmd:theme",
+        label: `Theme: ${pref}`,
+        hint: "cycle light / dark / system",
+        run: () => setPref(pref === "light" ? "dark" : pref === "dark" ? "system" : "light"),
+      },
+    );
+    return cmds;
+  }, [agents, pref, setPref]);
+
+  // Global keys. Escape is deliberately NOT handled here: each overlay owns its
+  // own Escape so the innermost surface closes first.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setOverlay((v) => (v === "palette" ? null : "palette"));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const closeOverlay = useCallback(() => setOverlay(null), []);
+
+  const counts = useMemo(() => {
+    const blocked = agents.filter((a) => a.status === "blocked").length;
+    const working = agents.filter((a) => a.status === "working").length;
+    return { blocked, working, total: agents.length };
+  }, [agents]);
 
   return (
     <div className="app">
-      <header className="header">
-        <div className="header-title">
-          <span className="dot" data-on={error ? "0" : "1"} />
-          Herdr Tunnel
-          {client?.readOnly && <span className="badge">read-only</span>}
+      <header className="rail">
+        <div className="rail__brand">
+          <span className="rail__mark" aria-hidden="true" />
+          <span className="rail__name">Herdr</span>
         </div>
-        <div className="header-meta">
-          {agents.length} agents · {working} working
-          {session && session.provider !== "desktop" && ` · ${session.user}`}
+
+        <p className="rail__summary mono" aria-live="polite">
+          {!ready
+            ? "connecting…"
+            : counts.blocked > 0
+              ? `${counts.blocked} need${counts.blocked === 1 ? "s" : ""} you`
+              : `${counts.working}/${counts.total} working`}
+        </p>
+
+        <div className="rail__actions">
+          <button
+            className="btn btn--icon"
+            onClick={() => setOverlay("palette")}
+            aria-label="Command palette"
+            title="Jump to an agent (⌘K)"
+          >
+            <span className="mono kbd-hint">⌘K</span>
+          </button>
+          {client?.sessions && (
+            <button
+              className="btn btn--icon"
+              onClick={() => setOverlay("sessions")}
+              aria-label="Switch session"
+              title="Session"
+            >
+              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                <rect x="2" y="3" width="12" height="4" rx="1.2" fill="none" stroke="currentColor" strokeWidth="1.4" />
+                <rect x="2" y="9" width="12" height="4" rx="1.2" fill="none" stroke="currentColor" strokeWidth="1.4" />
+              </svg>
+            </button>
+          )}
+          <button
+            className="btn btn--icon"
+            onClick={() => setOverlay("settings")}
+            aria-label="Settings"
+            title="Settings"
+          >
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+              <circle cx="8" cy="8" r="2.4" fill="none" stroke="currentColor" strokeWidth="1.4" />
+              <path
+                d="M8 1.6v1.6M8 12.8v1.6M14.4 8h-1.6M3.2 8H1.6M12.5 3.5l-1.1 1.1M4.6 11.4l-1.1 1.1M12.5 12.5l-1.1-1.1M4.6 4.6 3.5 3.5"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
         </div>
       </header>
 
       {error && (
-        <div className="banner banner-error" onClick={() => setError(null)}>
+        <p className="banner" role="alert">
           {error}
-        </div>
+        </p>
       )}
 
-      <main className="list">
-        {!ready && <div className="empty">Loading…</div>}
-
-        {ready && agents.length === 0 && (
-          <div className="empty">
-            No agents running.
-            <div className="empty-sub">Start one in herdr and it will appear here.</div>
-          </div>
-        )}
-
-        {client && blocked.length > 0 && (
-          <section>
-            <h2 className="section-title section-title-alert">Needs you ({blocked.length})</h2>
-            {blocked.map((a) => (
-              <AgentRow
-                key={a.paneId}
-                agent={a}
-                client={client}
-                onOutput={(agent, text) => setOutput({ agent, text })}
-                onError={setError}
-              />
-            ))}
-          </section>
-        )}
-
-        {client &&
-          byWorkspace.map(([ws, list]) => (
-            <section key={ws}>
-              <h2 className="section-title">
-                {ws} <span className="count">{list.length}</span>
-              </h2>
-              {list.map((a) => (
-                <AgentRow
-                  key={a.paneId}
-                  agent={a}
-                  client={client}
-                  onOutput={(agent, text) => setOutput({ agent, text })}
-                  onError={setError}
-                />
-              ))}
-            </section>
-          ))}
-      </main>
-
-      {output && client && (
-        <PaneDrawer
-          agent={output.agent}
-          text={output.text}
+      {current && client ? (
+        <PaneView
           client={client}
-          onText={(text) => setOutput({ agent: output.agent, text })}
-          onClose={() => setOutput(null)}
-          onError={setError}
+          agent={current}
+          onBack={() => setOpenPane(null)}
+          onRename={(a) => setRenaming(a)}
         />
+      ) : (
+        <main className="board">
+          {!ready && <p className="empty mono">Connecting to herdr…</p>}
+          {ready && agents.length === 0 && (
+            <p className="empty">
+              No agents are running.
+              <span className="mono">Start one in herdr and it appears here.</span>
+            </p>
+          )}
+
+          {GROUPS.map(({ key, label }) => {
+            const list = grouped.get(key);
+            if (!list || list.length === 0) return null;
+            return (
+              <section className="group" key={key}>
+                <h2 className={`group__head mono group__head--${key}`}>
+                  {label}
+                  <span className="group__n">{list.length}</span>
+                </h2>
+                <ul className="list">
+                  {list.map((a) => (
+                    <li key={a.paneId}>
+                      <button className="row" onClick={() => setOpenPane(a.paneId)}>
+                        <StatusDot status={a.status} />
+                        <span className="row__main">
+                          <span className="row__title">{a.agent || "pane"}</span>
+                          <span className="row__sub mono">{a.project || a.cwd || a.paneId}</span>
+                        </span>
+                        <svg className="row__go" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                          <path
+                            d="m6 3 5 5-5 5"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.6"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            );
+          })}
+        </main>
+      )}
+
+      {overlay === "palette" && <Palette commands={commands} onClose={closeOverlay} />}
+      {overlay === "settings" && (
+        <SettingsSheet
+          session={session}
+          client={client}
+          pref={pref}
+          actual={actual}
+          onPref={setPref}
+          onClose={closeOverlay}
+        />
+      )}
+      {overlay === "sessions" && client && (
+        <SessionSheet client={client} onClose={closeOverlay} />
+      )}
+      {renaming && client && (
+        <RenameSheet client={client} agent={renaming} onClose={() => setRenaming(null)} />
       )}
     </div>
   );

@@ -4,6 +4,22 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="color-scheme" content="dark light" />
+    <!--
+      PWA install metadata. Colours are Cobalt's --color-paper token from
+      tokens.css, converted from oklch to hex because neither the Web App
+      Manifest spec nor <meta name="theme-color"> accept oklch():
+
+        light  --color-paper  oklch(98.5% 0.004 250)  ->  #f8fafd
+        dark   --color-paper  oklch(19%   0.014 260)  ->  #10141a
+
+      Cross-checked against a browser's own conversion (2D canvas pixel
+      read-back in the sRGB colour space), not hand-computed only.
+    -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" type="image/png" href="/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <meta name="theme-color" content="#f8fafd" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#10141a" media="(prefers-color-scheme: dark)" />
     <title>Herdr Tunnel</title>
     <style>
       /* Shown until React mounts over it. A blank window is impossible to

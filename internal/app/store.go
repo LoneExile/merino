@@ -73,11 +73,26 @@ func statusRank(s herdr.AgentStatus) int {
 type Store struct {
 	mu    sync.RWMutex
 	panes map[string]herdr.PaneInfo
+
+	// onBlocked, if set, is called for every agent pane observed
+	// transitioning from a known non-blocked status into blocked — never for
+	// a pane merely discovered already blocked, and never again while it
+	// stays blocked. See SetOnBlocked.
+	onBlocked func(Agent)
 }
 
 func NewStore() *Store {
 	return &Store{panes: make(map[string]herdr.PaneInfo)}
 }
+
+// SetOnBlocked registers fn to be called whenever an agent pane transitions
+// into the blocked status — the edge, not the level: fn fires once per
+// transition and never again while a pane merely remains blocked. Wired
+// once at startup, before any background goroutine can mutate the store
+// (see AgentsService.OnBlocked and main.go); unsynchronized with concurrent
+// mutation for that reason, matching every other one-time wiring callback
+// in this package (emit, onCounts).
+func (s *Store) SetOnBlocked(fn func(Agent)) { s.onBlocked = fn }
 
 // Replace swaps in a full snapshot, returning true if anything differs from
 // what was held. Used to seed at startup and to reconcile after a resubscribe
@@ -88,18 +103,34 @@ func (s *Store) Replace(panes []herdr.PaneInfo) bool {
 		next[p.PaneID] = p
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	changed := len(next) != len(s.panes)
-	if !changed {
-		for id, p := range next {
-			old, ok := s.panes[id]
-			if !ok || !sameForUI(old, p) {
-				changed = true
-				break
-			}
+	var becameBlocked []herdr.PaneInfo
+	for id, p := range next {
+		old, existed := s.panes[id]
+		if !existed || !sameForUI(old, p) {
+			changed = true
+		}
+		// Only a pane whose PRIOR status we actually held counts as an
+		// observed transition. A pane arriving already blocked — the very
+		// first pane.list at startup, most commonly — has no prior status to
+		// have transitioned from, so it must not fire (see
+		// TestStoreDoesNotNotifyForPaneDiscoveredAlreadyBlocked).
+		if existed && p.IsAgent() && p.AgentStatus == herdr.StatusBlocked && old.AgentStatus != herdr.StatusBlocked {
+			becameBlocked = append(becameBlocked, p)
 		}
 	}
 	s.panes = next
+	hook := s.onBlocked
+	s.mu.Unlock()
+
+	// Fired outside the lock: hook is a caller-supplied callback (in
+	// practice, Server.NotifyBlocked, which itself just launches a
+	// goroutine and returns) and must never be run while holding s.mu.
+	if hook != nil {
+		for _, p := range becameBlocked {
+			hook(agentFromPane(p))
+		}
+	}
 	return changed
 }
 
@@ -107,10 +138,17 @@ func (s *Store) Replace(panes []herdr.PaneInfo) bool {
 // projection changed.
 func (s *Store) UpsertPane(p herdr.PaneInfo) bool {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	old, existed := s.panes[p.PaneID]
 	s.panes[p.PaneID] = p
-	return !existed || !sameForUI(old, p)
+	changed := !existed || !sameForUI(old, p)
+	becameBlocked := existed && p.IsAgent() && p.AgentStatus == herdr.StatusBlocked && old.AgentStatus != herdr.StatusBlocked
+	hook := s.onBlocked
+	s.mu.Unlock()
+
+	if becameBlocked && hook != nil {
+		hook(agentFromPane(p))
+	}
+	return changed
 }
 
 // RemovePane drops a pane. Returns true if it was present.
@@ -128,20 +166,28 @@ func (s *Store) RemovePane(paneID string) bool {
 // pane.updated does not fire for them.
 func (s *Store) SetStatus(paneID string, status herdr.AgentStatus, agent string) bool {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	p, ok := s.panes[paneID]
 	if !ok {
 		// Status for a pane we have not seen yet; a reconcile will fill it in.
+		s.mu.Unlock()
 		return false
 	}
 	if p.AgentStatus == status && (agent == "" || p.Agent == agent) {
+		s.mu.Unlock()
 		return false
 	}
+	becameBlocked := status == herdr.StatusBlocked && p.AgentStatus != herdr.StatusBlocked
 	p.AgentStatus = status
 	if agent != "" {
 		p.Agent = agent
 	}
 	s.panes[paneID] = p
+	hook := s.onBlocked
+	s.mu.Unlock()
+
+	if becameBlocked && hook != nil {
+		hook(agentFromPane(p))
+	}
 	return true
 }
 

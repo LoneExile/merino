@@ -153,7 +153,6 @@ const (
 // rejected with invalid_request.
 const (
 	SubPaneAgentStatusChanged SubKind = "pane.agent_status_changed"
-	SubPaneOutputMatched      SubKind = "pane.output_matched"
 	SubPaneScrollChanged      SubKind = "pane.scroll_changed"
 )
 
@@ -188,8 +187,6 @@ const (
 // Delivered by per-pane subscriptions.
 const (
 	EvPaneAgentStatusChanged EventKind = "pane.agent_status_changed"
-	EvPaneOutputMatched      EventKind = "pane.output_matched"
-	EvPaneScrollChanged      EventKind = "pane.scroll_changed"
 )
 
 // Subscription is one entry in an events.subscribe request. PaneID must be set
@@ -205,6 +202,14 @@ func GlobalSub(k SubKind) Subscription { return Subscription{Type: k} }
 // PaneSub builds a per-pane subscription.
 func PaneSub(k SubKind, paneID string) Subscription {
 	return Subscription{Type: k, PaneID: paneID}
+}
+
+// OutputMatch selects which pane.output_matched events fire. herdr's only
+// verified variant is a catch-all regex; PaneOutputSub uses it rather than
+// exposing a filter vocabulary that has never been tested against the wire.
+type OutputMatch struct {
+	Type  string `json:"type"`
+	Value string `json:"value"`
 }
 
 // Event is a streamed event envelope.

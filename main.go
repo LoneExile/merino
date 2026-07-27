@@ -14,16 +14,17 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sync/atomic"
 	"time"
 
 	"github.com/LoneExile/herdr-tunnel/internal/app"
 	"github.com/LoneExile/herdr-tunnel/internal/herdr"
+	"github.com/LoneExile/herdr-tunnel/internal/trayicon"
 	"github.com/LoneExile/herdr-tunnel/internal/web"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
-	"github.com/wailsapp/wails/v3/pkg/icons"
 )
 
 //go:embed all:frontend/dist
@@ -44,6 +45,10 @@ func main() {
 		"let the web dashboard approve prompts, send keys and interrupt agents. "+
 			"Off by default: this is arbitrary input into live terminals, and every "+
 			"action is written to the audit log")
+	allowSessionSwitch := flag.Bool("allow-session-switch", false,
+		"let the web dashboard repoint this process at a different herdr session's "+
+			"socket. Off by default: switching changes which agents every signed-in "+
+			"browser sees")
 	listen := flag.String("listen", "",
 		"serve the read-only web dashboard on this address, e.g. 127.0.0.1:8730 "+
 			"or 0.0.0.0:8730 for other devices on your network (disabled when empty)")
@@ -62,6 +67,7 @@ func main() {
 		wailsApp *application.App
 		tray     *application.SystemTray
 		webSrv   *web.Server
+		animator *trayicon.Animator
 	)
 
 	emit := func(name string, data ...any) {
@@ -75,6 +81,9 @@ func main() {
 		if tray != nil {
 			tray.SetLabel(trayLabel(c))
 		}
+		if animator != nil {
+			animator.Update(c)
+		}
 		if webSrv != nil {
 			webSrv.Notify()
 		}
@@ -83,7 +92,7 @@ func main() {
 	agents := app.NewAgentsService(client, logger, emit, onCounts)
 
 	if *listen != "" {
-		srv, err := startWeb(agents, *listen, *behindProxy, *allowWrites, assets, logger)
+		srv, err := startWeb(agents, *listen, *behindProxy, *allowWrites, *allowSessionSwitch, assets, logger)
 		if err != nil {
 			logger.Error("web dashboard failed to start", "err", err)
 			os.Exit(1)
@@ -161,12 +170,19 @@ func main() {
 	tray = wailsApp.SystemTray.New()
 	tray.SetTooltip("Herdr Tunnel")
 	tray.SetLabel(trayLabel(app.Counts{}))
-	if runtime.GOOS == "darwin" {
-		// Template icons adopt the menubar's light/dark appearance.
-		tray.SetTemplateIcon(icons.SystrayMacTemplate)
-	} else {
-		tray.SetIcon(icons.SystrayLight)
+
+	// setTrayIcon dispatches an animation frame to the platform-appropriate
+	// tray API: a template icon on darwin, so the sheep silhouette adopts
+	// the menubar's light/dark appearance, and a plain icon everywhere
+	// else, mirroring how the previous static icon was set.
+	setTrayIcon := func(icon []byte) {
+		if runtime.GOOS == "darwin" {
+			tray.SetTemplateIcon(icon)
+		} else {
+			tray.SetIcon(icon)
+		}
 	}
+	animator = trayicon.New(setTrayIcon)
 
 	menu := wailsApp.NewMenu()
 	menu.Add("Show agents").OnClick(func(*application.Context) { showPanel(tray, panel) })
@@ -191,8 +207,13 @@ func main() {
 
 	// Wails runs configured trays itself once the app is running, so no
 	// explicit tray.Run() is needed here.
-	if err := wailsApp.Run(); err != nil {
-		logger.Error("application exited", "err", err)
+	runErr := wailsApp.Run()
+	// Stop before any exit path: it halts the animation ticker, which
+	// matters even though the process is about to end, because os.Exit
+	// below would otherwise skip a deferred Stop entirely.
+	animator.Stop()
+	if runErr != nil {
+		logger.Error("application exited", "err", runErr)
 		os.Exit(1)
 	}
 }
@@ -261,7 +282,7 @@ func showPanel(tray *application.SystemTray, panel *application.WebviewWindow) {
 // Disabled unless --listen is given, and never defaults to a public bind: the
 // operator has to type the address, so exposing the herd to the LAN is always
 // a deliberate act rather than something that happens by forgetting a flag.
-func startWeb(src web.Source, addr string, behindProxy, allowWrites bool, assets embed.FS, logger *slog.Logger) (*web.Server, error) {
+func startWeb(src web.Source, addr string, behindProxy, allowWrites, allowSessionSwitch bool, assets embed.FS, logger *slog.Logger) (*web.Server, error) {
 	user := os.Getenv("HERDR_TUNNEL_USER")
 	pass := os.Getenv("HERDR_TUNNEL_PASS")
 	if user == "" || pass == "" {
@@ -275,18 +296,28 @@ func startWeb(src web.Source, addr string, behindProxy, allowWrites bool, assets
 		return nil, fmt.Errorf("locate frontend assets: %w", err)
 	}
 
-	// Writes and their audit log are enabled together. The server refuses a
-	// Writer without an Audit, so this cannot drift apart.
+	// The audit log is opened whenever the dashboard runs, not only when
+	// writes are enabled: subscribing to push notifications (below) is
+	// itself an authenticated state change and deserves the same durable
+	// record pane writes get. A read-only dashboard ran for a long time
+	// before push existed without ever needing this directory to be
+	// writable, so a failure here is only fatal when writes are also on —
+	// otherwise push subscriptions simply go unaudited (logged once) rather
+	// than taking the whole dashboard down.
 	var (
 		writer web.Writer
 		audit  *app.Audit
 	)
-	if allowWrites {
-		a, auditErr := app.NewAudit(app.DefaultAuditPath())
-		if auditErr != nil {
+	if a, auditErr := app.NewAudit(app.DefaultAuditPath()); auditErr != nil {
+		if allowWrites {
 			return nil, auditErr
 		}
+		logger.Warn("could not open audit log; push subscriptions will not be recorded",
+			"path", app.DefaultAuditPath(), "err", auditErr)
+	} else {
 		audit = a
+	}
+	if allowWrites {
 		w, castOK := src.(web.Writer)
 		if !castOK {
 			return nil, errors.New("source does not support writes")
@@ -295,6 +326,25 @@ func startWeb(src web.Source, addr string, behindProxy, allowWrites bool, assets
 		logger.Warn("web dashboard can write to your agents",
 			"audit", app.DefaultAuditPath(),
 			"note", "approvals, keys and interrupts are accepted from any signed-in browser")
+	}
+
+	// Session discovery is always offered: it is read-only, and knowing
+	// which herdr socket a dashboard is even looking at is useful whether or
+	// not switching between them is allowed.
+	var sessions web.SessionSource
+	if ss, ok := src.(web.SessionSource); ok {
+		sessions = ss
+	}
+
+	var switcher web.SessionSwitcher
+	if allowSessionSwitch {
+		sw, castOK := src.(web.SessionSwitcher)
+		if !castOK {
+			return nil, errors.New("source does not support session switching")
+		}
+		switcher = sw
+		logger.Warn("web dashboard can switch herdr sessions",
+			"note", "repointing the session changes which agents every signed-in browser sees")
 	}
 
 	srv, err := web.New(src, web.Config{
@@ -308,10 +358,25 @@ func startWeb(src web.Source, addr string, behindProxy, allowWrites bool, assets
 		Logger:      logger,
 		Writer:      writer,
 		Audit:       audit,
+		Sessions:    sessions,
+		Switcher:    switcher,
+		// Same directory the audit log above resolves to, so an operator who
+		// already knows where one lives knows where to find the other.
+		PushDir: filepath.Dir(app.DefaultAuditPath()),
 	})
 	if err != nil {
 		return nil, err
 	}
+
+	// Wire the edge-triggered blocked-transition hook straight into push.
+	// OnBlocked is defined on app.AgentsService but not part of web.Source,
+	// so this is a capability check exactly like the web.Writer cast above.
+	// NotifyBlocked itself is a no-op whenever push failed to initialise or
+	// was never configured, so wiring it unconditionally is safe.
+	if bo, ok := src.(interface{ OnBlocked(func(app.Agent)) }); ok {
+		bo.OnBlocked(srv.NotifyBlocked)
+	}
+
 	if err := srv.Start(); err != nil {
 		return nil, err
 	}

@@ -40,6 +40,18 @@ func (f *fakeWriter) Interrupt(paneID string) error {
 	f.calls = append(f.calls, "interrupt:"+paneID)
 	return f.err
 }
+func (f *fakeWriter) RenamePane(paneID, name string) error {
+	f.calls = append(f.calls, "rename_pane:"+paneID+":"+name)
+	return f.err
+}
+func (f *fakeWriter) RenameTab(tabID, name string) error {
+	f.calls = append(f.calls, "rename_tab:"+tabID+":"+name)
+	return f.err
+}
+func (f *fakeWriter) RenameWorkspace(workspaceID, name string) error {
+	f.calls = append(f.calls, "rename_workspace:"+workspaceID+":"+name)
+	return f.err
+}
 
 type nopCloser struct{ *bytes.Buffer }
 

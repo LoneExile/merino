@@ -21,6 +21,13 @@ type Writer interface {
 	SendKeys(paneID string, keys []string) error
 	Focus(paneID string) error
 	Interrupt(paneID string) error
+	// RenamePane, RenameTab and RenameWorkspace set a display name. Gated
+	// behind the same Writer as every other write: a rename reaches the
+	// same herdr session as an approval or a keystroke, so it is no less
+	// sensitive.
+	RenamePane(paneID, name string) error
+	RenameTab(tabID, name string) error
+	RenameWorkspace(workspaceID, name string) error
 }
 
 // mountWrites registers the write routes. Called only when a Writer is set.
@@ -30,6 +37,9 @@ func (s *Server) mountWrites(mux *http.ServeMux) {
 	mux.Handle("POST /api/panes/{id}/keys", s.authed(s.handleKeys))
 	mux.Handle("POST /api/panes/{id}/focus", s.authed(s.handleFocus))
 	mux.Handle("POST /api/panes/{id}/interrupt", s.authed(s.handleInterrupt))
+	mux.Handle("POST /api/panes/{id}/rename", s.authed(s.handleRenamePane))
+	mux.Handle("POST /api/tabs/{id}/rename", s.authed(s.handleRenameTab))
+	mux.Handle("POST /api/workspaces/{id}/rename", s.authed(s.handleRenameWorkspace))
 }
 
 // authorizeWrite resolves the pane and checks the identity may control it.
@@ -39,22 +49,33 @@ func (s *Server) mountWrites(mux *http.ServeMux) {
 // exists and whether this identity may touch it.
 func (s *Server) authorizeWrite(w http.ResponseWriter, r *http.Request, id Identity, action string) (string, bool) {
 	paneID := r.PathValue("id")
+	ok := s.authorizeControl(w, r, id, action, paneID, "no such pane", func(a app.Agent) bool {
+		return a.PaneID == paneID
+	})
+	return paneID, ok
+}
 
+// authorizeControl generalises authorizeWrite to targets that are not a
+// pane id. Tabs and workspaces are not first-class entities in Store — only
+// panes are, each carrying a tab and workspace id — so an agent matching
+// pred stands in for "does this target exist" exactly as the pane occupying
+// it does for authorizeWrite, and the same identical-on-refusal response
+// applies for the same reason: neither existence nor permission should be
+// distinguishable by probing.
+func (s *Server) authorizeControl(w http.ResponseWriter, r *http.Request, id Identity, action, targetID, notFoundMsg string, pred func(app.Agent) bool) bool {
 	var target *app.Agent
 	for _, a := range s.src.List() {
-		if a.PaneID == paneID {
+		if pred(a) {
 			target = &a
 			break
 		}
 	}
 	if target == nil || !s.cfg.Policy.CanControl(id, *target) {
-		s.audit(r, id, action, paneID, "", false, "not permitted")
-		// Identical response for "no such pane" and "not yours", so a caller
-		// cannot enumerate panes by probing.
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such pane"})
-		return "", false
+		s.audit(r, id, action, targetID, "", false, "not permitted")
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": notFoundMsg})
+		return false
 	}
-	return paneID, true
+	return true
 }
 
 func (s *Server) audit(r *http.Request, id Identity, action, paneID, detail string, allowed bool, errMsg string) {
@@ -163,4 +184,55 @@ func (s *Server) handleInterrupt(w http.ResponseWriter, r *http.Request, id Iden
 		return
 	}
 	s.finish(w, r, id, "interrupt", paneID, app.InterruptKey, s.cfg.Writer.Interrupt(paneID))
+}
+
+// handleRenamePane sets a pane's display name.
+func (s *Server) handleRenamePane(w http.ResponseWriter, r *http.Request, id Identity) {
+	paneID, ok := s.authorizeWrite(w, r, id, "rename_pane")
+	if !ok {
+		return
+	}
+	body, ok := decode[struct {
+		Name string `json:"name"`
+	}](w, r)
+	if !ok {
+		return
+	}
+	s.finish(w, r, id, "rename_pane", paneID, body.Name, s.cfg.Writer.RenamePane(paneID, body.Name))
+}
+
+// handleRenameTab and handleRenameWorkspace authorise via authorizeControl
+// rather than authorizeWrite: a tab or workspace id is matched against the
+// agents occupying it, since neither is tracked as a first-class entity in
+// Store.
+func (s *Server) handleRenameTab(w http.ResponseWriter, r *http.Request, id Identity) {
+	tabID := r.PathValue("id")
+	if !s.authorizeControl(w, r, id, "rename_tab", tabID, "no such tab", func(a app.Agent) bool {
+		return a.TabID == tabID
+	}) {
+		return
+	}
+	body, ok := decode[struct {
+		Name string `json:"name"`
+	}](w, r)
+	if !ok {
+		return
+	}
+	s.finish(w, r, id, "rename_tab", tabID, body.Name, s.cfg.Writer.RenameTab(tabID, body.Name))
+}
+
+func (s *Server) handleRenameWorkspace(w http.ResponseWriter, r *http.Request, id Identity) {
+	workspaceID := r.PathValue("id")
+	if !s.authorizeControl(w, r, id, "rename_workspace", workspaceID, "no such workspace", func(a app.Agent) bool {
+		return a.WorkspaceID == workspaceID
+	}) {
+		return
+	}
+	body, ok := decode[struct {
+		Name string `json:"name"`
+	}](w, r)
+	if !ok {
+		return
+	}
+	s.finish(w, r, id, "rename_workspace", workspaceID, body.Name, s.cfg.Writer.RenameWorkspace(workspaceID, body.Name))
 }

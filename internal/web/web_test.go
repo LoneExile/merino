@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log/slog"
@@ -18,12 +19,35 @@ import (
 type fakeSource struct {
 	agents []app.Agent
 	text   string
+
+	// streamEvents are delivered to onText, in order, as soon as
+	// StreamOutput is called.
+	streamEvents []string
+	// started, if set, is closed the moment StreamOutput is invoked.
+	started chan struct{}
+	// stopped, if set, is closed when StreamOutput returns — proof the
+	// background subscription actually exits rather than leaking.
+	stopped chan struct{}
 }
 
 func (f *fakeSource) List() []app.Agent  { return f.agents }
 func (f *fakeSource) Counts() app.Counts { return app.Counts{Total: len(f.agents)} }
 func (f *fakeSource) Read(string, int) (string, error) {
 	return f.text, nil
+}
+
+func (f *fakeSource) StreamOutput(ctx context.Context, _ string, _ int, onText func(string)) error {
+	if f.started != nil {
+		close(f.started)
+	}
+	if f.stopped != nil {
+		defer close(f.stopped)
+	}
+	for _, text := range f.streamEvents {
+		onText(text)
+	}
+	<-ctx.Done()
+	return nil
 }
 
 func testServer(t *testing.T, src Source, policy Policy) *Server {
@@ -63,7 +87,7 @@ func TestNewRequiresProviderAndPolicy(t *testing.T) {
 func TestUnauthenticatedAccess(t *testing.T) {
 	s := testServer(t, &fakeSource{agents: []app.Agent{agent("p1")}}, nil)
 
-	for _, path := range []string{"/api/agents", "/api/session", "/api/events", "/api/panes/p1/output"} {
+	for _, path := range []string{"/api/agents", "/api/session", "/api/events", "/api/panes/p1/output", "/api/panes/p1/stream"} {
 		rr := httptest.NewRecorder()
 		s.routes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, path, nil))
 		if rr.Code != http.StatusUnauthorized {

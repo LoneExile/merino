@@ -2,7 +2,10 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/LoneExile/herdr-tunnel/internal/herdr"
@@ -32,11 +35,9 @@ type Conn struct {
 // AgentsService is the frontend-facing API and the owner of the background
 // plumbing that keeps the store fresh.
 type AgentsService struct {
-	client *herdr.Client
-	store  *Store
-	guard  *Guard
-	subs   *SubManager
-	log    *slog.Logger
+	store *Store
+	guard *Guard
+	log   *slog.Logger
 
 	emit      func(name string, data ...any)
 	onCounts  func(Counts)
@@ -44,6 +45,19 @@ type AgentsService struct {
 
 	ctx  context.Context
 	conn Conn
+
+	// mu guards client, bgCancel and bgDone. SwitchSession replaces all
+	// three under the lock so a request can never observe a client from one
+	// herdr session paired with another session's cancel func or wait
+	// group.
+	mu       sync.RWMutex
+	client   *herdr.Client
+	bgCancel context.CancelFunc
+	// bgDone is signalled by every background goroutine startSession
+	// launches for the active client. SwitchSession waits on it after
+	// cancelling, so a slow in-flight reconcile from the outgoing session
+	// can never land after the incoming one has already reset the store.
+	bgDone *sync.WaitGroup
 }
 
 // NewAgentsService wires the service. emit publishes to the frontend and
@@ -71,8 +85,20 @@ func NewAgentsService(
 		conn:     Conn{Socket: client.Socket()},
 	}
 	s.coalescer = NewCoalescer(coalesceWindow, s.publish)
-	s.subs = NewSubManager(client, store, log, 0, s.changed)
 	return s
+}
+
+// OnBlocked registers fn to be called whenever an agent pane transitions
+// into the blocked status — never while a pane merely remains blocked. Wired
+// from main.go, once, before ServiceStartup launches any background
+// goroutine; nil (the default) until then, which is exactly correct for
+// every existing caller and test that has no notifier to attach.
+//
+// Delegates straight to Store, which is where old-vs-new status is actually
+// observed: SetStatus, UpsertPane and Replace each detect the transition
+// directly, so this service does no polling or diffing of its own.
+func (s *AgentsService) OnBlocked(fn func(Agent)) {
+	s.store.SetOnBlocked(fn)
 }
 
 // ServiceName identifies the service in Wails logs.
@@ -82,31 +108,56 @@ func (s *AgentsService) ServiceName() string { return "AgentsService" }
 // for the lifetime of the application.
 func (s *AgentsService) ServiceStartup(ctx context.Context, _ application.ServiceOptions) error {
 	s.ctx = ctx
+	s.startSession(ctx, s.client)
+	return nil
+}
+
+// startSession brings a herdr client online and launches the background
+// goroutines that keep the store in sync with it: protocol handshake,
+// initial pane.list, the per-pane status subscription, the global lifecycle
+// stream, and the safety-net reconcile.
+//
+// Pulled out of ServiceStartup so SwitchSession can repeat exactly this
+// sequence for a new client without duplicating it. The background
+// goroutines run under a child of parent, retained as bgCancel, so a later
+// switch can retire this generation before starting the next one.
+func (s *AgentsService) startSession(parent context.Context, client *herdr.Client) {
+	bgCtx, cancel := context.WithCancel(parent)
 
 	// Refuse to run against a protocol we were not written for rather than
 	// decoding an unknown wire format into silently wrong state. This is not
 	// fatal to the app: report it and keep retrying in the background.
-	if ping, err := s.client.CheckCompatible(ctx); err != nil {
+	if ping, err := client.CheckCompatible(bgCtx); err != nil {
 		s.log.Error("herdr handshake failed", "err", err)
-		s.setConn(Conn{Socket: s.client.Socket(), Error: err.Error()})
+		s.setConn(Conn{Socket: client.Socket(), Error: err.Error()})
 	} else {
 		s.log.Info("connected to herdr", "version", ping.Version, "protocol", ping.Protocol)
-		s.setConn(Conn{Connected: true, Version: ping.Version, Protocol: ping.Protocol, Socket: s.client.Socket()})
+		s.setConn(Conn{Connected: true, Version: ping.Version, Protocol: ping.Protocol, Socket: client.Socket()})
 	}
 
-	if panes, err := s.client.ListPanes(ctx); err == nil {
+	if panes, err := client.ListPanes(bgCtx); err == nil {
 		s.store.Replace(panes)
 	} else {
 		s.log.Warn("initial pane.list failed", "err", err)
 	}
 
-	go s.subs.Run(ctx)
-	go s.runLifecycle(ctx)
-	go s.runSafetyNet(ctx)
+	subs := NewSubManager(client, s.store, s.log, 0, s.changed)
 
-	s.subs.Sync(s.store.AgentPaneIDs())
+	var wg sync.WaitGroup
+	wg.Add(3)
+
+	s.mu.Lock()
+	s.client = client
+	s.bgCancel = cancel
+	s.bgDone = &wg
+	s.mu.Unlock()
+
+	go func() { defer wg.Done(); subs.Run(bgCtx) }()
+	go func() { defer wg.Done(); s.runLifecycle(bgCtx, client, subs) }()
+	go func() { defer wg.Done(); s.runSafetyNet(bgCtx, client, subs) }()
+
+	subs.Sync(s.store.AgentPaneIDs())
 	s.publish()
-	return nil
 }
 
 // ServiceShutdown releases background resources.
@@ -120,8 +171,8 @@ func (s *AgentsService) ServiceShutdown() error {
 // This connection is never restarted for subscription changes — its set is
 // static — so pane creation and destruction can never be missed while the
 // per-pane status connection churns.
-func (s *AgentsService) runLifecycle(ctx context.Context) {
-	s.client.Stream(ctx, herdr.StreamOptions{
+func (s *AgentsService) runLifecycle(ctx context.Context, client *herdr.Client, subs *SubManager) {
+	client.Stream(ctx, herdr.StreamOptions{
 		Subscriptions: []herdr.Subscription{
 			herdr.GlobalSub(herdr.SubPaneCreated),
 			herdr.GlobalSub(herdr.SubPaneClosed),
@@ -132,23 +183,23 @@ func (s *AgentsService) runLifecycle(ctx context.Context) {
 			herdr.GlobalSub(herdr.SubWorkspaceClosed),
 		},
 		OnReady: func() {
-			s.setConn(Conn{Connected: true, Version: s.conn.Version, Protocol: s.conn.Protocol, Socket: s.client.Socket()})
-			if panes, err := s.client.ListPanes(ctx); err == nil && s.store.Replace(panes) {
+			s.setConn(Conn{Connected: true, Version: s.conn.Version, Protocol: s.conn.Protocol, Socket: client.Socket()})
+			if panes, err := client.ListPanes(ctx); err == nil && s.store.Replace(panes) {
 				s.changed()
 			}
-			s.subs.Sync(s.store.AgentPaneIDs())
+			subs.Sync(s.store.AgentPaneIDs())
 		},
-		OnEvent: s.handleLifecycle,
+		OnEvent: func(ev herdr.Event) { s.handleLifecycle(ctx, ev, client, subs) },
 		OnError: func(err error) {
 			if ctx.Err() == nil {
 				s.log.Warn("lifecycle stream dropped", "err", err)
-				s.setConn(Conn{Socket: s.client.Socket(), Error: err.Error()})
+				s.setConn(Conn{Socket: client.Socket(), Error: err.Error()})
 			}
 		},
 	})
 }
 
-func (s *AgentsService) handleLifecycle(ev herdr.Event) {
+func (s *AgentsService) handleLifecycle(ctx context.Context, ev herdr.Event, client *herdr.Client, subs *SubManager) {
 	s.log.Debug("lifecycle event", "kind", ev.Event)
 	before := s.store.AgentPaneIDs()
 	var dirty bool
@@ -166,7 +217,7 @@ func (s *AgentsService) handleLifecycle(ev herdr.Event) {
 		// None of these carry a usable pane payload: agent_detected reports
 		// only ids, and tab/workspace closes destroy panes without naming
 		// them. Re-read authoritative state instead of guessing.
-		dirty = s.reconcile()
+		dirty = s.reconcile(ctx, client)
 	default:
 		return
 	}
@@ -174,7 +225,7 @@ func (s *AgentsService) handleLifecycle(ev herdr.Event) {
 	// Re-sync subscriptions only when the watched set actually moved.
 	after := s.store.AgentPaneIDs()
 	if !equalStrings(before, after) {
-		s.subs.Sync(after)
+		subs.Sync(after)
 	}
 	if dirty {
 		s.changed()
@@ -193,12 +244,15 @@ func equalStrings(a, b []string) bool {
 	return true
 }
 
-// reconcile re-reads authoritative state from the server. Returns true if the
-// UI projection changed.
-func (s *AgentsService) reconcile() bool {
-	panes, err := s.client.ListPanes(s.ctx)
+// reconcile re-reads authoritative state from client. Returns true if the
+// UI projection changed. ctx is the generation's background context, not
+// s.ctx: once it is cancelled by SwitchSession, an in-flight ListPanes must
+// return promptly rather than run to its full timeout and land after the
+// next generation has already reset the store.
+func (s *AgentsService) reconcile(ctx context.Context, client *herdr.Client) bool {
+	panes, err := client.ListPanes(ctx)
 	if err != nil {
-		if s.ctx.Err() == nil {
+		if ctx.Err() == nil {
 			s.log.Warn("reconcile failed", "err", err)
 		}
 		return false
@@ -217,7 +271,7 @@ const safetyNetInterval = 60 * time.Second
 // destroys panes without emitting pane_closed. Both were found only by
 // running against a live server. A slow reconcile bounds the damage of the
 // next such gap to one interval instead of forever, at negligible cost.
-func (s *AgentsService) runSafetyNet(ctx context.Context) {
+func (s *AgentsService) runSafetyNet(ctx context.Context, client *herdr.Client, subs *SubManager) {
 	t := time.NewTicker(safetyNetInterval)
 	defer t.Stop()
 	for {
@@ -226,12 +280,12 @@ func (s *AgentsService) runSafetyNet(ctx context.Context) {
 			return
 		case <-t.C:
 			before := s.store.AgentPaneIDs()
-			if s.reconcile() {
+			if s.reconcile(ctx, client) {
 				s.log.Debug("safety-net reconcile corrected drift")
 				s.changed()
 			}
 			if after := s.store.AgentPaneIDs(); !equalStrings(before, after) {
-				s.subs.Sync(after)
+				subs.Sync(after)
 			}
 		}
 	}
@@ -273,7 +327,24 @@ func (s *AgentsService) Read(paneID string, lines int) (string, error) {
 	if lines <= 0 {
 		lines = 50
 	}
-	return s.client.ReadPane(s.ctx, paneID, lines)
+	return s.currentClient().ReadPane(s.ctx, paneID, lines)
+}
+
+// StreamOutput streams a pane's live output until ctx is cancelled, calling
+// onText with the latest rendering on every matching change.
+//
+// ctx is the CALLER's context, not s.ctx: unlike the service's own
+// background streams, which live for the whole app, a pane subscription
+// must end the moment its one subscriber — an HTTP request, say — goes
+// away, not when the app itself shuts down.
+func (s *AgentsService) StreamOutput(ctx context.Context, paneID string, lines int, onText func(string)) error {
+	if err := s.guard.CheckPane(paneID); err != nil {
+		return err
+	}
+	if lines <= 0 {
+		lines = 200
+	}
+	return s.currentClient().StreamPaneOutput(ctx, paneID, lines, onText)
 }
 
 // Respond answers an agent's approval prompt with a canned reply.
@@ -285,7 +356,7 @@ func (s *AgentsService) Respond(paneID, text string) error {
 		return err
 	}
 	s.log.Info("respond", "pane", paneID, "text", text)
-	return s.client.SubmitText(s.ctx, paneID, text)
+	return s.currentClient().SubmitText(s.ctx, paneID, text)
 }
 
 // SendText writes arbitrary text and submits it, which is what a person typing
@@ -299,7 +370,7 @@ func (s *AgentsService) SendText(paneID, text string) error {
 		return err
 	}
 	s.log.Info("send_text", "pane", paneID, "bytes", len(text))
-	return s.client.SubmitText(s.ctx, paneID, text)
+	return s.currentClient().SubmitText(s.ctx, paneID, text)
 }
 
 // SendKeys presses allowlisted keys in a pane.
@@ -311,7 +382,7 @@ func (s *AgentsService) SendKeys(paneID string, keys []string) error {
 		return err
 	}
 	s.log.Info("send_keys", "pane", paneID, "keys", keys)
-	return s.client.SendKeys(s.ctx, paneID, keys...)
+	return s.currentClient().SendKeys(s.ctx, paneID, keys...)
 }
 
 // Interrupt sends Ctrl+c to a pane.
@@ -324,5 +395,117 @@ func (s *AgentsService) Focus(paneID string) error {
 	if err := s.guard.CheckPane(paneID); err != nil {
 		return err
 	}
-	return s.client.FocusPane(s.ctx, paneID)
+	return s.currentClient().FocusPane(s.ctx, paneID)
+}
+
+// currentClient returns the herdr client for whichever session is currently
+// active. Guarded because SwitchSession replaces it while requests may be in
+// flight.
+func (s *AgentsService) currentClient() *herdr.Client {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.client
+}
+
+// Sessions enumerates every herdr session this machine knows about,
+// best-effort probed for reachability and pane/agent counts.
+func (s *AgentsService) Sessions(ctx context.Context) ([]SessionInfo, error) {
+	return ListSessions(ctx, s.currentClient().Socket())
+}
+
+// SwitchSession repoints the service at a different herdr session's socket.
+//
+// The previous session's background goroutines are cancelled before the new
+// generation's are started, so the store is never fed events from two
+// sessions at once. id is resolved through Sessions rather than trusted as a
+// path, so a caller can never point the server at an arbitrary socket.
+func (s *AgentsService) SwitchSession(id string) error {
+	target, err := resolveSession(s.ctx, s.currentClient().Socket(), id)
+	if err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	cancel := s.bgCancel
+	done := s.bgDone
+	s.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	if done != nil {
+		// Wait for the previous generation's goroutines to actually exit —
+		// including any reconcile already in flight — before touching the
+		// store, so it can never be resurrected with stale data the instant
+		// after the new session starts.
+		done.Wait()
+	}
+
+	// Clear projected state before the new session's own reconcile runs, so
+	// a slow or unreachable target never leaves the previous session's panes
+	// on screen under the new session's identity.
+	if s.store.Replace(nil) {
+		s.changed()
+	}
+
+	s.startSession(s.ctx, herdr.New(target.Socket))
+	s.log.Info("switched herdr session", "id", id, "socket", target.Socket)
+	return nil
+}
+
+// MaxRenameLen bounds a pane, tab or workspace name.
+const MaxRenameLen = 120
+
+// checkRenameName rejects a blank or oversized name.
+//
+// A separate, small check rather than an addition to Guard: renames are
+// metadata, not text typed into a live terminal, so they do not share
+// Guard's threat model of an allowlisted or length-bounded input stream —
+// but a blank or unbounded name is still nonsensical input worth rejecting
+// before it reaches herdr.
+func checkRenameName(name string) error {
+	if strings.TrimSpace(name) == "" {
+		return fmt.Errorf("%w: empty name", ErrNotAllowed)
+	}
+	if len(name) > MaxRenameLen {
+		return fmt.Errorf("%w: %d bytes exceeds %d", ErrTooLong, len(name), MaxRenameLen)
+	}
+	return nil
+}
+
+// RenamePane sets a pane's display name via herdr.
+func (s *AgentsService) RenamePane(paneID, name string) error {
+	if err := s.guard.CheckPane(paneID); err != nil {
+		return err
+	}
+	if err := checkRenameName(name); err != nil {
+		return err
+	}
+	s.log.Info("rename_pane", "pane", paneID, "name", name)
+	return s.currentClient().RenamePane(s.ctx, paneID, name)
+}
+
+// RenameTab sets a tab's display name via herdr.
+//
+// Unlike pane writes there is no Guard.CheckPane-equivalent here: tabs are
+// not tracked as first-class entities in Store, only as a field on the panes
+// within them. The web layer authorises the request against an agent
+// occupying the tab before this is ever called (see
+// Server.authorizeControl), which is also what stands in for "does this tab
+// exist".
+func (s *AgentsService) RenameTab(tabID, name string) error {
+	if err := checkRenameName(name); err != nil {
+		return err
+	}
+	s.log.Info("rename_tab", "tab", tabID, "name", name)
+	return s.currentClient().RenameTab(s.ctx, tabID, name)
+}
+
+// RenameWorkspace sets a workspace's display name via herdr. See RenameTab
+// for why there is no store-backed existence check here.
+func (s *AgentsService) RenameWorkspace(workspaceID, name string) error {
+	if err := checkRenameName(name); err != nil {
+		return err
+	}
+	s.log.Info("rename_workspace", "workspace", workspaceID, "name", name)
+	return s.currentClient().RenameWorkspace(s.ctx, workspaceID, name)
 }

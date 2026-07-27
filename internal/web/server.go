@@ -27,6 +27,9 @@ type Source interface {
 	List() []app.Agent
 	Counts() app.Counts
 	Read(paneID string, lines int) (string, error)
+	// StreamOutput streams a pane's live output until ctx is cancelled,
+	// calling onText with the latest rendering on every matching change.
+	StreamOutput(ctx context.Context, paneID string, lines int, onText func(string)) error
 }
 
 // Config configures the HTTP server.
@@ -57,6 +60,22 @@ type Config struct {
 	// internet-reachable path into a live terminal without a durable record of
 	// who used it is not something worth shipping.
 	Audit *app.Audit
+	// Sessions lists the herdr sessions this server can see. Nil means the
+	// route does not exist, the same absence convention Writer uses for the
+	// write routes.
+	Sessions SessionSource
+	// Switcher lets an authenticated browser repoint the server at a
+	// different herdr session. Nil means the switch route does not exist;
+	// wired from --allow-session-switch in main.go.
+	Switcher SessionSwitcher
+	// PushDir is where the VAPID keypair and push-subscription store are
+	// persisted. Empty disables Web Push entirely: no VAPID keys are ever
+	// generated, the push routes do not exist, and /api/session reports
+	// pushEnabled: false — the same absence convention Writer and Switcher
+	// use. Wired from the same directory the audit log resolves to (see
+	// app.DefaultAuditPath); left empty in tests so they never touch a real
+	// VAPID keypair or subscription file on disk.
+	PushDir string
 }
 
 // Server is the read-only HTTP dashboard.
@@ -66,6 +85,10 @@ type Server struct {
 	sessions *Sessions
 	log      *slog.Logger
 	http     *http.Server
+	// push is nil whenever Web Push was never configured (PushDir == "") or
+	// failed to initialise — see New. Every push-aware code path checks this
+	// rather than assuming a non-empty Config.PushDir implies success.
+	push *pushManager
 
 	mu      sync.Mutex
 	clients map[chan []byte]struct{}
@@ -94,6 +117,9 @@ func New(src Source, cfg Config) (*Server, error) {
 	if cfg.Writer != nil && cfg.Audit == nil {
 		return nil, errors.New("web: writes require an Audit; refusing to accept unlogged writes")
 	}
+	if cfg.Switcher != nil && cfg.Sessions == nil {
+		return nil, errors.New("web: session switching requires a Sessions source")
+	}
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
@@ -107,6 +133,19 @@ func New(src Source, cfg Config) (*Server, error) {
 		sessions: sessions,
 		log:      cfg.Logger,
 		clients:  make(map[chan []byte]struct{}),
+	}
+
+	// Push failing to initialise must never take the dashboard down over a
+	// notifications feature — see newPushManager's doc comment. Disabled
+	// (PushDir == "") gets no log line; a real failure does, so an operator
+	// who expects push and doesn't get it has somewhere to look.
+	if cfg.PushDir != "" {
+		pm, err := newPushManager(cfg.PushDir, cfg.Logger)
+		if err != nil {
+			cfg.Logger.Warn("push notifications disabled", "dir", cfg.PushDir, "err", err)
+		} else {
+			s.push = pm
+		}
 	}
 	s.http = &http.Server{
 		Addr:              cfg.Addr,
@@ -138,11 +177,47 @@ func (s *Server) routes() http.Handler {
 
 	mux.Handle("GET /api/session", s.authed(s.handleSession))
 	mux.Handle("GET /api/agents", s.authed(s.handleAgents))
+	if s.cfg.Sessions != nil {
+		mux.Handle("GET /api/sessions", s.authed(s.handleSessions))
+	}
+	if s.cfg.Switcher != nil {
+		mux.Handle("POST /api/sessions/switch", s.authed(s.handleSessionSwitch))
+	}
 	mux.Handle("GET /api/events", s.authed(s.handleEvents))
 	mux.Handle("GET /api/panes/{id}/output", s.authed(s.handleOutput))
+	mux.Handle("GET /api/panes/{id}/stream", s.authed(s.handleStream))
 
 	if s.cfg.Writer != nil {
 		s.mountWrites(mux)
+	}
+
+	if s.push != nil {
+		s.mountPush(mux)
+	}
+
+	// PWA assets are served WITHOUT authentication, unlike everything else.
+	//
+	// The browser fetches <link rel="manifest">, the icons it names, and
+	// service-worker updates on its own, outside any page, and it does not
+	// send our session cookie. Behind s.authed those requests fell through to
+	// the SPA handler and got the login page back with a 200, so Chrome
+	// reported `Manifest: Line: 1, column: 1, Syntax error`, the icons decoded
+	// as HTML, and the app was not installable. The 200 is what makes it
+	// nasty: the browser cannot even tell it was redirected.
+	//
+	// None of these carry user data — an app name, two colours, and a picture
+	// of a sheep. The list is explicit rather than a prefix so that widening
+	// it is a deliberate act.
+	//
+	// Served with an explicit content type (see serveAsset) rather than
+	// falling through to handleStatic's generic, extension-sniffed file
+	// serving — a service worker or manifest served with the wrong type, or
+	// silently swallowed by the SPA fallback, fails in ways a browser gives
+	// almost no diagnostic for.
+	mux.Handle("GET /sw.js", s.public(s.handleServiceWorker))
+	mux.Handle("GET /manifest.webmanifest", s.public(s.handleManifest))
+	for _, icon := range pwaIcons {
+		mux.Handle("GET /"+icon, s.publicAsset(icon, "image/png"))
 	}
 
 	mux.Handle("GET /", s.authed(s.handleStatic))
@@ -164,6 +239,33 @@ func (s *Server) authed(h func(http.ResponseWriter, *http.Request, Identity)) ht
 			return
 		}
 		h(w, r, id)
+	})
+}
+
+// pwaIcons are the icon files the manifest names. The browser fetches these
+// with no cookie while deciding whether the app is installable, so they are
+// served publicly; keeping them in one list means the manifest and the router
+// cannot drift apart silently.
+var pwaIcons = []string{
+	"icon-192.png",
+	"icon-512.png",
+	"icon-512-maskable.png",
+	"apple-touch-icon.png",
+	// No favicon.png: index.html uses icon-192.png as the favicon.
+}
+
+// public serves a handler with no identity. Use it ONLY for assets that carry
+// no user data; everything else goes through authed.
+func (s *Server) public(h func(http.ResponseWriter, *http.Request, Identity)) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h(w, r, Identity{})
+	})
+}
+
+// publicAsset serves one named file from the embedded bundle, unauthenticated.
+func (s *Server) publicAsset(name, contentType string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.serveAsset(w, r, name, contentType, false)
 	})
 }
 
@@ -196,6 +298,7 @@ func securityHeaders(next http.Handler) http.Handler {
 				"script-src 'self' 'nonce-"+nonce+"'; "+
 				"style-src 'self' 'unsafe-inline'; "+
 				"img-src 'self' data:; connect-src 'self'; "+
+				"manifest-src 'self'; worker-src 'self'; "+
 				"base-uri 'none'; form-action 'self'; object-src 'none'")
 
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), nonceKey{}, nonce)))
@@ -207,8 +310,11 @@ func (s *Server) handleSession(w http.ResponseWriter, _ *http.Request, id Identi
 		"user":     id.Name,
 		"provider": id.Provider,
 		// A UX hint so the browser can hide affordances it cannot use. The
-		// enforcement is that the routes are absent, not this flag.
-		"readOnly": s.cfg.Writer == nil,
+		// enforcement is that the routes are absent, not these flags.
+		"readOnly":         s.cfg.Writer == nil,
+		"canRename":        s.cfg.Writer != nil,
+		"canSwitchSession": s.cfg.Switcher != nil,
+		"pushEnabled":      s.push != nil,
 	})
 }
 
@@ -291,6 +397,132 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request, id Identit
 			}
 			fmt.Fprintf(w, "event: agents\ndata: %s\n\n", b)
 			flusher.Flush()
+		}
+	}
+}
+
+// streamCoalesceWindow bounds how often a pane's live output can flush to
+// the browser. herdr's output events fire per terminal repaint — hundreds a
+// second for something like `seq 1 100000` — so forwarding every one would
+// turn a firehose into the browser's problem instead of solving it here.
+const streamCoalesceWindow = 100 * time.Millisecond
+
+// paneStreamLines is how much visible screen both the initial snapshot and
+// every live push carry. Kept equal so a client never sees the view jump
+// size the moment the first live event arrives.
+const paneStreamLines = 200
+
+// handleStream streams one pane's live output as Server-Sent Events.
+//
+// The SSE plumbing — headers, flush discipline, keepalive — is the same
+// pattern as handleEvents, copied rather than shared because the two differ
+// in everything else: this is scoped to a single pane, and its payload comes
+// from a per-pane herdr subscription that must be torn down with the request
+// instead of living for the server's lifetime.
+func (s *Server) handleStream(w http.ResponseWriter, r *http.Request, id Identity) {
+	paneID := r.PathValue("id")
+
+	// Authorise against the pane as the store knows it, exactly like
+	// handleOutput: never trust the client to send a pane it is entitled to.
+	var target *app.Agent
+	for _, a := range s.src.List() {
+		if a.PaneID == paneID {
+			target = &a
+			break
+		}
+	}
+	if target == nil || !s.cfg.Policy.CanView(id, *target) {
+		// Same response either way: do not disclose which panes exist.
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such pane"})
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "streaming unsupported"})
+		return
+	}
+	h := w.Header()
+	h.Set("Content-Type", "text/event-stream")
+	h.Set("Cache-Control", "no-store")
+	h.Set("Connection", "keep-alive")
+	// Defeat proxy buffering, which otherwise silently breaks SSE.
+	h.Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+
+	sendOutput := func(text string) {
+		b, err := json.Marshal(map[string]string{"text": text})
+		if err != nil {
+			return
+		}
+		fmt.Fprintf(w, "event: output\ndata: %s\n\n", b)
+		flusher.Flush()
+	}
+
+	// Snapshot immediately so a client that just connected paints without
+	// waiting on live output, which may not arrive for a long time on a
+	// settled pane.
+	if text, err := s.src.Read(paneID, paneStreamLines); err != nil {
+		s.log.Warn("web stream initial read", "pane", paneID, "err", err)
+	} else {
+		sendOutput(text)
+	}
+
+	ctx := r.Context()
+
+	// mailbox holds the latest text pushed by the herdr subscription. The
+	// coalescing ticker below drains it at a fixed rate instead of flushing
+	// per event, so a burst of output collapses to its latest state rather
+	// than melting a phone's connection.
+	var (
+		mu      sync.Mutex
+		latest  string
+		pending bool
+	)
+	push := func(text string) {
+		mu.Lock()
+		latest, pending = text, true
+		mu.Unlock()
+	}
+	drain := func() (string, bool) {
+		mu.Lock()
+		defer mu.Unlock()
+		if !pending {
+			return "", false
+		}
+		pending = false
+		return latest, true
+	}
+
+	// The subscription must not outlive this request: it is torn down the
+	// moment ctx ends, and subDone lets the handler wait for that teardown
+	// to finish before returning, so no goroutine survives the response.
+	subDone := make(chan struct{})
+	go func() {
+		defer close(subDone)
+		if err := s.src.StreamOutput(ctx, paneID, paneStreamLines, push); err != nil && ctx.Err() == nil {
+			s.log.Warn("web pane stream ended", "pane", paneID, "err", err)
+		}
+	}()
+
+	coalesce := time.NewTicker(streamCoalesceWindow)
+	defer coalesce.Stop()
+	keepalive := time.NewTicker(25 * time.Second)
+	defer keepalive.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			<-subDone
+			return
+		case <-keepalive.C:
+			// Comment frame: keeps intermediaries from reaping an idle stream.
+			fmt.Fprint(w, ": ping\n\n")
+			flusher.Flush()
+		case <-coalesce.C:
+			if text, ok := drain(); ok {
+				sendOutput(text)
+			}
 		}
 	}
 }
@@ -384,6 +616,48 @@ func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request, _ Identity
 	r2 := r.Clone(r.Context())
 	r2.URL.Path = "/" + p
 	http.FileServer(http.FS(s.cfg.Assets)).ServeHTTP(w, r2)
+}
+
+// handleServiceWorker serves the PWA service worker from the site root so
+// its scope covers the whole app; a worker registered from /assets/sw.js
+// could only ever control paths under /assets/.
+func (s *Server) handleServiceWorker(w http.ResponseWriter, r *http.Request, _ Identity) {
+	s.serveAsset(w, r, "sw.js", "text/javascript; charset=utf-8", true)
+}
+
+// handleManifest serves the Web App Manifest. Go's mime package does not
+// know the .webmanifest extension, and neither the browser's mime-sniffer
+// nor an operator's /etc/mime.types can be relied on to guess
+// "application/manifest+json" — so, like handleServiceWorker, this bypasses
+// handleStatic's generic (extension-sniffed) file serving entirely.
+func (s *Server) handleManifest(w http.ResponseWriter, r *http.Request, _ Identity) {
+	s.serveAsset(w, r, "manifest.webmanifest", "application/manifest+json", false)
+}
+
+// serveAsset serves one file straight out of the embedded assets with an
+// explicit, hardcoded content type — never sniffed, never dependent on the
+// host OS's mime database — so these two PWA entry points can never be
+// served with a type the browser refuses to treat as a service worker or
+// manifest, and never silently swallowed by handleStatic's SPA fallback.
+func (s *Server) serveAsset(w http.ResponseWriter, r *http.Request, name, contentType string, noCache bool) {
+	if s.cfg.Assets == nil {
+		http.Error(w, "no assets", http.StatusNotFound)
+		return
+	}
+	raw, err := fs.ReadFile(s.cfg.Assets, name)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", contentType)
+	if noCache {
+		// A stale cached service worker is worse than a slow one: an
+		// intermediate cache (or a phone's HTTP cache over a flaky tunnel
+		// connection) must never be allowed to serve last week's sw.js and
+		// silently stop an update from ever installing.
+		w.Header().Set("Cache-Control", "no-cache")
+	}
+	_, _ = w.Write(raw)
 }
 
 // Start begins listening. It returns once the listener is open so callers can
