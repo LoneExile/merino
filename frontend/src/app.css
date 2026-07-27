@@ -213,7 +213,9 @@ body {
   border: 1px solid var(--color-rule);
   border-radius: var(--radius-control);
   padding: 0 var(--space-sm);
-  min-height: 36px;
+  /* design.md accessibility floor: 44px minimum touch target. Coarse
+   * pointers bump to 48px below. Do not drop below --tap. */
+  min-height: var(--tap);
   cursor: pointer;
   white-space: nowrap;
   transition:
@@ -245,7 +247,7 @@ body {
 .btn--icon {
   display: grid;
   place-items: center;
-  min-width: 36px;
+  min-width: var(--tap);
   padding: 0 var(--space-2xs);
   border-color: transparent;
   color: var(--color-ink-3);
@@ -261,10 +263,12 @@ body {
 
 @media (pointer: coarse) {
   .btn,
-  .btn--icon {
+  .btn--icon,
+  .btn--key {
     min-height: 48px;
   }
-  .btn--icon {
+  .btn--icon,
+  .btn--key {
     min-width: 48px;
   }
 }
@@ -584,11 +588,22 @@ body {
 .composer__keys {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: var(--space-2xs);
 }
 
+.composer__keys-hint {
+  flex: none;
+  font-size: var(--text-2xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-ink-3);
+  padding-inline: var(--space-2xs);
+}
+
 .btn--key {
-  min-width: 2.5rem;
+  min-width: var(--tap);
+  min-height: var(--tap);
   padding-inline: var(--space-sm);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
@@ -611,6 +626,7 @@ body {
   border: 1px solid var(--color-rule);
   border-radius: var(--radius-control);
   padding: var(--space-xs) var(--space-sm);
+  min-height: var(--tap);
   max-height: 140px;
 }
 
@@ -641,7 +657,7 @@ body {
   position: fixed;
   inset: 0;
   z-index: 10;
-  background: oklch(20% 0.02 258 / 0.5);
+  background: var(--color-scrim);
   display: grid;
   align-items: end;
   justify-items: center;
@@ -882,7 +898,7 @@ kbd {
   justify-content: space-between;
   gap: var(--space-sm);
   width: 100%;
-  min-height: 40px;
+  min-height: var(--tap);
   padding: var(--space-2xs) var(--space-sm);
   background: transparent;
   border: 0;

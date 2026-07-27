@@ -62,6 +62,7 @@
 
   --color-focus: oklch(54.5% 0.195 256);
   --color-danger: oklch(55.5% 0.19 25);
+  --color-scrim: oklch(20% 0.02 258 / 0.5);
   --shadow-sheet: 0 -1px 2px oklch(24% 0.02 258 / 0.06), 0 -12px 32px oklch(24% 0.02 258 / 0.1);
   --shadow-pop: 0 1px 2px oklch(24% 0.02 258 / 0.06), 0 8px 24px oklch(24% 0.02 258 / 0.12);
 
@@ -115,6 +116,7 @@
 
   --color-focus: oklch(72% 0.16 254);
   --color-danger: oklch(71% 0.17 25);
+  --color-scrim: oklch(8% 0.02 260 / 0.62);
 
   --shadow-sheet: 0 -1px 2px oklch(0% 0 0 / 0.3), 0 -12px 32px oklch(0% 0 0 / 0.44);
   --shadow-pop: 0 1px 2px oklch(0% 0 0 / 0.3), 0 8px 24px oklch(0% 0 0 / 0.44);

@@ -296,15 +296,23 @@ function Composer({ client, agent, onSent }: ComposerProps) {
       )}
 
       {canApprove && (
-        <div className="composer__quick">
-          {["Yes", "Trust", "No"].map((label) => (
+        <div className="composer__quick" role="group" aria-label="Quick responses">
+          {(
+            [
+              { label: "Yes", value: "yes", aria: "Approve: Yes" },
+              { label: "Trust", value: "trust", aria: "Approve: Trust" },
+              { label: "No", value: "no", aria: "Refuse: No" },
+            ] as const
+          ).map((b) => (
             <button
-              key={label}
+              key={b.label}
+              type="button"
               className="btn btn--quick"
               disabled={busy}
-              onClick={() => void send(label.toLowerCase(), "approve")}
+              aria-label={b.aria}
+              onClick={() => void send(b.value, "approve")}
             >
-              {label}
+              {b.label}
             </button>
           ))}
         </div>
@@ -312,11 +320,12 @@ function Composer({ client, agent, onSent }: ComposerProps) {
 
       {canKeys && (
         <div className="composer__keys" role="toolbar" aria-label="Terminal keys">
+          <span className="composer__keys-hint mono">TUI</span>
           {(
             [
               { label: "Esc", keys: ["Escape"], title: "Cancel / close TUI menu" },
-              { label: "↑", keys: ["Up"], title: "Up" },
-              { label: "↓", keys: ["Down"], title: "Down" },
+              { label: "↑", keys: ["Up"], title: "Move up" },
+              { label: "↓", keys: ["Down"], title: "Move down" },
               { label: "Enter", keys: ["Enter"], title: "Select / confirm" },
               { label: "Tab", keys: ["Tab"], title: "Tab" },
             ] as const
@@ -345,7 +354,11 @@ function Composer({ client, agent, onSent }: ComposerProps) {
             value={value}
             maxLength={MAX_TEXT}
             disabled={busy}
-            placeholder={`Reply to ${agent.agent || "pane"}…`}
+            placeholder={
+              canKeys
+                ? `Reply, or Esc/↑/↓/Enter for menus…`
+                : `Reply to ${agent.agent || "pane"}…`
+            }
             aria-label={`Reply to ${agent.agent || "pane"}`}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={(e) => {
