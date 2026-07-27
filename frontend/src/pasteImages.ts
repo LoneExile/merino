@@ -9,9 +9,9 @@ export type TermPiece =
   | { kind: "text"; text: string }
   | { kind: "img"; name: string; path: string };
 
-// Any absolute or ~/ path ending in herdr-tunnel/paste/paste-N.ext
+// Match ".../herdr-tunnel/paste/paste-N.ext" with optional ~/ or absolute prefix.
 const PASTE_RE =
-  /((?:~|\/[^\s"'`]*)\/herdr-tunnel\/paste\/(paste-\d+\.(?:png|jpe?g|gif|webp)))/g;
+  /((?:~|\/)[^\s"'`]*\/herdr-tunnel\/paste\/(paste-\d+\.(?:png|jpe?g|gif|webp)))/g;
 
 export function splitPasteImages(text: string): TermPiece[] {
   if (!text) return [];
