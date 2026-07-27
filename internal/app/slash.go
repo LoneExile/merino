@@ -33,6 +33,7 @@ const MaxSlashResults = 40
 var builtinSlash = map[string][]SlashCommand{
 	"omp": {
 		{Name: "help", Value: "/help", Description: "Show help", Source: "builtin"},
+		{Name: "btw", Value: "/btw ", Description: "Side question using session context", Source: "builtin"},
 		{Name: "status", Value: "/status", Description: "Session / connection status", Source: "builtin"},
 		{Name: "model", Value: "/model ", Description: "Switch model for this session", Source: "builtin"},
 		{Name: "plan", Value: "/plan", Description: "Toggle plan mode", Source: "builtin"},
@@ -120,23 +121,19 @@ func FilterSlashCommands(agent, query, cwd string) []SlashCommand {
 	q = strings.TrimPrefix(q, "/")
 	q = strings.ToLower(q)
 
-	kind := strings.ToLower(strings.TrimSpace(agent))
-	// omp and pi share the OMP slash surface + skill: prefix.
-	pool := append([]SlashCommand(nil), builtinSlash[kind]...)
+	kind := normalizeAgentKind(agent)
+
+	// 1) Live harness builtins (omp cli.js / claude commands) — first so they
+	// win dedup over skills with the same name.
+	// 2) Static fallback table.
+	// 3) Skills + project-local commands.
+	pool := append([]SlashCommand(nil), harnessCommands(kind)...)
+	pool = append(pool, builtinSlash[kind]...)
 	if kind == "pi" {
-		// Pi also inherits omp builtins not already listed.
-		seen := map[string]struct{}{}
-		for _, c := range pool {
-			seen[c.Name] = struct{}{}
-		}
-		for _, c := range builtinSlash["omp"] {
-			if _, ok := seen[c.Name]; !ok {
-				pool = append(pool, c)
-			}
-		}
+		pool = append(pool, builtinSlash["omp"]...)
+		pool = append(pool, harnessCommands("omp")...)
 	}
 
-	// Skills + project commands. omp prefers skill:name (matches native TUI).
 	skills := loadSlashSkills(cwd)
 	for _, sk := range skills {
 		switch kind {
@@ -147,7 +144,6 @@ func FilterSlashCommands(agent, query, cwd string) []SlashCommand {
 				Description: sk.Description,
 				Source:      "skill",
 			})
-			// Also offer bare /name so typing /hall matches hallmark.
 			pool = append(pool, SlashCommand{
 				Name:        sk.Name,
 				Value:       "/" + sk.Name,
@@ -164,7 +160,7 @@ func FilterSlashCommands(agent, query, cwd string) []SlashCommand {
 		}
 	}
 
-	// Dedup by name (first wins — builtins before skills).
+	// Dedup by name (first wins → harness builtins beat skills).
 	seen := map[string]struct{}{}
 	out := make([]SlashCommand, 0, len(pool))
 	for _, c := range pool {
@@ -180,11 +176,15 @@ func FilterSlashCommands(agent, query, cwd string) []SlashCommand {
 	}
 
 	sort.SliceStable(out, func(i, j int) bool {
-		// Prefer prefix matches, then shorter names, then alpha.
 		ni, nj := strings.ToLower(out[i].Name), strings.ToLower(out[j].Name)
+		// Builtins before skills when both match.
+		bi, bj := out[i].Source == "builtin" || out[i].Source == "", out[j].Source == "builtin" || out[j].Source == ""
 		pi, pj := q != "" && strings.HasPrefix(ni, q), q != "" && strings.HasPrefix(nj, q)
 		if pi != pj {
 			return pi
+		}
+		if bi != bj {
+			return bi
 		}
 		if len(ni) != len(nj) {
 			return len(ni) < len(nj)
