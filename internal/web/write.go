@@ -14,6 +14,10 @@ import (
 // disabled flag — and enabling writes is a visible act at the call site.
 type Writer interface {
 	Respond(paneID, text string) error
+	// SendText writes arbitrary text. Higher trust than Respond: bounded by
+	// length rather than an allowlist, because replying to an agent is the
+	// whole point of the product and canned answers cannot express it.
+	SendText(paneID, text string) error
 	SendKeys(paneID string, keys []string) error
 	Focus(paneID string) error
 	Interrupt(paneID string) error
@@ -22,6 +26,7 @@ type Writer interface {
 // mountWrites registers the write routes. Called only when a Writer is set.
 func (s *Server) mountWrites(mux *http.ServeMux) {
 	mux.Handle("POST /api/panes/{id}/respond", s.authed(s.handleRespond))
+	mux.Handle("POST /api/panes/{id}/text", s.authed(s.handleText))
 	mux.Handle("POST /api/panes/{id}/keys", s.authed(s.handleKeys))
 	mux.Handle("POST /api/panes/{id}/focus", s.authed(s.handleFocus))
 	mux.Handle("POST /api/panes/{id}/interrupt", s.authed(s.handleInterrupt))
@@ -107,6 +112,26 @@ func (s *Server) handleRespond(w http.ResponseWriter, r *http.Request, id Identi
 		return
 	}
 	s.finish(w, r, id, "respond", paneID, body.Text, s.cfg.Writer.Respond(paneID, body.Text))
+}
+
+// handleText sends free-form text to a pane.
+//
+// This is the widest write in the API: unlike Respond it is not allowlisted,
+// only length-bounded by the guard. It is audited with the full payload,
+// because "sent something" is useless after the fact — what was sent is the
+// entire record.
+func (s *Server) handleText(w http.ResponseWriter, r *http.Request, id Identity) {
+	paneID, ok := s.authorizeWrite(w, r, id, "text")
+	if !ok {
+		return
+	}
+	body, ok := decode[struct {
+		Text string `json:"text"`
+	}](w, r)
+	if !ok {
+		return
+	}
+	s.finish(w, r, id, "text", paneID, body.Text, s.cfg.Writer.SendText(paneID, body.Text))
 }
 
 func (s *Server) handleKeys(w http.ResponseWriter, r *http.Request, id Identity) {

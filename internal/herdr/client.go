@@ -195,14 +195,18 @@ type PaneRead struct {
 	Truncated bool   `json:"truncated"`
 }
 
-// ReadPane returns recent terminal output for a pane. ANSI escapes are
-// stripped server-side, so the result is plain text.
+// ReadPane returns what is currently on a pane's screen, as plain text.
 //
-// The response nests the payload one level deep as
+// Uses ReadVisible, not ReadRecent. The sources are not interchangeable:
+// "recent" means output since the last read, so it returns an empty string for
+// any pane that has settled — which is most of them, most of the time. A
+// viewer asking "show me this pane" wants the screen, not a diff.
+//
+// The response also nests the payload one level deep as
 // {"type":"pane_read","read":{...,"text":"..."}}; reading a top-level "text"
 // field silently yields an empty string for every pane.
 func (c *Client) ReadPane(ctx context.Context, paneID string, lines int) (string, error) {
-	r, err := c.ReadPaneFull(ctx, paneID, ReadRecent, lines)
+	r, err := c.ReadPaneFull(ctx, paneID, ReadVisible, lines)
 	if err != nil {
 		return "", err
 	}

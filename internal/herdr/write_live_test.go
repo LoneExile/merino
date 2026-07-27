@@ -84,6 +84,10 @@ func TestLiveSendTextAccepted(t *testing.T) {
 
 // ReadPane must return the pane's text, not an empty string.
 //
+// Uses ReadVisible deliberately: ReadRecent returns output since the last
+// read, so it is empty for any settled pane and would make this assertion
+// pass or fail depending on whether an agent happened to be mid-output.
+//
 // Regression test: pane.read nests its payload as
 // {"type":"pane_read","read":{"text":...}}. An earlier implementation looked
 // for a top-level "text" field and silently returned "" for every pane, which
@@ -102,7 +106,7 @@ func TestLiveReadPaneReturnsActualText(t *testing.T) {
 
 	var sawText bool
 	for _, pane := range panes {
-		full, err := c.ReadPaneFull(ctx, pane.PaneID, herdr.ReadRecent, 50)
+		full, err := c.ReadPaneFull(ctx, pane.PaneID, herdr.ReadVisible, 50)
 		if err != nil {
 			t.Fatalf("pane.read %s: %v", pane.PaneID, err)
 		}

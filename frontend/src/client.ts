@@ -37,6 +37,11 @@ export interface Client {
 
   /** Write operations. Absent on read-only transports. */
   respond?(paneId: string, text: string): Promise<void>;
+  /**
+   * Send arbitrary text to a pane — replying to an agent rather than picking
+   * a canned answer. Wider than respond: length-bounded, not allowlisted.
+   */
+  sendText?(paneId: string, text: string): Promise<void>;
   focus?(paneId: string): Promise<void>;
   interrupt?(paneId: string): Promise<void>;
 }
@@ -138,6 +143,7 @@ async function httpClient(): Promise<Client> {
   return {
     ...base,
     respond: (paneId, text) => postJSON(`/api/panes/${pane(paneId)}/respond`, { text }),
+    sendText: (paneId, text) => postJSON(`/api/panes/${pane(paneId)}/text`, { text }),
     focus: (paneId) => postJSON(`/api/panes/${pane(paneId)}/focus`),
     interrupt: (paneId) => postJSON(`/api/panes/${pane(paneId)}/interrupt`),
   };

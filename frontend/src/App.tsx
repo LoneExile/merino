@@ -111,6 +111,98 @@ function AgentRow({
   );
 }
 
+/** Mirrors app.MaxFreeTextLen so the limit is felt while typing, not as a 400. */
+const MAX_REPLY = 1000;
+
+function PaneDrawer({
+  agent,
+  text,
+  client,
+  onText,
+  onClose,
+  onError,
+}: {
+  agent: Agent;
+  text: string;
+  client: Client;
+  onText: (text: string) => void;
+  onClose: () => void;
+  onError: (msg: string) => void;
+}) {
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const refresh = useCallback(async () => {
+    try {
+      onText(await client.read(agent.paneId, 50));
+    } catch (err) {
+      onError(err instanceof Error ? err.message : String(err));
+    }
+  }, [agent.paneId, client, onText, onError]);
+
+  const send = useCallback(async () => {
+    const body = draft.trim();
+    if (!body || body.length > MAX_REPLY || !client.sendText) return;
+    setBusy(true);
+    try {
+      // A newline submits it, which is what typing into the agent would do.
+      await client.sendText(agent.paneId, body + "\n");
+      setDraft("");
+      // Give the agent a moment to react before showing the result.
+      await new Promise((r) => setTimeout(r, 600));
+      await refresh();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }, [draft, client, agent.paneId, refresh, onError]);
+
+  return (
+    <div className="drawer">
+      <div className="drawer-head">
+        <span>
+          {agent.agent} · {agent.paneId}
+        </span>
+        <div className="drawer-head-actions">
+          <button className="btn" onClick={() => void refresh()}>
+            Refresh
+          </button>
+          <button className="btn" onClick={onClose}>
+            Close
+          </button>
+        </div>
+      </div>
+      <pre className="drawer-body">{text || "(nothing on screen)"}</pre>
+      {client.sendText && (
+        <div className="drawer-reply">
+          <input
+            className="reply-input"
+            placeholder={`Reply to ${agent.agent}…`}
+            value={draft}
+            maxLength={MAX_REPLY}
+            disabled={busy}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                void send();
+              }
+            }}
+          />
+          <button
+            className="btn btn-ok"
+            disabled={busy || !draft.trim() || draft.length > MAX_REPLY}
+            onClick={() => void send()}
+          >
+            Send
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const { client, session, agents, ready, error, setError } = useHerd();
   const [output, setOutput] = useState<{ agent: Agent; text: string } | null>(null);
@@ -192,18 +284,15 @@ export default function App() {
           ))}
       </main>
 
-      {output && (
-        <div className="drawer">
-          <div className="drawer-head">
-            <span>
-              {output.agent.agent} · {output.agent.paneId}
-            </span>
-            <button className="btn" onClick={() => setOutput(null)}>
-              Close
-            </button>
-          </div>
-          <pre className="drawer-body">{output.text || "(no recent output)"}</pre>
-        </div>
+      {output && client && (
+        <PaneDrawer
+          agent={output.agent}
+          text={output.text}
+          client={client}
+          onText={(text) => setOutput({ agent: output.agent, text })}
+          onClose={() => setOutput(null)}
+          onError={setError}
+        />
       )}
     </div>
   );

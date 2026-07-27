@@ -24,6 +24,10 @@ func (f *fakeWriter) Respond(paneID, text string) error {
 	f.calls = append(f.calls, "respond:"+paneID+":"+text)
 	return f.err
 }
+func (f *fakeWriter) SendText(paneID, text string) error {
+	f.calls = append(f.calls, "text:"+paneID+":"+text)
+	return f.err
+}
 func (f *fakeWriter) SendKeys(paneID string, keys []string) error {
 	f.calls = append(f.calls, "keys:"+paneID+":"+strings.Join(keys, "+"))
 	return f.err
@@ -218,13 +222,54 @@ func TestWriteRejectsOversizedAndMalformedBody(t *testing.T) {
 	}
 }
 
+// Free text is the widest write in the API. It must be authenticated,
+// policy-checked and audited with the full payload like every other write.
+func TestSendTextIsGuardedAndAudited(t *testing.T) {
+	wr := &fakeWriter{}
+	s, auditBuf := writeServer(t, nil, wr)
+
+	// Unauthenticated must not reach the pane.
+	if rr := post(t, s, nil, "/api/panes/p1/text", `{"text":"hello"}`); rr.Code != http.StatusUnauthorized {
+		t.Errorf("unauthenticated text = %d, want 401", rr.Code)
+	}
+	if len(wr.calls) != 0 {
+		t.Fatalf("unauthenticated text reached the pane: %v", wr.calls)
+	}
+
+	c := login(t, s, "alice", "correct-horse")
+	if rr := post(t, s, c, "/api/panes/p1/text", `{"text":"run the tests"}`); rr.Code != http.StatusOK {
+		t.Fatalf("text = %d: %s", rr.Code, rr.Body.String())
+	}
+	if wr.calls[0] != "text:p1:run the tests" {
+		t.Errorf("writer got %q", wr.calls[0])
+	}
+	// The payload itself must be in the log: "sent something" is not an audit.
+	if !strings.Contains(auditBuf.String(), "run the tests") {
+		t.Errorf("audit did not record the text sent: %s", auditBuf.String())
+	}
+}
+
+// Free text must respect the policy exactly like the allowlisted paths.
+func TestSendTextDeniedByPolicy(t *testing.T) {
+	wr := &fakeWriter{}
+	s, _ := writeServer(t, denyAll{}, wr)
+	c := login(t, s, "alice", "correct-horse")
+
+	if rr := post(t, s, c, "/api/panes/p1/text", `{"text":"hello"}`); rr.Code != http.StatusNotFound {
+		t.Errorf("denied text = %d, want 404", rr.Code)
+	}
+	if len(wr.calls) != 0 {
+		t.Errorf("policy-denied text reached the pane: %v", wr.calls)
+	}
+}
+
 // With no Writer the routes must not exist at all.
 func TestReadOnlyServerHasNoWriteRoutes(t *testing.T) {
 	s := testServer(t, &fakeSource{agents: []app.Agent{agent("p1")}}, nil)
 	c := login(t, s, "alice", "correct-horse")
 
 	for _, path := range []string{
-		"/api/panes/p1/respond", "/api/panes/p1/keys",
+		"/api/panes/p1/respond", "/api/panes/p1/keys", "/api/panes/p1/text",
 		"/api/panes/p1/focus", "/api/panes/p1/interrupt",
 	} {
 		rr := post(t, s, c, path, `{"text":"yes"}`)

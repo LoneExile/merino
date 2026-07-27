@@ -312,3 +312,32 @@ body {
   background: color-mix(in oklab, var(--text-dim) 18%, transparent);
   font-weight: 500;
 }
+
+.drawer-head-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.drawer-reply {
+  display: flex;
+  gap: 6px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+}
+
+.reply-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 6px 9px;
+}
+
+.reply-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
