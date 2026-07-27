@@ -1,9 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
-import {
-  AgentsService,
-  type Agent,
-} from "../bindings/github.com/LoneExile/herdr-tunnel/internal/app";
+import type { Agent } from "../bindings/github.com/LoneExile/herdr-tunnel/internal/app";
 import { AgentStatus } from "../bindings/github.com/LoneExile/herdr-tunnel/internal/herdr";
+import type { Client } from "./client";
 import { useHerd } from "./useHerd";
 import "./app.css";
 
@@ -20,10 +18,12 @@ function StatusPill({ status }: { status: AgentStatus }) {
 
 function AgentRow({
   agent,
+  client,
   onOutput,
   onError,
 }: {
   agent: Agent;
+  client: Client;
   onOutput: (a: Agent, text: string) => void;
   onError: (msg: string) => void;
 }) {
@@ -43,6 +43,11 @@ function AgentRow({
     [onError],
   );
 
+  // Write affordances only exist where the transport provides them. The web
+  // server has no write endpoints at all, so this is presentation matching
+  // reality rather than a permission check.
+  const canWrite = !client.readOnly && client.respond && client.focus && client.interrupt;
+
   return (
     <div className={`row ${agent.needsAttention ? "row-blocked" : ""}`}>
       <div className="row-main">
@@ -58,14 +63,14 @@ function AgentRow({
         </div>
       </div>
 
-      {agent.needsAttention && (
+      {canWrite && agent.needsAttention && (
         <div className="row-approvals">
           {APPROVALS.map((a) => (
             <button
               key={a.value}
               className={`btn btn-${a.kind}`}
               disabled={busy}
-              onClick={() => run(() => AgentsService.Respond(agent.paneId, a.value))}
+              onClick={() => run(() => client.respond!(agent.paneId, a.value))}
             >
               {a.label}
             </button>
@@ -79,33 +84,36 @@ function AgentRow({
           disabled={busy}
           onClick={() =>
             run(async () => {
-              const text = await AgentsService.Read(agent.paneId, 50);
+              const text = await client.read(agent.paneId, 50);
               onOutput(agent, text);
             })
           }
         >
           Output
         </button>
-        <button className="btn" disabled={busy} onClick={() => run(() => AgentsService.Focus(agent.paneId))}>
-          Focus
-        </button>
-        <button
-          className="btn btn-no"
-          disabled={busy}
-          onClick={() => run(() => AgentsService.Interrupt(agent.paneId))}
-          title="Send Ctrl+c"
-        >
-          Stop
-        </button>
+        {canWrite && (
+          <>
+            <button className="btn" disabled={busy} onClick={() => run(() => client.focus!(agent.paneId))}>
+              Focus
+            </button>
+            <button
+              className="btn btn-no"
+              disabled={busy}
+              onClick={() => run(() => client.interrupt!(agent.paneId))}
+              title="Send Ctrl+c"
+            >
+              Stop
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
 }
 
 export default function App() {
-  const { agents, conn, ready } = useHerd();
+  const { client, session, agents, ready, error, setError } = useHerd();
   const [output, setOutput] = useState<{ agent: Agent; text: string } | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   const blocked = useMemo(() => agents.filter((a) => a.needsAttention), [agents]);
   const rest = useMemo(() => agents.filter((a) => !a.needsAttention), [agents]);
@@ -124,13 +132,13 @@ export default function App() {
     <div className="app">
       <header className="header">
         <div className="header-title">
-          <span className="dot" data-on={conn?.connected ? "1" : "0"} />
+          <span className="dot" data-on={error ? "0" : "1"} />
           Herdr Tunnel
+          {client?.readOnly && <span className="badge">read-only</span>}
         </div>
         <div className="header-meta">
-          {conn?.connected
-            ? `herdr ${conn.version} · ${agents.length} agents · ${working} working`
-            : (conn?.error ?? "connecting…")}
+          {agents.length} agents · {working} working
+          {session && session.provider !== "desktop" && ` · ${session.user}`}
         </div>
       </header>
 
@@ -150,13 +158,14 @@ export default function App() {
           </div>
         )}
 
-        {blocked.length > 0 && (
+        {client && blocked.length > 0 && (
           <section>
             <h2 className="section-title section-title-alert">Needs you ({blocked.length})</h2>
             {blocked.map((a) => (
               <AgentRow
                 key={a.paneId}
                 agent={a}
+                client={client}
                 onOutput={(agent, text) => setOutput({ agent, text })}
                 onError={setError}
               />
@@ -164,21 +173,23 @@ export default function App() {
           </section>
         )}
 
-        {byWorkspace.map(([ws, list]) => (
-          <section key={ws}>
-            <h2 className="section-title">
-              {ws} <span className="count">{list.length}</span>
-            </h2>
-            {list.map((a) => (
-              <AgentRow
-                key={a.paneId}
-                agent={a}
-                onOutput={(agent, text) => setOutput({ agent, text })}
-                onError={setError}
-              />
-            ))}
-          </section>
-        ))}
+        {client &&
+          byWorkspace.map(([ws, list]) => (
+            <section key={ws}>
+              <h2 className="section-title">
+                {ws} <span className="count">{list.length}</span>
+              </h2>
+              {list.map((a) => (
+                <AgentRow
+                  key={a.paneId}
+                  agent={a}
+                  client={client}
+                  onOutput={(agent, text) => setOutput({ agent, text })}
+                  onError={setError}
+                />
+              ))}
+            </section>
+          ))}
       </main>
 
       {output && (

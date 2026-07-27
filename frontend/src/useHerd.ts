@@ -1,76 +1,56 @@
 import { useEffect, useState } from "react";
-import { Events } from "@wailsio/runtime";
-import {
-  AgentsService,
-  type Agent,
-  type Conn,
-} from "../bindings/github.com/LoneExile/herdr-tunnel/internal/app";
-
-const EVENT_AGENTS_CHANGED = "agents:changed";
-const EVENT_CONN_CHANGED = "conn:changed";
+import type { Agent } from "../bindings/github.com/LoneExile/herdr-tunnel/internal/app";
+import { makeClient, type Client, type Session } from "./client";
 
 /**
- * Wails emits with a variadic payload, so a single value may arrive either
- * bare or wrapped in a one-element array depending on the runtime path.
- * Narrow the envelope at runtime rather than asserting its shape.
- */
-function payload<T>(e: unknown): T | undefined {
-  if (e === null || typeof e !== "object" || !("data" in e)) return undefined;
-  const data: unknown = Array.isArray(e.data) ? e.data[0] : e.data;
-  if (data === undefined || data === null) return undefined;
-  // Unchecked by design: the Go side owns this schema and the bindings are
-  // regenerated from it, so a mismatch is a build-time problem, not a runtime one.
-  const typed = data as T;
-  return typed;
-}
-
-/**
- * useHerd mirrors the Go store into React.
+ * useHerd mirrors backend state into React.
  *
- * The backend is authoritative: it emits the whole agent list on every change
- * (already coalesced and sorted most-urgent-first), so this hook replaces
- * state wholesale and never merges deltas.
+ * The backend is authoritative: it sends the whole agent list on every change,
+ * already coalesced and sorted most-urgent-first, so this hook replaces state
+ * wholesale and never merges deltas.
+ *
+ * The transport — Wails IPC on the desktop, HTTP + SSE in a browser — is
+ * resolved once at mount and is otherwise invisible to components.
  */
 export function useHerd() {
+  const [client, setClient] = useState<Client | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);
-  const [conn, setConn] = useState<Conn | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
     let alive = true;
+    let unsubscribe: (() => void) | undefined;
 
-    // Seed from the current state; events only cover subsequent changes.
     void (async () => {
       try {
-        const [list, c] = await Promise.all([
-          AgentsService.List(),
-          AgentsService.Connection(),
-        ]);
+        const c = await makeClient();
+        if (!alive) return;
+        setClient(c);
+
+        // Seed before subscribing: events only describe subsequent changes.
+        const [list, sess] = await Promise.all([c.list(), c.session()]);
         if (!alive) return;
         setAgents(list ?? []);
-        setConn(c);
-      } catch {
-        // Backend not ready yet; the event stream will catch us up.
+        setSession(sess);
+
+        unsubscribe = c.subscribe(
+          (next) => setAgents(next),
+          (err) => setError(err instanceof Error ? err.message : "connection lost"),
+        );
+      } catch (err) {
+        if (alive) setError(err instanceof Error ? err.message : String(err));
       } finally {
         if (alive) setReady(true);
       }
     })();
 
-    const offAgents = Events.On(EVENT_AGENTS_CHANGED, (e: unknown) => {
-      const next = payload<Agent[]>(e);
-      if (next) setAgents(next);
-    });
-    const offConn = Events.On(EVENT_CONN_CHANGED, (e: unknown) => {
-      const next = payload<Conn>(e);
-      if (next) setConn(next);
-    });
-
     return () => {
       alive = false;
-      offAgents?.();
-      offConn?.();
+      unsubscribe?.();
     };
   }, []);
 
-  return { agents, conn, ready };
+  return { client, session, agents, ready, error, setError };
 }

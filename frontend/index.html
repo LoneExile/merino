@@ -5,9 +5,54 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="color-scheme" content="dark light" />
     <title>Herdr Tunnel</title>
+    <style>
+      /* Shown until React mounts over it. A blank window is impossible to
+         diagnose; this makes a failed mount say so. */
+      #boot {
+        font: 12px -apple-system, BlinkMacSystemFont, sans-serif;
+        color: #8b93a7;
+        padding: 16px;
+      }
+      #boot pre {
+        color: #f87171;
+        white-space: pre-wrap;
+        word-break: break-word;
+        margin: 8px 0 0;
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="boot">Loading…</div>
+    </div>
+    <script>
+      // Surface load-time failures in the UI. Without this a bundle that fails
+      // to parse leaves only the window background colour, which looks
+      // identical to "the app is broken" and gives nothing to act on.
+      (function () {
+        function report(what, detail) {
+          var boot = document.getElementById("boot");
+          if (!boot) return;
+          boot.textContent = what;
+          var pre = document.createElement("pre");
+          pre.textContent = String(detail);
+          boot.appendChild(pre);
+        }
+        window.addEventListener("error", function (e) {
+          report("Frontend failed to load.", e.message || e.error || e);
+        });
+        window.addEventListener("unhandledrejection", function (e) {
+          report("Frontend error.", e.reason);
+        });
+        // If React has not replaced #boot within a few seconds, the bundle
+        // never ran at all — a different failure from a thrown error.
+        setTimeout(function () {
+          if (document.getElementById("boot")) {
+            report("Frontend did not start.", "The app bundle did not execute within 5s.");
+          }
+        }, 5000);
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
