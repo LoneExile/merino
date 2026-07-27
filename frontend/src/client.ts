@@ -85,6 +85,12 @@ export interface Client {
    * a canned answer. Wider than respond: length-bounded, not allowlisted.
    */
   sendText?(paneId: string, text: string): Promise<void>;
+  /**
+   * Press allowlisted keys in a pane (Esc, arrows, Enter, Tab, Ctrl+c, …).
+   * Required for TUI menus that do not read free text — the Ask chooser,
+   * for example, wants ↑/↓ + Enter or Esc, not a typed reply.
+   */
+  sendKeys?(paneId: string, keys: string[]): Promise<void>;
   focus?(paneId: string): Promise<void>;
   interrupt?(paneId: string): Promise<void>;
   rename?(kind: RenameKind, id: string, name: string): Promise<void>;
@@ -236,6 +242,7 @@ async function httpClient(): Promise<Client> {
     ...pushMethods,
     respond: (paneId, text) => postJSON(`/api/panes/${pane(paneId)}/respond`, { text }),
     sendText: (paneId, text) => postJSON(`/api/panes/${pane(paneId)}/text`, { text }),
+    sendKeys: (paneId, keys) => postJSON(`/api/panes/${pane(paneId)}/keys`, { keys }),
     focus: (paneId) => postJSON(`/api/panes/${pane(paneId)}/focus`),
     interrupt: (paneId) => postJSON(`/api/panes/${pane(paneId)}/interrupt`),
     rename: (kind, id, name) =>

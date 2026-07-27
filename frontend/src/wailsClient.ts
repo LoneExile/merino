@@ -74,6 +74,7 @@ export function wailsClient(): Client {
 
     respond: (paneId: string, text: string) => AgentsService.Respond(paneId, text),
     sendText: (paneId: string, text: string) => AgentsService.SendText(paneId, text),
+    sendKeys: (paneId: string, keys: string[]) => AgentsService.SendKeys(paneId, keys),
     focus: (paneId: string) => AgentsService.Focus(paneId),
     interrupt: (paneId: string) => AgentsService.Interrupt(paneId),
 

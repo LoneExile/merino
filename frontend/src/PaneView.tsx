@@ -222,6 +222,7 @@ function Composer({ client, agent, onSent }: ComposerProps) {
   const box = useRef<HTMLTextAreaElement>(null);
 
   const canWrite = Boolean(client.sendText);
+  const canKeys = Boolean(client.sendKeys);
   const canApprove = Boolean(client.respond) && agent.status === "blocked";
 
   // Grow with the content up to a cap, so a long reply is readable while the
@@ -258,7 +259,27 @@ function Composer({ client, agent, onSent }: ComposerProps) {
     [agent.paneId, busy, client, onSent, value],
   );
 
-  if (!canWrite && !canApprove) {
+  // Allowlisted keys only (server-side guard). Used for TUI menus that do not
+  // read free text — the Ask chooser wants ↑/↓ + Enter or Esc, not a typed
+  // reply in the chat box.
+  const press = useCallback(
+    async (keys: string[]) => {
+      if (!canKeys || busy) return;
+      setBusy(true);
+      setErr(null);
+      try {
+        await client.sendKeys?.(agent.paneId, keys);
+        onSent();
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : String(e));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [agent.paneId, busy, canKeys, client, onSent],
+  );
+
+  if (!canWrite && !canApprove && !canKeys) {
     return (
       <footer className="composer composer--ro">
         <span className="mono">read-only · writes are disabled on this server</span>
@@ -289,6 +310,32 @@ function Composer({ client, agent, onSent }: ComposerProps) {
         </div>
       )}
 
+      {canKeys && (
+        <div className="composer__keys" role="toolbar" aria-label="Terminal keys">
+          {(
+            [
+              { label: "Esc", keys: ["Escape"], title: "Cancel / close TUI menu" },
+              { label: "↑", keys: ["Up"], title: "Up" },
+              { label: "↓", keys: ["Down"], title: "Down" },
+              { label: "Enter", keys: ["Enter"], title: "Select / confirm" },
+              { label: "Tab", keys: ["Tab"], title: "Tab" },
+            ] as const
+          ).map((b) => (
+            <button
+              key={b.label}
+              type="button"
+              className="btn btn--key"
+              disabled={busy}
+              title={b.title}
+              aria-label={b.title}
+              onClick={() => void press([...b.keys])}
+            >
+              {b.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {canWrite && (
         <div className="composer__row">
           <textarea
@@ -302,11 +349,46 @@ function Composer({ client, agent, onSent }: ComposerProps) {
             aria-label={`Reply to ${agent.agent || "pane"}`}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={(e) => {
-              // Enter sends, Shift+Enter makes a newline — the convention every
-              // chat surface uses. IME composition must never be interrupted.
-              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+              if (e.nativeEvent.isComposing) return;
+
+              // Read the live DOM value, not React state: a keystroke that
+              // just typed the first character has not yet re-rendered, so
+              // `value` can still look empty and an immediate Enter would
+              // go to the pane instead of sending the reply.
+              const live = e.currentTarget.value;
+
+              // Empty box → TUI navigation keys go to the pane, not the chat.
+              // That is how you drive the Ask chooser (↑/↓, Enter, Esc) from a
+              // phone keyboard or a laptop without hunting for the toolbar.
+              if (canKeys && live.length === 0 && !e.metaKey && !e.ctrlKey && !e.altKey) {
+                const map: Record<string, string> = {
+                  Escape: "Escape",
+                  ArrowUp: "Up",
+                  ArrowDown: "Down",
+                  ArrowLeft: "Left",
+                  ArrowRight: "Right",
+                  Tab: "Tab",
+                  Enter: "Enter",
+                };
+                const k = map[e.key];
+                if (k) {
+                  e.preventDefault();
+                  void press([k]);
+                  return;
+                }
+              }
+
+              // Non-empty: Esc clears the draft (do not fire Escape into the
+              // pane while the user is mid-reply). Enter sends, Shift+Enter
+              // inserts a newline — the chat convention.
+              if (e.key === "Escape" && live.length > 0) {
                 e.preventDefault();
-                void send(value, "reply");
+                setValue("");
+                return;
+              }
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                void send(live, "reply");
               }
             }}
           />
