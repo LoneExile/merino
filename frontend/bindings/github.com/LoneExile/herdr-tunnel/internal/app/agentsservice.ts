@@ -9,7 +9,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -19,18 +19,14 @@ import * as $models from "./models.js";
  * Connection reports herdr connectivity.
  */
 export function Connection(): $CancellablePromise<$models.Conn> {
-    return $Call.ByID(2291788203).then(($result: any) => {
-        return $$createType0($result);
-    });
+    return $Call.ByID(2291788203);
 }
 
 /**
  * Counts returns a summary of the herd.
  */
 export function Counts(): $CancellablePromise<$models.Counts> {
-    return $Call.ByID(3973762459).then(($result: any) => {
-        return $$createType1($result);
-    });
+    return $Call.ByID(3973762459);
 }
 
 /**
@@ -50,10 +46,8 @@ export function Interrupt(paneID: string): $CancellablePromise<void> {
 /**
  * List returns the current agents, most urgent first.
  */
-export function List(): $CancellablePromise<$models.Agent[]> {
-    return $Call.ByID(2878599779).then(($result: any) => {
-        return $$createType3($result);
-    });
+export function List(): $CancellablePromise<$models.Agent[] | null> {
+    return $Call.ByID(2878599779);
 }
 
 /**
@@ -73,7 +67,7 @@ export function Respond(paneID: string, text: string): $CancellablePromise<void>
 /**
  * SendKeys presses allowlisted keys in a pane.
  */
-export function SendKeys(paneID: string, keys: string[]): $CancellablePromise<void> {
+export function SendKeys(paneID: string, keys: string[] | null): $CancellablePromise<void> {
     return $Call.ByID(2624467717, paneID, keys);
 }
 
@@ -84,9 +78,3 @@ export function SendKeys(paneID: string, keys: string[]): $CancellablePromise<vo
 export function SendText(paneID: string, text: string): $CancellablePromise<void> {
     return $Call.ByID(1262299878, paneID, text);
 }
-
-// Private type creation functions
-const $$createType0 = $models.Conn.createFrom;
-const $$createType1 = $models.Counts.createFrom;
-const $$createType2 = $models.Agent.createFrom;
-const $$createType3 = $Create.Array($$createType2);

@@ -6,7 +6,7 @@ export {
     AgentsService
 };
 
-export {
+export type {
     Agent,
     Conn,
     Counts

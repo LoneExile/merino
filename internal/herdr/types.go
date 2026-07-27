@@ -247,11 +247,20 @@ func (e Event) Status() (StatusEvent, error) {
 // --- method params ---
 
 // ReadSource selects which part of a pane's output to read.
+//
+// These are the only values herdr accepts; anything else is rejected with
+// "unknown variant". In particular there is no "scrollback" source.
 type ReadSource string
 
 const (
-	ReadRecent    ReadSource = "recent"
-	ReadScrollest ReadSource = "scrollback"
+	// ReadVisible returns only what is currently on screen.
+	ReadVisible ReadSource = "visible"
+	// ReadRecent returns recent output including lines scrolled off screen.
+	ReadRecent ReadSource = "recent"
+	// ReadRecentUnwrapped is ReadRecent without soft-wrap line breaks.
+	ReadRecentUnwrapped ReadSource = "recent_unwrapped"
+	// ReadDetection is the slice herdr uses for agent-state detection.
+	ReadDetection ReadSource = "detection"
 )
 
 type paneListParams struct {

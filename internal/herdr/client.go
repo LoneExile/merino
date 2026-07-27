@@ -185,38 +185,45 @@ func (c *Client) ListAgentPanes(ctx context.Context) ([]PaneInfo, error) {
 	return out, nil
 }
 
+// PaneRead is the payload of a pane.read response.
+type PaneRead struct {
+	PaneID    string `json:"pane_id"`
+	Source    string `json:"source"`
+	Format    string `json:"format"`
+	Text      string `json:"text"`
+	Revision  int64  `json:"revision"`
+	Truncated bool   `json:"truncated"`
+}
+
 // ReadPane returns recent terminal output for a pane. ANSI escapes are
 // stripped server-side, so the result is plain text.
+//
+// The response nests the payload one level deep as
+// {"type":"pane_read","read":{...,"text":"..."}}; reading a top-level "text"
+// field silently yields an empty string for every pane.
 func (c *Client) ReadPane(ctx context.Context, paneID string, lines int) (string, error) {
-	p := paneReadParams{PaneID: paneID, Source: ReadRecent, StripANSI: true}
+	r, err := c.ReadPaneFull(ctx, paneID, ReadRecent, lines)
+	if err != nil {
+		return "", err
+	}
+	return r.Text, nil
+}
+
+// ReadPaneFull returns the complete pane.read payload, including whether the
+// output was truncated.
+func (c *Client) ReadPaneFull(ctx context.Context, paneID string, source ReadSource, lines int) (PaneRead, error) {
+	p := paneReadParams{PaneID: paneID, Source: source, StripANSI: true}
 	if lines > 0 {
 		p.Lines = &lines
 	}
-	var raw json.RawMessage
-	if err := c.Call(ctx, "pane.read", p, &raw); err != nil {
-		return "", err
+	var resp struct {
+		Type string   `json:"type"`
+		Read PaneRead `json:"read"`
 	}
-	// The server may answer with a bare string or an object carrying one.
-	var s string
-	if json.Unmarshal(raw, &s) == nil {
-		return s, nil
+	if err := c.Call(ctx, "pane.read", p, &resp); err != nil {
+		return PaneRead{}, err
 	}
-	var obj struct {
-		Content string `json:"content"`
-		Text    string `json:"text"`
-		Output  string `json:"output"`
-	}
-	if err := json.Unmarshal(raw, &obj); err != nil {
-		return "", fmt.Errorf("herdr: decode pane.read result: %w", err)
-	}
-	switch {
-	case obj.Content != "":
-		return obj.Content, nil
-	case obj.Text != "":
-		return obj.Text, nil
-	default:
-		return obj.Output, nil
-	}
+	return resp.Read, nil
 }
 
 // SendText writes literal text into a pane. Callers MUST validate the text
