@@ -127,14 +127,20 @@ export function PaneView({ client, agent, wrap, onBack, onRename }: PaneViewProp
     if (!el) return;
 
     const grew = text.length > prevTextLenRef.current;
+    const shrunk = text.length < prevTextLenRef.current;
     prevTextLenRef.current = text.length;
 
-    if (stickTopRef.current && grew) {
-      const { height, top } = stickTopRef.current;
-      const delta = el.scrollHeight - height;
-      el.scrollTop = top + Math.max(0, delta);
-      stickTopRef.current = null;
-    } else if (pinned) {
+    // History prepend: keep the same content under the viewport.
+    if (stickTopRef.current) {
+      if (grew) {
+        const { height, top } = stickTopRef.current;
+        const delta = el.scrollHeight - height;
+        el.scrollTop = top + Math.max(0, delta);
+        stickTopRef.current = null;
+      }
+      // While waiting for loadMore (or after a failed shrink), do NOT fall
+      // through to pin-to-bottom — that was yanking the user after an error.
+    } else if (pinned && !shrunk) {
       el.scrollTo({ top: el.scrollHeight, behavior: "auto" });
     }
 
@@ -155,6 +161,7 @@ export function PaneView({ client, agent, wrap, onBack, onRename }: PaneViewProp
     // Near the top → ask for a larger recent buffer (herdr has no offset API).
     if (el.scrollTop <= 24 && canLoadMore && !loadingMore) {
       stickTopRef.current = { height: el.scrollHeight, top: el.scrollTop };
+      setPinned(false);
       loadMore();
     }
   }, [canLoadMore, loadingMore, loadMore]);
@@ -261,7 +268,12 @@ export function PaneView({ client, agent, wrap, onBack, onRename }: PaneViewProp
               Loading earlier output…
             </div>
           )}
-          {!loadingMore && !canLoadMore && text.length > 0 && (
+          {!loadingMore && error && loaded && (
+            <div className="pane__history pane__history--err mono" role="status">
+              Couldn’t load more history — scroll stays here. {error}
+            </div>
+          )}
+          {!loadingMore && !canLoadMore && text.length > 0 && !error && (
             <div className="pane__history pane__history--end mono" role="status">
               Beginning of available history
             </div>

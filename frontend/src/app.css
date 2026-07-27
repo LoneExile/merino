@@ -659,6 +659,12 @@ html.desktop .app {
   opacity: 0.7;
 }
 
+.pane__history--err {
+  color: var(--color-danger, var(--status-blocked));
+  text-transform: none;
+  letter-spacing: 0;
+}
+
 .pane__body {
   position: relative;
   min-height: 0;
