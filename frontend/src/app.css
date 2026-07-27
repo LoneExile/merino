@@ -1099,13 +1099,22 @@ html.desktop .app {
 
 .sheet--settings {
   width: min(26rem, 100%);
+  /* Head sticky; body scrolls. minmax(0,1fr) is required so the grid child
+   * can shrink below content height on mobile. */
+  max-height: min(88dvh, 100%);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
 }
 
 .sheet--settings .sheet__body {
   padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0;
+  display: block;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .sheet__titles {
@@ -1127,6 +1136,7 @@ html.desktop .app {
   border-bottom: 1px solid var(--color-rule);
   display: grid;
   gap: var(--space-xs);
+  min-width: 0;
 }
 
 .settings-block:last-of-type {
@@ -1199,6 +1209,63 @@ html.desktop .app {
   color: var(--status-blocked);
 }
 
+.settings-keys {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1px;
+  background: var(--color-rule);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-control);
+  overflow: hidden;
+}
+
+.settings-keys li {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--space-sm);
+  min-height: var(--tap);
+  padding: 0 var(--space-sm);
+  background: var(--color-paper);
+  min-width: 0;
+}
+
+.settings-keys__combo {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.settings-keys__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--text-sm);
+  color: var(--color-ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-keys kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  min-height: 1.5rem;
+  padding: 0 6px;
+  font: 600 var(--text-2xs) / 1 var(--font-mono);
+  color: var(--color-ink);
+  background: var(--color-paper-2);
+  border: 1px solid var(--color-rule-2, var(--color-rule));
+  border-bottom-width: 2px;
+  border-radius: 4px;
+}
+
 .settings-pill {
   flex: none;
   font: 600 var(--text-2xs) / 1 var(--font-mono);
@@ -1266,7 +1333,7 @@ html.desktop .app {
 /* Dense fact grid: each cell is a labeled tile */
 .facts--dense {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr; /* overrides base .facts 2-col-of-rows */
   gap: 1px;
   background: var(--color-rule);
   border: 1px solid var(--color-rule);
@@ -1301,36 +1368,47 @@ html.desktop .app {
 }
 
 .facts--keys {
+  /* MUST reset columns — base .facts is 2-col and would tile these rows. */
   display: grid;
+  grid-template-columns: 1fr;
   gap: 1px;
   background: var(--color-rule);
   border: 1px solid var(--color-rule);
   border-radius: var(--radius-control);
   overflow: hidden;
   margin: 0;
+  width: 100%;
 }
 
 .facts--keys > div {
-  display: grid;
-  grid-template-columns: minmax(5.5rem, auto) 1fr;
-  gap: var(--space-sm);
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
   align-items: center;
+  gap: var(--space-sm);
   padding: 10px var(--space-sm);
   background: var(--color-paper);
-  min-height: calc(var(--tap) - 4px);
+  min-height: var(--tap);
+  min-width: 0;
 }
 
 .facts--keys dt {
   margin: 0;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 4px;
+  flex: 0 0 auto;
 }
 
 .facts--keys dd {
   margin: 0;
   font-size: var(--text-sm);
   color: var(--color-ink-2);
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .facts--keys kbd,
@@ -1424,8 +1502,19 @@ html.desktop .app {
 .sheet--settings .sheet__foot {
   margin: 0;
   padding: var(--space-sm) var(--space-md);
-  padding-bottom: max(var(--space-sm), env(safe-area-inset-bottom));
+  padding-bottom: max(var(--space-md), env(safe-area-inset-bottom));
   border-top: 1px solid var(--color-rule);
+  background: var(--color-paper);
+}
+
+.sheet--settings .sheet__foot .btn {
+  display: flex;
+  width: 100%;
+  text-decoration: none;
+}
+
+.sheet--settings .sheet__foot a.btn--ghost-danger {
+  color: var(--color-danger, var(--status-blocked));
 }
 
 .sheet--settings .pair {

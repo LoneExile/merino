@@ -498,34 +498,34 @@ export function SettingsSheet({
         <header className="settings-block__head">
           <h3 id="set-keys">Shortcuts</h3>
         </header>
-        <dl className="facts facts--keys">
-          <div>
-            <dt>
+        <ul className="settings-keys">
+          <li>
+            <span className="settings-keys__combo">
               <kbd>⌘</kbd>
               <kbd>K</kbd>
-            </dt>
-            <dd>Jump to agent</dd>
-          </div>
-          <div>
-            <dt>
+            </span>
+            <span className="settings-keys__label">Jump to agent</span>
+          </li>
+          <li>
+            <span className="settings-keys__combo">
               <kbd>Enter</kbd>
-            </dt>
-            <dd>Send reply</dd>
-          </div>
-          <div>
-            <dt>
+            </span>
+            <span className="settings-keys__label">Send reply</span>
+          </li>
+          <li>
+            <span className="settings-keys__combo">
               <kbd>⇧</kbd>
               <kbd>Enter</kbd>
-            </dt>
-            <dd>Newline</dd>
-          </div>
-          <div>
-            <dt>
+            </span>
+            <span className="settings-keys__label">Newline</span>
+          </li>
+          <li>
+            <span className="settings-keys__combo">
               <kbd>Esc</kbd>
-            </dt>
-            <dd>Close / back</dd>
-          </div>
-        </dl>
+            </span>
+            <span className="settings-keys__label">Close / back</span>
+          </li>
+        </ul>
       </section>
 
       {!isDesktop && (
