@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Agent } from "../bindings/github.com/LoneExile/herdr-tunnel/internal/app";
-import { makeClient, type Client, type Session } from "./client";
+import { isAuthDead, makeClient, onAuthDead, type Client, type Session } from "./client";
 
 /**
  * useHerd mirrors backend state into React.
@@ -80,6 +80,7 @@ export function useHerd() {
         if (!alive) return;
         setLive(false);
         setError(err instanceof Error ? err.message : String(err));
+        if (isAuthDead()) return;
         retryTimer = setTimeout(() => {
           void boot();
         }, backoffMs);
@@ -89,9 +90,17 @@ export function useHerd() {
       }
     };
 
+    const stopAuth = onAuthDead(() => {
+      alive = false;
+      clearRetry();
+      unsubscribe?.();
+      setLive(false);
+    });
+
     void boot();
 
     const onOnline = () => {
+      if (isAuthDead()) return;
       backoffMs = 1000;
       void boot();
     };
@@ -110,6 +119,7 @@ export function useHerd() {
       alive = false;
       clearRetry();
       unsubscribe?.();
+      stopAuth();
       window.removeEventListener("online", onOnline);
       document.removeEventListener("visibilitychange", onVisible);
     };

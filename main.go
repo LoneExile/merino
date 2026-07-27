@@ -37,6 +37,10 @@ func init() {
 	application.RegisterEvent[app.Conn](app.EventConnChanged)
 }
 
+// version is injected at link time: -ldflags "-X main.version=v0.2.0".
+// Falls back for local `go build` / just app so CheckUpdate stays honest.
+var version = "0.1.0-dev"
+
 func main() {
 	behindProxy := flag.Bool("behind-proxy", false,
 		"the server sits behind a trusted TLS-terminating proxy such as a Cloudflare tunnel; "+
@@ -104,7 +108,7 @@ func main() {
 		pairing = pair
 	}
 
-	desk = desktop.NewSettings(nil, "dev.apinant.herdr-tunnel", "0.1.0", "LoneExile/herdr-tunnel", pairing)
+	desk = desktop.NewSettings(nil, "dev.apinant.herdr-tunnel", version, "LoneExile/herdr-tunnel", pairing)
 
 	wailsApp = application.New(application.Options{
 		Name:        "Herdr Tunnel",
@@ -395,12 +399,11 @@ func startWeb(src web.Source, addr string, behindProxy, allowWrites, allowSessio
 	}
 
 	// Wire the edge-triggered blocked-transition hook straight into push.
-	// OnBlocked is defined on app.AgentsService but not part of web.Source,
-	// so this is a capability check exactly like the web.Writer cast above.
+	// AttachBlockedNotifier is a package function (not a Wails-bound method).
 	// NotifyBlocked itself is a no-op whenever push failed to initialise or
 	// was never configured, so wiring it unconditionally is safe.
-	if bo, ok := src.(interface{ OnBlocked(func(app.Agent)) }); ok {
-		bo.OnBlocked(srv.NotifyBlocked)
+	if agents, ok := src.(*app.AgentsService); ok {
+		app.AttachBlockedNotifier(agents, srv.NotifyBlocked)
 	}
 
 	if err := srv.Start(); err != nil {

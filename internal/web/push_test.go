@@ -64,7 +64,7 @@ func getWithCookie(t *testing.T, s *Server, c *http.Cookie, path string) *httpte
 func TestPushSubscribeRequiresAuth(t *testing.T) {
 	s, _ := pushTestServer(t, nil)
 	rr := post(t, s, nil, "/api/push/subscribe",
-		`{"endpoint":"https://push.example/ep1","keys":{"p256dh":"p","auth":"a"}}`)
+		`{"endpoint":"https://fcm.googleapis.com/ep1","keys":{"p256dh":"p","auth":"a"}}`)
 	if rr.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", rr.Code)
 	}
@@ -72,7 +72,7 @@ func TestPushSubscribeRequiresAuth(t *testing.T) {
 
 func TestPushUnsubscribeRequiresAuth(t *testing.T) {
 	s, _ := pushTestServer(t, nil)
-	rr := post(t, s, nil, "/api/push/unsubscribe", `{"endpoint":"https://push.example/ep1"}`)
+	rr := post(t, s, nil, "/api/push/unsubscribe", `{"endpoint":"https://fcm.googleapis.com/ep1"}`)
 	if rr.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", rr.Code)
 	}
@@ -92,7 +92,7 @@ func TestPushSubscribeIsAudited(t *testing.T) {
 	c := login(t, s, "alice", "correct-horse")
 
 	rr := post(t, s, c, "/api/push/subscribe",
-		`{"endpoint":"https://push.example/ep1","keys":{"p256dh":"p256","auth":"auth1"}}`)
+		`{"endpoint":"https://fcm.googleapis.com/ep1","keys":{"p256dh":"p256","auth":"auth1"}}`)
 	if rr.Code != http.StatusNoContent {
 		t.Fatalf("subscribe = %d: %s", rr.Code, rr.Body.String())
 	}
@@ -108,14 +108,14 @@ func TestPushSubscribeIsAudited(t *testing.T) {
 	if e.Actor != "alice" || e.Action != "push_subscribe" || !e.Allowed {
 		t.Errorf("audit entry = %+v", e)
 	}
-	if !strings.Contains(e.Detail, "https://push.example/ep1") {
+	if !strings.Contains(e.Detail, "https://fcm.googleapis.com/ep1") {
 		t.Errorf("audit did not record the endpoint: %q", e.Detail)
 	}
 
 	if len(s.push.subs) != 1 {
 		t.Fatalf("subs = %d, want 1", len(s.push.subs))
 	}
-	if got := s.push.subs["https://push.example/ep1"].Identity.Name; got != "alice" {
+	if got := s.push.subs["https://fcm.googleapis.com/ep1"].Identity.Name; got != "alice" {
 		t.Errorf("stored identity name = %q, want alice", got)
 	}
 }
@@ -125,10 +125,10 @@ func TestPushUnsubscribeIsAudited(t *testing.T) {
 	c := login(t, s, "alice", "correct-horse")
 
 	post(t, s, c, "/api/push/subscribe",
-		`{"endpoint":"https://push.example/ep1","keys":{"p256dh":"p","auth":"a"}}`)
+		`{"endpoint":"https://fcm.googleapis.com/ep1","keys":{"p256dh":"p","auth":"a"}}`)
 	auditBuf.Reset()
 
-	rr := post(t, s, c, "/api/push/unsubscribe", `{"endpoint":"https://push.example/ep1"}`)
+	rr := post(t, s, c, "/api/push/unsubscribe", `{"endpoint":"https://fcm.googleapis.com/ep1"}`)
 	if rr.Code != http.StatusNoContent {
 		t.Fatalf("unsubscribe = %d: %s", rr.Code, rr.Body.String())
 	}
@@ -153,7 +153,7 @@ func TestPushSubscribeIsIdempotentOnEndpoint(t *testing.T) {
 	s, _ := pushTestServer(t, nil)
 	c := login(t, s, "alice", "correct-horse")
 
-	body := `{"endpoint":"https://push.example/ep1","keys":{"p256dh":"p256","auth":"auth1"}}`
+	body := `{"endpoint":"https://fcm.googleapis.com/ep1","keys":{"p256dh":"p256","auth":"auth1"}}`
 	if rr := post(t, s, c, "/api/push/subscribe", body); rr.Code != http.StatusNoContent {
 		t.Fatalf("first subscribe = %d", rr.Code)
 	}
@@ -261,14 +261,14 @@ func TestNotifyBlockedRespectsPolicy(t *testing.T) {
 	s, _ := pushTestServer(t, permitOnly{name: "alice"})
 
 	if err := s.push.subscribe(pushSubscription{
-		Endpoint: "https://push.example/alice",
+		Endpoint: "https://fcm.googleapis.com/alice",
 		Keys:     pushKeys{P256dh: "p", Auth: "a"},
 		Identity: Identity{Name: "alice"},
 	}); err != nil {
 		t.Fatalf("subscribe alice: %v", err)
 	}
 	if err := s.push.subscribe(pushSubscription{
-		Endpoint: "https://push.example/bob",
+		Endpoint: "https://fcm.googleapis.com/bob",
 		Keys:     pushKeys{P256dh: "p", Auth: "a"},
 		Identity: Identity{Name: "bob"},
 	}); err != nil {
@@ -297,7 +297,7 @@ func TestNotifyBlockedPrunesGoneSubscription(t *testing.T) {
 	s, _ := pushTestServer(t, nil) // SingleOperator: permits everyone
 
 	if err := s.push.subscribe(pushSubscription{
-		Endpoint: "https://push.example/gone",
+		Endpoint: "https://fcm.googleapis.com/gone",
 		Keys:     pushKeys{P256dh: "p", Auth: "a"},
 		Identity: Identity{Name: "alice"},
 	}); err != nil {
@@ -341,7 +341,7 @@ func TestNotifyBlockedPrunesGoneSubscription(t *testing.T) {
 func TestNotifyBlockedDoesNotBlockCaller(t *testing.T) {
 	s, _ := pushTestServer(t, nil)
 	if err := s.push.subscribe(pushSubscription{
-		Endpoint: "https://push.example/slow",
+		Endpoint: "https://fcm.googleapis.com/slow",
 		Keys:     pushKeys{P256dh: "p", Auth: "a"},
 		Identity: Identity{Name: "alice"},
 	}); err != nil {
@@ -408,7 +408,7 @@ func TestPushSubscriptionsSurviveRestart(t *testing.T) {
 		t.Fatalf("newPushManager: %v", err)
 	}
 	sub := pushSubscription{
-		Endpoint: "https://push.example/ep1",
+		Endpoint: "https://fcm.googleapis.com/ep1",
 		Keys:     pushKeys{P256dh: "p", Auth: "a"},
 		Identity: Identity{Name: "alice", Subject: "sub-1", Provider: "password"},
 	}
@@ -548,4 +548,30 @@ func decodeVAPIDClaims(t *testing.T, authHeader string) map[string]any {
 		t.Fatalf("JWT payload is not JSON: %v", err)
 	}
 	return claims
+}
+
+func TestAllowedPushEndpoint(t *testing.T) {
+	ok := []string{
+		"https://fcm.googleapis.com/fcm/send/abc",
+		"https://updates.push.services.mozilla.com/wpush/v2/x",
+		"https://web.push.apple.com/x",
+	}
+	for _, u := range ok {
+		if !allowedPushEndpoint(u) {
+			t.Errorf("want allow %s", u)
+		}
+	}
+	bad := []string{
+		"http://fcm.googleapis.com/x",
+		"https://evil.example/x",
+		"https://169.254.169.254/latest",
+		"https://127.0.0.1/x",
+		"not-a-url",
+		"",
+	}
+	for _, u := range bad {
+		if allowedPushEndpoint(u) {
+			t.Errorf("want deny %s", u)
+		}
+	}
 }

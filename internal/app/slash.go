@@ -116,6 +116,24 @@ const slashSkillTTL = 30 * time.Second
 // FilterSlashCommands returns typeahead hits for query (with or without a
 // leading '/'). agent is the herdr agent label (omp/pi/claude/grok/…).
 // cwd, when non-empty, also loads project-local skills/commands from that tree.
+// safeSkillCwd rejects empty, relative, and ".." paths so a compromised
+// store value cannot walk arbitrary trees. Returns cleaned abs path or "".
+func safeSkillCwd(cwd string) string {
+	cwd = strings.TrimSpace(cwd)
+	if cwd == "" || !filepath.IsAbs(cwd) {
+		return ""
+	}
+	clean := filepath.Clean(cwd)
+	if clean == "." || strings.Contains(clean, "..") {
+		return ""
+	}
+	// filepath.Clean already collapses ..; require still absolute.
+	if !filepath.IsAbs(clean) {
+		return ""
+	}
+	return clean
+}
+
 func FilterSlashCommands(agent, query, cwd string) []SlashCommand {
 	q := strings.TrimSpace(query)
 	q = strings.TrimPrefix(q, "/")
@@ -134,7 +152,7 @@ func FilterSlashCommands(agent, query, cwd string) []SlashCommand {
 		pool = append(pool, harnessCommands("omp")...)
 	}
 
-	skills := loadSlashSkills(cwd)
+	skills := loadSlashSkills(safeSkillCwd(cwd))
 	for _, sk := range skills {
 		switch kind {
 		case "omp", "pi":

@@ -19,6 +19,38 @@
 
 import type { Agent } from "../bindings/github.com/LoneExile/herdr-tunnel/internal/app";
 
+/** Once a 401 is seen, stop SSE reconnect storms and boot retries. */
+let authDead = false;
+const authDeadListeners = new Set<() => void>();
+
+export function isAuthDead(): boolean {
+  return authDead;
+}
+
+export function onAuthDead(fn: () => void): () => void {
+  authDeadListeners.add(fn);
+  if (authDead) fn();
+  return () => {
+    authDeadListeners.delete(fn);
+  };
+}
+
+function markAuthDead(): void {
+  if (authDead) return;
+  authDead = true;
+  for (const fn of authDeadListeners) {
+    try {
+      fn();
+    } catch {
+      /* ignore listener errors */
+    }
+  }
+  if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+    window.location.href = "/login";
+  }
+}
+
+
 export interface Session {
   user: string;
   provider: string;
@@ -76,6 +108,7 @@ export interface Client {
     paneId: string,
     onText: (text: string) => void,
     onError?: (err: unknown) => void,
+    lines?: number,
   ): () => void;
 
   /** Write operations. Absent on read-only transports. */
@@ -111,7 +144,7 @@ export interface Client {
    * Slash-command typeahead for the composer. agent is the herdr label
    * (omp/pi/claude/grok). query may include the leading '/'.
    */
-  slashCommands?(agent: string, query: string, cwd?: string): Promise<SlashCommand[]>;
+  slashCommands?(paneId: string, agent: string, query: string): Promise<SlashCommand[]>;
 
   /** Desktop-only. Absent on the browser transport. */
   launchAtLogin?(): Promise<boolean>;
@@ -161,9 +194,7 @@ const webMode = (): boolean =>
 async function getJSON<T>(url: string): Promise<T> {
   const res = await fetch(url, { credentials: "same-origin" });
   if (res.status === 401) {
-    // The session expired or was never established. Hand the browser to the
-    // login page rather than rendering an empty dashboard.
-    window.location.href = "/login";
+    markAuthDead();
     throw new Error("unauthenticated");
   }
   if (!res.ok) throw new Error(`${url}: ${res.status} ${res.statusText}`);
@@ -178,7 +209,7 @@ async function postJSON(url: string, body?: unknown): Promise<void> {
     body: JSON.stringify(body ?? {}),
   });
   if (res.status === 401) {
-    window.location.href = "/login";
+    markAuthDead();
     throw new Error("unauthenticated");
   }
   if (!res.ok) {
@@ -209,9 +240,10 @@ async function httpClient(): Promise<Client> {
     session: async () => session,
     list: () => getJSON<Agent[]>("/api/agents"),
 
-    slashCommands: (agent: string, query: string, cwd?: string) => {
-      const q = new URLSearchParams({ agent, q: query });
-      if (cwd) q.set("cwd", cwd);
+    slashCommands: (paneId: string, agent: string, query: string) => {
+      const q = new URLSearchParams({ q: query });
+      if (paneId) q.set("pane", paneId);
+      if (agent) q.set("agent", agent);
       return getJSON<SlashCommand[]>(`/api/slash?${q}`);
     },
 
@@ -257,8 +289,9 @@ async function httpClient(): Promise<Client> {
       return () => es.close();
     },
 
-    streamPane(paneId, onText, onError) {
-      const es = new EventSource(`/api/panes/${pane(paneId)}/stream`, {
+    streamPane(paneId, onText, onError, lines) {
+      const q = typeof lines === "number" && lines > 0 ? `?lines=${lines}` : "";
+      const es = new EventSource(`/api/panes/${pane(paneId)}/stream${q}`, {
         withCredentials: true,
       });
       es.addEventListener("output", (ev) => {
@@ -269,7 +302,13 @@ async function httpClient(): Promise<Client> {
           onError?.(err);
         }
       });
-      es.onerror = (err) => onError?.(err);
+      es.onerror = (err) => {
+        if (isAuthDead()) {
+          es.close();
+          return;
+        }
+        onError?.(err);
+      };
       return () => es.close();
     },
 

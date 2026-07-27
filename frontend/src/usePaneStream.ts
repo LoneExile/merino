@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Client } from "./client";
+import { isAuthDead } from "./client";
 
 export interface PaneStream {
   text: string;
@@ -35,6 +36,10 @@ export const MAX_HISTORY_LINES = 2000;
  * Reads use herdr's `recent` source (via the backend), which includes
  * scrollback beyond the current viewport. Live updates keep the same
  * history window so scrolling up stays stable while the agent is working.
+ *
+ * When the user loadMores, the stream is recreated with the expanded line
+ * count so a later pin-to-bottom cannot clobber the larger buffer with a
+ * smaller default snapshot.
  */
 export function usePaneStream(
   client: Client | null,
@@ -49,11 +54,13 @@ export function usePaneStream(
   const [historyLines, setHistoryLines] = useState(INITIAL_HISTORY_LINES);
   const [loadingMore, setLoadingMore] = useState(false);
   const [canLoadMore, setCanLoadMore] = useState(true);
+  // Bumped when loadMore expands the window so the stream effect reconnects.
+  const [streamGen, setStreamGen] = useState(0);
 
   const active = useRef<string | null>(null);
   const historyRef = useRef(INITIAL_HISTORY_LINES);
   const textLenRef = useRef(0);
-  // When true, the next stream payload must not shrink history (user scrolled up).
+  // When true, reject stream payloads from a smaller window than historyRef.
   const holdHistoryRef = useRef(false);
 
   useEffect(() => {
@@ -72,18 +79,35 @@ export function usePaneStream(
     holdHistoryRef.current = false;
     setLoadingMore(false);
     setCanLoadMore(true);
+    setStreamGen(0);
     if (!client || !paneId) return;
 
     let stopStream: (() => void) | undefined;
     let timer = 0;
     let polling = false;
 
-    const accept = (t: string, fromStream: boolean) => {
+    const accept = (t: string, fromStream: boolean, streamLines?: number) => {
       if (active.current !== paneId) return;
-      // Stream payloads can briefly be shorter (viewport-only race). Never
-      // clobber a larger history buffer the user already loaded.
-      if (fromStream && holdHistoryRef.current && t.length < textLenRef.current) {
-        return;
+      // Never accept a stream payload from a smaller window while the user
+      // has expanded (or is holding) history — length alone is not enough
+      // (dense ANSI can be "longer" at fewer lines).
+      if (fromStream) {
+        const win = streamLines ?? 0;
+        if (holdHistoryRef.current && win > 0 && win < historyRef.current) {
+          return;
+        }
+        if (
+          holdHistoryRef.current &&
+          t.length < textLenRef.current &&
+          win <= historyRef.current
+        ) {
+          return;
+        }
+        // Track the stream's window so loadMore steps from reality.
+        if (win > historyRef.current) {
+          historyRef.current = win;
+          setHistoryLines(win);
+        }
       }
       textLenRef.current = t.length;
       setText(t);
@@ -92,19 +116,24 @@ export function usePaneStream(
     };
 
     const readOnce = async (lines: number) => {
+      if (isAuthDead()) return "";
       try {
         const t = await client.read(paneId, lines);
         accept(t, false);
         return t;
       } catch (err) {
         if (active.current !== paneId) return "";
+        if (isAuthDead()) {
+          setLive(false);
+          return "";
+        }
         setError(err instanceof Error ? err.message : String(err));
         return "";
       }
     };
 
     const startPolling = () => {
-      if (polling) return;
+      if (polling || isAuthDead()) return;
       polling = true;
       timer = window.setInterval(() => void readOnce(historyRef.current), POLL_MS);
     };
@@ -112,19 +141,21 @@ export function usePaneStream(
     void readOnce(historyRef.current);
 
     if (client.streamPane) {
+      const lines = historyRef.current;
       stopStream = client.streamPane(
         paneId,
         (t) => {
-          accept(t, true);
+          accept(t, true, lines);
           setLive(true);
           clearInterval(timer);
           polling = false;
         },
         () => {
-          if (active.current !== paneId) return;
+          if (active.current !== paneId || isAuthDead()) return;
           setLive(false);
           startPolling();
         },
+        lines,
       );
     } else {
       startPolling();
@@ -135,10 +166,11 @@ export function usePaneStream(
       clearInterval(timer);
       stopStream?.();
     };
-  }, [client, paneId]);
+    // streamGen reconnects after loadMore expands the window.
+  }, [client, paneId, streamGen]);
 
   const loadMore = useCallback(() => {
-    if (!client || !paneId || loadingMore || !canLoadMore) return;
+    if (!client || !paneId || loadingMore || !canLoadMore || isAuthDead()) return;
     const next = Math.min(historyRef.current + HISTORY_STEP, MAX_HISTORY_LINES);
     if (next <= historyRef.current) {
       setCanLoadMore(false);
@@ -153,7 +185,6 @@ export function usePaneStream(
         if (active.current !== paneId) return;
         historyRef.current = next;
         setHistoryLines(next);
-        // No growth → herdr has nothing older in this buffer.
         if (t.length <= prevLen) {
           setCanLoadMore(false);
         }
@@ -164,10 +195,14 @@ export function usePaneStream(
         setText(t);
         setLoaded(true);
         setError(null);
+        // Reconnect stream at the expanded window so pin cannot clobber.
+        setStreamGen((g) => g + 1);
       })
       .catch((err: unknown) => {
         if (active.current !== paneId) return;
-        setError(err instanceof Error ? err.message : String(err));
+        if (!isAuthDead()) {
+          setError(err instanceof Error ? err.message : String(err));
+        }
       })
       .finally(() => {
         if (active.current === paneId) setLoadingMore(false);

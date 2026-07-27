@@ -56,20 +56,6 @@ export function List(): $CancellablePromise<$models.Agent[]> {
     });
 }
 
-/**
- * OnBlocked registers fn to be called whenever an agent pane transitions
- * into the blocked status — never while a pane merely remains blocked. Wired
- * from main.go, once, before ServiceStartup launches any background
- * goroutine; nil (the default) until then, which is exactly correct for
- * every existing caller and test that has no notifier to attach.
- * 
- * The tray/frontend publish on the blocked edge is already wired inside
- * NewAgentsService and does not depend on this hook. fn is the external
- * side-effect path (Web Push).
- */
-export function OnBlocked(fn: any): $CancellablePromise<void> {
-    return $Call.ByID(335758706, fn);
-}
 
 /**
  * Read returns recent plain-text output for a pane.
@@ -157,11 +143,11 @@ export function Sessions(): $CancellablePromise<$models.SessionInfo[]> {
 
 /**
  * SlashCommands returns typeahead hits for the composer when the user types
- * "/…" in a pane. agent is the herdr agent label (omp/pi/claude/grok/…).
- * query may include the leading slash.
+ * "/…" in a pane. paneID selects project skills from the store CWD only.
+ * agent/query label-match; query may include the leading slash.
  */
-export function SlashCommands(agent: string, query: string, cwd: string): $CancellablePromise<$models.SlashCommand[]> {
-    return $Call.ByID(2459391730, agent, query, cwd).then(($result: any) => {
+export function SlashCommands(paneID: string, agent: string, query: string): $CancellablePromise<$models.SlashCommand[]> {
+    return $Call.ByID(2459391730, paneID, agent, query).then(($result: any) => {
         return $$createType7($result);
     });
 }

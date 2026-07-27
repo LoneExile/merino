@@ -91,6 +91,13 @@ func TestCheckFreeTextBounds(t *testing.T) {
 	if err := g.CheckFreeText(strings.Repeat("a", MaxFreeTextLen+1)); !errors.Is(err, ErrTooLong) {
 		t.Errorf("oversized text = %v, want ErrTooLong", err)
 	}
+	// Multibyte runes count as one character each, not 3 bytes.
+	if err := g.CheckFreeText(strings.Repeat("中", MaxFreeTextLen)); err != nil {
+		t.Fatalf("max runes of CJK: %v", err)
+	}
+	if err := g.CheckFreeText(strings.Repeat("中", MaxFreeTextLen+1)); !errors.Is(err, ErrTooLong) {
+		t.Fatalf("max+1 CJK runes: %v", err)
+	}
 	if err := g.CheckFreeText(strings.Repeat("a", MaxFreeTextLen)); err != nil {
 		t.Errorf("text at the limit rejected: %v", err)
 	}

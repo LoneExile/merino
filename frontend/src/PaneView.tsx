@@ -235,7 +235,16 @@ export function PaneView({ client, agent, wrap, onBack, onRename }: PaneViewProp
         {/* Sits in the terminal column, above the composer — never covers keys. */}
         {!pinned && (
           <div className="jump-dock">
-            <button type="button" className="jump" onClick={() => setPinned(true)}>
+            <button
+              type="button"
+              className="jump"
+              onClick={() => {
+                stickTopRef.current = null;
+                setPinned(true);
+                const el = scroller.current;
+                if (el) el.scrollTop = el.scrollHeight;
+              }}
+            >
               ↓ Latest
             </button>
           </div>
@@ -328,7 +337,7 @@ function Composer({ client, agent, onSent }: ComposerProps) {
     const q = token.query;
     let alive = true;
     const t = window.setTimeout(() => {
-      void client.slashCommands?.(agent.agent || "", q, agent.cwd || undefined).then(
+      void client.slashCommands?.(agent.paneId, agent.agent || "", q).then(
         (hits) => {
           if (!alive) return;
           setSlashHits(Array.isArray(hits) ? hits : []);

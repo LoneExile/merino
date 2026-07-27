@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
 
 // Writes into a pane are input to a live terminal running with the user's
@@ -18,7 +19,8 @@ var (
 	ErrTooLong = errors.New("text too long")
 )
 
-// MaxFreeTextLen caps arbitrary text sent to a pane.
+// MaxFreeTextLen caps arbitrary text sent to a pane, counted in Unicode
+// code points (runes), not UTF-8 bytes — so CJK/emoji prompts get a fair budget.
 const MaxFreeTextLen = 1000
 
 // safeResponses are the canned answers to an agent's approval prompt. Anything
@@ -107,8 +109,8 @@ func (g *Guard) CheckFreeText(text string) error {
 	if strings.TrimSpace(text) == "" {
 		return fmt.Errorf("%w: empty text", ErrNotAllowed)
 	}
-	if len(text) > MaxFreeTextLen {
-		return fmt.Errorf("%w: %d bytes exceeds %d", ErrTooLong, len(text), MaxFreeTextLen)
+	if n := utf8.RuneCountInString(text); n > MaxFreeTextLen {
+		return fmt.Errorf("%w: %d characters exceeds %d", ErrTooLong, n, MaxFreeTextLen)
 	}
 	return nil
 }

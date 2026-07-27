@@ -198,6 +198,7 @@ export default function App() {
 
       {current && client ? (
         <PaneView
+          key={current.paneId}
           client={client}
           agent={current}
           wrap={wrap}

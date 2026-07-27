@@ -28,6 +28,10 @@ import (
 	webpush "github.com/SherClockHolmes/webpush-go"
 
 	"github.com/LoneExile/herdr-tunnel/internal/app"
+
+	"net"
+	"net/url"
+	"strings"
 )
 
 const (
@@ -385,6 +389,38 @@ type pushSubscribeBody struct {
 // signed-in identity. Idempotent on endpoint (see pushManager.subscribe) and
 // audited exactly like a pane write: this is a state change by an
 // authenticated user, and "who subscribed what" is the useful record.
+
+// allowedPushHost reports whether endpoint is an https URL on a known Web Push
+// service. Blocks SSRF via subscribe → notifyBlocked POST to arbitrary hosts.
+func allowedPushEndpoint(endpoint string) bool {
+	u, err := url.Parse(endpoint)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	if !strings.EqualFold(u.Scheme, "https") {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	// Reject bare IPs (link-local / private / any literal).
+	if ip := net.ParseIP(host); ip != nil {
+		return false
+	}
+	// Exact hosts or suffix matches for known Web Push providers only.
+	if host == "fcm.googleapis.com" || strings.HasSuffix(host, ".fcm.googleapis.com") {
+		return true
+	}
+	if host == "push.services.mozilla.com" || strings.HasSuffix(host, ".push.services.mozilla.com") {
+		return true
+	}
+	if host == "web.push.apple.com" || strings.HasSuffix(host, ".web.push.apple.com") || strings.HasSuffix(host, ".push.apple.com") {
+		return true
+	}
+	if host == "notify.windows.com" || strings.HasSuffix(host, ".notify.windows.com") {
+		return true
+	}
+	return false
+}
+
 func (s *Server) handlePushSubscribe(w http.ResponseWriter, r *http.Request, id Identity) {
 	body, ok := decode[pushSubscribeBody](w, r)
 	if !ok {
@@ -392,6 +428,11 @@ func (s *Server) handlePushSubscribe(w http.ResponseWriter, r *http.Request, id 
 	}
 	if body.Endpoint == "" || body.Keys.P256dh == "" || body.Keys.Auth == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "malformed subscription"})
+		return
+	}
+	if !allowedPushEndpoint(body.Endpoint) {
+		s.audit(r, id, "push_subscribe", "", body.Endpoint, false, "endpoint not allowlisted")
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "push endpoint not allowed"})
 		return
 	}
 	sub := pushSubscription{Endpoint: body.Endpoint, Keys: body.Keys, Identity: id}

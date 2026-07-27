@@ -8,8 +8,8 @@
 #   just            list every recipe
 #   just dev        hot-reload frontend against the real herd
 #   just app        build + launch the menu-bar app
-#   just web PASS   phone dashboard on the LAN
-#   just tunnel PASS  behind a TLS tunnel
+#   export HERDR_TUNNEL_PASS=… && just web     # loopback dashboard
+#   export HERDR_TUNNEL_PASS=… && just tunnel  # TLS tunnel (loopback + --behind-proxy)
 #   just gate       everything CI runs
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
@@ -53,33 +53,41 @@ app: package
     open {{app_bundle}}
     @echo "running — look at the top-right of your menu bar"
 
-# Phone dashboard on the LAN.
+# Phone dashboard (loopback by default — safer).
 #
-# just 1.57 treats `key=value` as a positional STRING, not a named override
-# (`just tunnel pass=secret` sets user="pass=secret" and leaves pass empty).
-# Password is therefore the first argument:
+# Password comes from env HERDR_TUNNEL_PASS so it never appears on argv:
+#   export HERDR_TUNNEL_PASS='…'
+#   just web
+#   just web 8730 lex          # port user
+#   just web-lan               # bind 0.0.0.0 (LAN; HTTP)
 #
-#   just web herd-test-2026
-#   just web herd-test-2026 lex 8730
-web pass user="lex" port="8730": build
-    # Foreground, so you get logs. The server itself requires the credentials;
-    # it refuses to expose agents without a login.
-    @test -n "{{pass}}" || { echo "usage: just web <password>  [user] [port]"; exit 1; }
-    HERDR_TUNNEL_USER={{user}} HERDR_TUNNEL_PASS={{pass}} \
+# just 1.57 treats key=value as a positional STRING, not a named override.
+web port="8730" user="lex": build
+    @test -n "${HERDR_TUNNEL_PASS:-}" || { echo "set HERDR_TUNNEL_PASS in the environment (not argv)"; exit 1; }
+    HERDR_TUNNEL_USER={{user}} \
+    {{ if sock == "" { "" } else { "HERDR_SOCK=" + sock } }} \
+    {{binary}} --listen 127.0.0.1:{{port}} --allow-writes --allow-session-switch
+
+# Same as web but reachable on the LAN (cleartext HTTP). Prefer a TLS tunnel.
+web-lan port="8730" user="lex": build
+    @test -n "${HERDR_TUNNEL_PASS:-}" || { echo "set HERDR_TUNNEL_PASS in the environment (not argv)"; exit 1; }
+    HERDR_TUNNEL_USER={{user}} \
     {{ if sock == "" { "" } else { "HERDR_SOCK=" + sock } }} \
     {{binary}} --listen 0.0.0.0:{{port}} --allow-writes --allow-session-switch
 
 # Serve behind a TLS tunnel (Secure cookies, trust CF-Connecting-IP).
 #
-#   just tunnel herd-test-2026
+#   export HERDR_TUNNEL_PASS='…'
+#   just tunnel
 #
 # Never use --behind-proxy while the port is ALSO reachable directly on the
 # LAN: the login throttle then keys on a header the caller controls.
-tunnel pass user="lex" port="8730": build
-    @test -n "{{pass}}" || { echo "usage: just tunnel <password>  [user] [port]"; exit 1; }
-    HERDR_TUNNEL_USER={{user}} HERDR_TUNNEL_PASS={{pass}} \
+# Bind loopback and let the tunnel forward to it.
+tunnel port="8730" user="lex": build
+    @test -n "${HERDR_TUNNEL_PASS:-}" || { echo "set HERDR_TUNNEL_PASS in the environment (not argv)"; exit 1; }
+    HERDR_TUNNEL_USER={{user}} \
     {{ if sock == "" { "" } else { "HERDR_SOCK=" + sock } }} \
-    {{binary}} --listen 0.0.0.0:{{port}} --behind-proxy --allow-writes --allow-session-switch
+    {{binary}} --listen 127.0.0.1:{{port}} --behind-proxy --allow-writes --allow-session-switch
 
 # Vite hot-reload (frontend only; Go changes need `just app`)
 dev:

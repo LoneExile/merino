@@ -13,7 +13,7 @@ import {
   type Agent,
 } from "../bindings/github.com/LoneExile/herdr-tunnel/internal/app";
 import * as DesktopSettings from "../bindings/github.com/LoneExile/herdr-tunnel/internal/desktop/settings";
-import type { Client, Session, SessionList } from "./client";
+import type { Client, Session, SessionList, SlashCommand } from "./client";
 
 const EVENT_AGENTS_CHANGED = "agents:changed";
 
@@ -61,14 +61,9 @@ export function wailsClient(): Client {
     // A nil Go slice serialises to null, so the generated binding is typed
     // Agent[] | null. Normalise here so callers never handle both.
     list: async () => (await AgentsService.List()) ?? [],
-    slashCommands: async (agent: string, query: string, cwd?: string) => {
-      const list = (await AgentsService.SlashCommands(agent, query, cwd ?? "")) ?? [];
-      return list.map((c) => ({
-        name: c.name,
-        value: c.value,
-        description: c.description,
-        source: c.source,
-      }));
+    slashCommands: async (paneId: string, agent: string, query: string) => {
+      const list = (await AgentsService.SlashCommands(paneId, agent, query)) ?? [];
+      return list as SlashCommand[];
     },
     read: (paneId: string, lines: number) => AgentsService.Read(paneId, lines),
 

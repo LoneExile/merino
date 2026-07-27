@@ -105,13 +105,19 @@ func (c *Client) Call(ctx context.Context, method string, params, out any) error
 		params = struct{}{}
 	}
 	// Encode appends '\n', which is exactly the framing the server expects.
-	if err := json.NewEncoder(conn).Encode(request{ID: c.nextID(), Method: method, Params: params}); err != nil {
+	id := c.nextID()
+	if err := json.NewEncoder(conn).Encode(request{ID: id, Method: method, Params: params}); err != nil {
 		return fmt.Errorf("herdr: write %s: %w", method, err)
 	}
 
 	var resp response
 	if err := json.NewDecoder(conn).Decode(&resp); err != nil {
 		return fmt.Errorf("herdr: read %s: %w", method, err)
+	}
+	// One-shot-per-conn today, but reject a mismatched id so a framing
+	// bug can never be accepted as the method result.
+	if resp.ID != "" && resp.ID != id {
+		return fmt.Errorf("herdr: response id %q does not match request %q", resp.ID, id)
 	}
 	if resp.Error != nil {
 		return resp.Error
@@ -198,7 +204,7 @@ type PaneRead struct {
 // ReadPane returns what is currently on a pane's screen, as plain text.
 //
 // Uses ReadVisible, not ReadRecent. The sources are not interchangeable:
-// "recent" means output since the last read, so it returns an empty string for
+// "recent" means recent lines including scrollback past the viewport, so it returns an empty string for
 // any pane that has settled — which is most of them, most of the time. A
 // viewer asking "show me this pane" wants the screen, not a diff.
 //

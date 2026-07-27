@@ -348,26 +348,31 @@ func (s *Server) handleAgents(w http.ResponseWriter, _ *http.Request, id Identit
 
 // handleSlash serves composer typeahead for "/" commands. Query:
 //
-//	?agent=omp&q=hel
+//	?pane=w1:pA&agent=omp&q=hel
 //
-// Returns []SlashCommand. Always 200 with an array (possibly empty).
+// cwd is intentionally NOT accepted from the client — skills resolve from the
+// pane's store CWD only (see AgentsService.SlashCommands). Always 200 + array.
 func (s *Server) handleSlash(w http.ResponseWriter, r *http.Request, id Identity) {
 	_ = id
+	paneID := r.URL.Query().Get("pane")
+	if paneID == "" {
+		paneID = r.URL.Query().Get("paneId")
+	}
 	agent := r.URL.Query().Get("agent")
 	q := r.URL.Query().Get("q")
 	if q == "" {
 		q = r.URL.Query().Get("query")
 	}
-	cwd := r.URL.Query().Get("cwd")
-	// Prefer the live AgentsService when available.
+	// Prefer the live AgentsService when available (resolves cwd from store).
 	type slashper interface {
-		SlashCommands(agent, query, cwd string) []app.SlashCommand
+		SlashCommands(paneID, agent, query string) []app.SlashCommand
 	}
 	if sp, ok := s.src.(slashper); ok {
-		writeJSON(w, http.StatusOK, sp.SlashCommands(agent, q, cwd))
+		writeJSON(w, http.StatusOK, sp.SlashCommands(paneID, agent, q))
 		return
 	}
-	writeJSON(w, http.StatusOK, app.FilterSlashCommands(agent, q, cwd))
+	// Fallback: builtins only — no filesystem walk without a trusted cwd.
+	writeJSON(w, http.StatusOK, app.FilterSlashCommands(agent, q, ""))
 }
 
 func (s *Server) handleOutput(w http.ResponseWriter, r *http.Request, id Identity) {
@@ -515,10 +520,20 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request, id Identit
 		flusher.Flush()
 	}
 
+	lines := paneStreamLines
+	if raw := r.URL.Query().Get("lines"); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			lines = n
+		}
+	}
+	if lines > app.MaxPaneHistoryLines {
+		lines = app.MaxPaneHistoryLines
+	}
+
 	// Snapshot immediately so a client that just connected paints without
 	// waiting on live output, which may not arrive for a long time on a
 	// settled pane.
-	if text, err := s.src.ReadANSI(paneID, paneStreamLines); err != nil {
+	if text, err := s.src.ReadANSI(paneID, lines); err != nil {
 		s.log.Warn("web stream initial read", "pane", paneID, "err", err)
 	} else {
 		sendOutput(text)
@@ -556,7 +571,7 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request, id Identit
 	subDone := make(chan struct{})
 	go func() {
 		defer close(subDone)
-		if err := s.src.StreamOutputANSI(ctx, paneID, paneStreamLines, push); err != nil && ctx.Err() == nil {
+		if err := s.src.StreamOutputANSI(ctx, paneID, lines, push); err != nil && ctx.Err() == nil {
 			s.log.Warn("web pane stream ended", "pane", paneID, "err", err)
 		}
 	}()

@@ -1,8 +1,6 @@
 package app
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"os"
 	"os/exec"
@@ -11,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 )
 
 // Live harness catalogs supplement the static builtinSlash table.
@@ -19,8 +19,9 @@ import (
 // Cached so typeahead does not spawn work on every keystroke.
 
 var (
-	harnessMu    sync.Mutex
-	harnessCache = map[string]harnessSnap{}
+	harnessMu     sync.Mutex
+	harnessCache  = map[string]harnessSnap{}
+	harnessFlight singleflight.Group
 )
 
 type harnessSnap struct {
@@ -74,13 +75,33 @@ func harnessCommands(kind string) []SlashCommand {
 
 func cachedHarness(key string, load func() []SlashCommand) []SlashCommand {
 	harnessMu.Lock()
-	defer harnessMu.Unlock()
 	if snap, ok := harnessCache[key]; ok && time.Since(snap.at) < harnessTTL {
+		harnessMu.Unlock()
 		return snap.cmds
 	}
-	cmds := load()
-	harnessCache[key] = harnessSnap{at: time.Now(), cmds: cmds}
-	return cmds
+	// Release lock while loading so concurrent typeahead is not serialized
+	// behind a multi-second `claude commands` exec. Singleflight collapses
+	// stampedes into one load.
+	harnessMu.Unlock()
+
+	v, err, _ := harnessFlight.Do(key, func() (any, error) {
+		// Re-check after winning the flight — another waiter may have filled.
+		harnessMu.Lock()
+		if snap, ok := harnessCache[key]; ok && time.Since(snap.at) < harnessTTL {
+			harnessMu.Unlock()
+			return snap.cmds, nil
+		}
+		harnessMu.Unlock()
+		cmds := load()
+		harnessMu.Lock()
+		harnessCache[key] = harnessSnap{at: time.Now(), cmds: cmds}
+		harnessMu.Unlock()
+		return cmds, nil
+	})
+	if err != nil || v == nil {
+		return load() // last resort; load itself is pure
+	}
+	return v.([]SlashCommand)
 }
 
 func loadOmpSlashCommands() []SlashCommand {
@@ -207,19 +228,11 @@ func loadClaudeSlashCommands() []SlashCommand {
 	cmd := exec.CommandContext(ctx, "claude", "commands")
 	cmd.Env = os.Environ()
 	if raw, err := cmd.Output(); err == nil {
-		// Backtick-wrapped commands: `/btw` or `/loop [interval]`
+		// Only backtick-wrapped commands: `/btw` — bare path fragments like
+		// /Users/... must not pollute the typeahead catalog.
 		reTick := regexp.MustCompile("`" + `(/[a-zA-Z][\w:-]*)` + "`")
 		for _, m := range reTick.FindAllStringSubmatch(string(raw), -1) {
 			add(m[1], "")
-		}
-		// Lines that are just command lists without ticks.
-		sc := bufio.NewScanner(bytes.NewReader(raw))
-		reBare := regexp.MustCompile(`(/[a-zA-Z][\w:-]{1,40})`)
-		for sc.Scan() {
-			line := sc.Text()
-			for _, m := range reBare.FindAllStringSubmatch(line, -1) {
-				add(m[1], "")
-			}
 		}
 	}
 

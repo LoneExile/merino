@@ -64,6 +64,10 @@ type AgentsService struct {
 	mu       sync.RWMutex
 	client   *herdr.Client
 	bgCancel context.CancelFunc
+	// switchMu serializes SwitchSession end-to-end so two concurrent
+	// switches cannot both Wait the same generation and then start dual
+	// stream sets.
+	switchMu sync.Mutex
 	// bgDone is signalled by every background goroutine startSession
 	// launches for the active client. SwitchSession waits on it after
 	// cancelling, so a slow in-flight reconcile from the outgoing session
@@ -109,16 +113,14 @@ func NewAgentsService(
 	return s
 }
 
-// OnBlocked registers fn to be called whenever an agent pane transitions
-// into the blocked status — never while a pane merely remains blocked. Wired
-// from main.go, once, before ServiceStartup launches any background
-// goroutine; nil (the default) until then, which is exactly correct for
-// every existing caller and test that has no notifier to attach.
-//
-// The tray/frontend publish on the blocked edge is already wired inside
-// NewAgentsService and does not depend on this hook. fn is the external
-// side-effect path (Web Push).
-func (s *AgentsService) OnBlocked(fn func(Agent)) {
+// AttachBlockedNotifier registers fn for agent blocked-edge side effects
+// (Web Push). Package function — not a method — so Wails does not bind it
+// into the desktop webview JS surface. Call once from main before
+// ServiceStartup; nil is fine for tests.
+func AttachBlockedNotifier(s *AgentsService, fn func(Agent)) {
+	if s == nil {
+		return
+	}
 	s.onBlockedUser = fn
 }
 
@@ -204,7 +206,8 @@ func (s *AgentsService) runLifecycle(ctx context.Context, client *herdr.Client, 
 			herdr.GlobalSub(herdr.SubWorkspaceClosed),
 		},
 		OnReady: func() {
-			s.setConn(Conn{Connected: true, Version: s.conn.Version, Protocol: s.conn.Protocol, Socket: client.Socket()})
+			ver, proto := s.connMeta()
+			s.setConn(Conn{Connected: true, Version: ver, Protocol: proto, Socket: client.Socket()})
 			if panes, err := client.ListPanes(ctx); err == nil && s.store.Replace(panes) {
 				s.changed()
 			}
@@ -321,11 +324,20 @@ func (s *AgentsService) publish() {
 	s.onCounts(s.store.Counts())
 }
 
+func (s *AgentsService) connMeta() (version string, protocol int) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.conn.Version, s.conn.Protocol
+}
+
 func (s *AgentsService) setConn(c Conn) {
+	s.mu.Lock()
 	if s.conn == c {
+		s.mu.Unlock()
 		return
 	}
 	s.conn = c
+	s.mu.Unlock()
 	s.emit(EventConnChanged, c)
 }
 
@@ -338,7 +350,11 @@ func (s *AgentsService) List() []Agent { return s.store.Agents() }
 func (s *AgentsService) Counts() Counts { return s.store.Counts() }
 
 // Connection reports herdr connectivity.
-func (s *AgentsService) Connection() Conn { return s.conn }
+func (s *AgentsService) Connection() Conn {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.conn
+}
 
 // Read returns recent plain-text output for a pane.
 func (s *AgentsService) Read(paneID string, lines int) (string, error) {
@@ -407,7 +423,7 @@ func (s *AgentsService) Respond(paneID, text string) error {
 	if err := s.guard.CheckResponse(text); err != nil {
 		return err
 	}
-	s.log.Info("respond", "pane", paneID, "text", text)
+	s.log.Info("respond", "pane", paneID, "bytes", len(text))
 	return s.currentClient().SubmitText(s.ctx, paneID, text)
 }
 
@@ -437,9 +453,18 @@ func (s *AgentsService) SendText(paneID, text string) error {
 }
 
 // SlashCommands returns typeahead hits for the composer when the user types
-// "/…" in a pane. agent is the herdr agent label (omp/pi/claude/grok/…).
-// query may include the leading slash.
-func (s *AgentsService) SlashCommands(agent, query, cwd string) []SlashCommand {
+// "/…" in a pane. paneID is the active pane: project skills are loaded from
+// that pane's known CWD only — never from a client-supplied path.
+// agent/query may still be passed for label matching; empty agent falls back
+// to the store projection for the pane.
+func (s *AgentsService) SlashCommands(paneID, agent, query string) []SlashCommand {
+	cwd := ""
+	if a, ok := s.store.Get(paneID); ok {
+		if agent == "" {
+			agent = a.Agent
+		}
+		cwd = a.CWD
+	}
 	return FilterSlashCommands(agent, query, cwd)
 }
 
@@ -490,6 +515,11 @@ func (s *AgentsService) Sessions(ctx context.Context) ([]SessionInfo, error) {
 // sessions at once. id is resolved through Sessions rather than trusted as a
 // path, so a caller can never point the server at an arbitrary socket.
 func (s *AgentsService) SwitchSession(id string) error {
+	// Entire switch is one critical section so concurrent callers cannot
+	// both Wait the outgoing generation and then launch dual stream sets.
+	s.switchMu.Lock()
+	defer s.switchMu.Unlock()
+
 	target, err := resolveSession(s.ctx, s.currentClient().Socket(), id)
 	if err != nil {
 		return err

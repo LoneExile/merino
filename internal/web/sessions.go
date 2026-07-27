@@ -67,9 +67,11 @@ func (s *Server) handleSessionSwitch(w http.ResponseWriter, r *http.Request, id 
 
 	if err := s.cfg.Switcher.SwitchSession(body.ID); err != nil {
 		s.log.Warn("session switch refused", "id", body.ID, "actor", id.Name, "err", err)
+		s.audit(r, id, "session_switch", "", body.ID, false, err.Error())
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 	s.log.Info("session switch", "id", body.ID, "actor", id.Name)
+	s.audit(r, id, "session_switch", "", body.ID, true, "")
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }

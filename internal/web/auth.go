@@ -180,10 +180,19 @@ func (p *PasswordProvider) Mount(mux *http.ServeMux, success func(http.ResponseW
 		}
 		// Phone scanned a QR: /login?token=… redeems in one GET so the
 		// camera-app open does not require a second tap on Submit.
+		// Same IP throttle as POST so a sprayed token list cannot bypass lockout.
 		if tok := r.URL.Query().Get("token"); tok != "" {
-			if p.redeemToken(w, r, tok, success) {
+			client := p.ip(r)
+			if p.throttled(client) {
+				w.WriteHeader(http.StatusTooManyRequests)
+				writeLoginPage(w, r, "Too many attempts. Wait a minute and try again.")
 				return
 			}
+			if p.redeemToken(w, r, tok, success) {
+				p.clearFailures(client)
+				return
+			}
+			p.recordFailure(client)
 			writeLoginPage(w, r, "That sign-in link expired or was already used. Ask the desktop app for a new QR.")
 			return
 		}

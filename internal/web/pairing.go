@@ -153,6 +153,8 @@ func (s *Server) handlePairingMint(w http.ResponseWriter, r *http.Request, id Id
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "mint failed"})
 		return
 	}
-	s.audit(r, id, "pairing_mint", "", ticket.URL, true, "")
+	// Never audit the redeemable URL/token — only non-secret metadata.
+	// The live secret lives only in the JSON response to the minting client.
+	s.audit(r, id, "pairing_mint", "", fmt.Sprintf("expires_at=%d", ticket.ExpiresAt), true, "")
 	writeJSON(w, http.StatusOK, ticket)
 }

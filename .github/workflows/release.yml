@@ -22,6 +22,9 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          # workflow_dispatch must build the tag being published, not main HEAD.
+          ref: ${{ github.event.inputs.tag || github.ref }}
 
       - uses: actions/setup-go@v6
         with:
@@ -51,8 +54,12 @@ jobs:
       - name: Package .app
         # just package = frontend build + wails3 package. CI already ran npm ci;
         # wails3 package embeds frontend/dist into the macOS bundle.
+        env:
+          VERSION: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
           cd frontend && npm run build && cd ..
+          # Inject version so desktop CheckUpdate matches the release tag.
+          go build -ldflags "-X main.version=${VERSION#v}" -o bin/herdr-tunnel .
           wails3 package
 
       - name: Stage artefacts
@@ -73,6 +80,7 @@ jobs:
           done
           ls -la dist
           test -n "$(ls -A dist)" || { echo "no artefacts staged"; exit 1; }
+          (cd dist && shasum -a 256 * > SHA256SUMS)
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

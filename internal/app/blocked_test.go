@@ -98,7 +98,7 @@ func TestStoreDoesNotNotifyForPaneDiscoveredAlreadyBlocked(t *testing.T) {
 	}
 }
 
-// TestAgentsServiceOnBlockedForwardsToStore proves the wiring point main.go
+// TestAgentsServiceAttachBlockedNotifier proves the wiring point main.go
 // uses actually reaches the store's edge-detection rather than being a dead
 // setter.
 func TestAgentsServiceOnBlockedForwardsToStore(t *testing.T) {
@@ -106,7 +106,7 @@ func TestAgentsServiceOnBlockedForwardsToStore(t *testing.T) {
 	s.store.Replace([]herdr.PaneInfo{pane("p1", "omp", herdr.StatusWorking)})
 
 	var got []Agent
-	s.OnBlocked(func(a Agent) { got = append(got, a) })
+	AttachBlockedNotifier(s, func(a Agent) { got = append(got, a) })
 
 	s.store.SetStatus("p1", herdr.StatusBlocked, "omp")
 	if len(got) != 1 || got[0].PaneID != "p1" {

@@ -136,8 +136,10 @@ frontend/bindings/          generated from Go (committed; do not hand-edit)
 Quick starts:
 
 ```bash
-just web <password>          # LAN dashboard
-just tunnel <password>       # behind a TLS tunnel (--behind-proxy)
+export HERDR_TUNNEL_PASS='…'
+just web                     # loopback dashboard (127.0.0.1)
+just web-lan                 # LAN bind 0.0.0.0 (HTTP)
+just tunnel                  # loopback + --behind-proxy for a TLS tunnel
 ```
 
 ### Phone sign-in (QR)
