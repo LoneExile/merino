@@ -23,6 +23,11 @@ const EventConnChanged = "conn:changed"
 // render. Long enough to absorb a storm, short enough to feel instant.
 const coalesceWindow = 100 * time.Millisecond
 
+// MaxPaneHistoryLines caps how much scrollback a single read/stream asks
+// herdr for. herdr has no offset-based pagination — larger lines is the
+// only lever for "load older content".
+const MaxPaneHistoryLines = 2000
+
 // Conn describes connectivity to the herdr server.
 type Conn struct {
 	Connected bool   `json:"connected"`
@@ -371,7 +376,10 @@ func (s *AgentsService) ReadANSI(paneID string, lines int) (string, error) {
 		return "", err
 	}
 	if lines <= 0 {
-		lines = 50
+		lines = 300
+	}
+	if lines > MaxPaneHistoryLines {
+		lines = MaxPaneHistoryLines
 	}
 	return s.currentClient().ReadPaneANSI(s.ctx, paneID, lines)
 }
@@ -383,7 +391,10 @@ func (s *AgentsService) StreamOutputANSI(ctx context.Context, paneID string, lin
 		return err
 	}
 	if lines <= 0 {
-		lines = 200
+		lines = 300
+	}
+	if lines > MaxPaneHistoryLines {
+		lines = MaxPaneHistoryLines
 	}
 	return s.currentClient().StreamPaneOutputANSI(ctx, paneID, lines, onText)
 }

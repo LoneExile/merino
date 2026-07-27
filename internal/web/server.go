@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -387,13 +388,22 @@ func (s *Server) handleOutput(w http.ResponseWriter, r *http.Request, id Identit
 		return
 	}
 
-	text, err := s.src.ReadANSI(paneID, 50)
+	lines := paneStreamLines
+	if raw := r.URL.Query().Get("lines"); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			lines = n
+		}
+	}
+	if lines > app.MaxPaneHistoryLines {
+		lines = app.MaxPaneHistoryLines
+	}
+	text, err := s.src.ReadANSI(paneID, lines)
 	if err != nil {
 		s.log.Warn("web read pane", "pane", paneID, "err", err)
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "could not read pane"})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"paneId": paneID, "text": text})
+	writeJSON(w, http.StatusOK, map[string]any{"paneId": paneID, "text": text, "lines": lines})
 }
 
 // handleEvents streams agent updates as Server-Sent Events.
@@ -456,7 +466,7 @@ const streamCoalesceWindow = 100 * time.Millisecond
 // paneStreamLines is how much visible screen both the initial snapshot and
 // every live push carry. Kept equal so a client never sees the view jump
 // size the moment the first live event arrives.
-const paneStreamLines = 200
+const paneStreamLines = 800
 
 // handleStream streams one pane's live output as Server-Sent Events.
 //

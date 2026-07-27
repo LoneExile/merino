@@ -35,15 +35,25 @@ export interface PaneViewProps {
  * other — see the layout effect below.
  */
 export function PaneView({ client, agent, wrap, onBack, onRename }: PaneViewProps) {
-  const { text, loaded, live, error } = usePaneStream(client, agent.paneId);
-  const scroller = useRef<HTMLDivElement>(null);
+  // pinned is declared below; the stream hook only needs it to release a
+  // history hold when the user returns to the live tail — initialise true.
   const [pinned, setPinned] = useState(true);
+  const { text, loaded, live, error, loadingMore, canLoadMore, loadMore } = usePaneStream(
+    client,
+    agent.paneId,
+    pinned,
+  );
+  const scroller = useRef<HTMLDivElement>(null);
   const [menu, setMenu] = useState(false);
 
   // Last user-set horizontal scroll position. Tracked separately from
   // `pinned` (which is vertical-only) and restored on every text update so a
   // live poll never yanks someone panned right back to column 0.
   const scrollLeftRef = useRef(0);
+  // When history grows upward, pin the viewport to the same content the user
+  // was reading instead of jumping to the new top.
+  const stickTopRef = useRef<{ height: number; top: number } | null>(null);
+  const prevTextLenRef = useRef(0);
 
   // Re-pin whenever the pane changes: opening a terminal must land on the
   // newest output, never halfway up yesterday's buffer. A different pane's
@@ -51,6 +61,8 @@ export function PaneView({ client, agent, wrap, onBack, onRename }: PaneViewProp
   useEffect(() => {
     setPinned(true);
     scrollLeftRef.current = 0;
+    stickTopRef.current = null;
+    prevTextLenRef.current = 0;
   }, [agent.paneId]);
 
   // Layout effect, not effect: scroll before paint so the jump to the bottom
@@ -58,7 +70,19 @@ export function PaneView({ client, agent, wrap, onBack, onRename }: PaneViewProp
   useLayoutEffect(() => {
     const el = scroller.current;
     if (!el) return;
-    if (pinned) el.scrollTo({ top: el.scrollHeight, behavior: "auto" });
+
+    const grew = text.length > prevTextLenRef.current;
+    prevTextLenRef.current = text.length;
+
+    if (stickTopRef.current && grew) {
+      const { height, top } = stickTopRef.current;
+      const delta = el.scrollHeight - height;
+      el.scrollTop = top + Math.max(0, delta);
+      stickTopRef.current = null;
+    } else if (pinned) {
+      el.scrollTo({ top: el.scrollHeight, behavior: "auto" });
+    }
+
     // Reapply on every text update, pinned or not: some engines clamp
     // scrollLeft to the new (possibly smaller) scrollWidth when an update
     // briefly narrows the widest line on screen, and never restore it once
@@ -73,7 +97,12 @@ export function PaneView({ client, agent, wrap, onBack, onRename }: PaneViewProp
     scrollLeftRef.current = el.scrollLeft;
     const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
     setPinned(distance <= PIN_SLACK);
-  }, []);
+    // Near the top → ask for a larger recent buffer (herdr has no offset API).
+    if (el.scrollTop <= 24 && canLoadMore && !loadingMore) {
+      stickTopRef.current = { height: el.scrollHeight, top: el.scrollTop };
+      loadMore();
+    }
+  }, [canLoadMore, loadingMore, loadMore]);
 
   // Re-parsed only when the text actually changes, not on every render — a
   // 300-line ANSI-styled screen re-parsed on every poll tick regardless of
@@ -172,6 +201,17 @@ export function PaneView({ client, agent, wrap, onBack, onRename }: PaneViewProp
       </header>
 
       <div className="pane__screen" ref={scroller} onScroll={onScroll} tabIndex={0}>
+        {loadingMore && (
+          <div className="pane__history mono" role="status">
+            Loading earlier output…
+          </div>
+        )}
+        {!loadingMore && !canLoadMore && text.length > 0 && (
+          <div className="pane__history pane__history--end mono" role="status">
+            Beginning of available history
+          </div>
+        )}
+
         {loaded ? (
           <pre className={`term${wrap ? " term--wrap" : ""}`}>
             {text

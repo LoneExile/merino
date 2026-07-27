@@ -219,12 +219,12 @@ func (c *Client) ReadPaneFull(ctx context.Context, paneID string, source ReadSou
 	return c.readPane(ctx, paneID, source, lines, FormatText)
 }
 
-// ReadPaneANSI is ReadPane but asks herdr to preserve ANSI/SGR escape
-// sequences instead of stripping them, for a caller that renders colour and
-// style rather than dumping plain text. Used only by the web dashboard's
-// terminal view; every other caller wants ReadPane's stripped text.
+// ReadPaneANSI asks herdr for recent output (including scrollback) with
+// ANSI/SGR escapes preserved. Uses ReadRecent rather than ReadVisible so
+// the dashboard can scroll up past the current viewport. Every other
+// caller that wants the on-screen slice only should use ReadPane.
 func (c *Client) ReadPaneANSI(ctx context.Context, paneID string, lines int) (string, error) {
-	r, err := c.readPane(ctx, paneID, ReadVisible, lines, FormatANSI)
+	r, err := c.readPane(ctx, paneID, ReadRecent, lines, FormatANSI)
 	if err != nil {
 		return "", err
 	}
@@ -310,7 +310,7 @@ func (c *Client) streamPaneOutput(ctx context.Context, paneID string, lines int,
 		case <-tick.C:
 		}
 
-		r, err := c.readPane(ctx, paneID, ReadVisible, lines, format)
+		r, err := c.readPane(ctx, paneID, ReadRecent, lines, format)
 		if err != nil {
 			if ctx.Err() != nil {
 				return nil
