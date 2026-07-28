@@ -71,25 +71,32 @@ jobs:
       - name: Package .app
         env:
           VERSION: ${{ steps.ver.outputs.version }}
+          CGO_ENABLED: "1"
+          MACOSX_DEPLOYMENT_TARGET: "12.0"
         run: |
           set -euo pipefail
-          go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o bin/merino .
-          wails3 package
-          # Canonical on-disk name for Homebrew cask + Finder.
-          if [ -d bin/merino.app ]; then
-            rm -rf bin/Merino.app
-            mv bin/merino.app bin/Merino.app
-          elif [ -d build/bin/merino.app ]; then
-            rm -rf bin/Merino.app
-            mv build/bin/merino.app bin/Merino.app
-          else
-            echo "Merino.app not found after package"
-            find bin build -maxdepth 3 -name '*.app' -print || true
-            exit 1
-          fi
-          # Keep a stable binary path for the bare CLI artefact.
+          # Stamp CFBundle versions before bundling (create:app:bundle copies Info.plist).
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${VERSION}" build/darwin/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${VERSION}" build/darwin/Info.plist
+
+          # Versioned production binary. Do NOT run `wails3 package` — that task
+          # depends on darwin:build which rebuilds WITHOUT -X main.version and
+          # would overwrite bin/merino with 0.1.0-dev.
+          mkdir -p bin
+          go build -tags production -trimpath -buildvcs=false             -ldflags="-w -s -X main.version=${VERSION}"             -o bin/merino .
+
+          # Bundle only (icons + Info.plist + ad-hoc codesign).
+          wails3 task darwin:create:app:bundle
+
+          test -d bin/merino.app
+          rm -rf bin/Merino.app
+          mv bin/merino.app bin/Merino.app
+          # Keep CLI artefact path stable for Stage artefacts.
           cp "bin/Merino.app/Contents/MacOS/merino" bin/merino
           chmod +x bin/merino
+          "bin/merino" --help >/dev/null 2>&1 || true
+          # Sanity: embedded version string (best-effort).
+          strings "bin/Merino.app/Contents/MacOS/merino" | grep -F "${VERSION}" | head -3 || true
 
       - name: Stage artefacts
         env:
@@ -181,25 +188,14 @@ jobs:
           test -n "$ARM_NAME"
           gh release download "$TAG" -R LoneExile/merino -p "$ARM_NAME" -D /tmp/assets
           ARM_SHA=$(sha256sum "/tmp/assets/$ARM_NAME" | awk '{print $1}')
-          INTEL_NAME=$(gh api "$API" --jq '.assets[].name' | grep -E 'macos-amd64\.zip$' | head -1 || true)
-          if [ -n "${INTEL_NAME:-}" ]; then
-            gh release download "$TAG" -R LoneExile/merino -p "$INTEL_NAME" -D /tmp/assets
-            INTEL_SHA=$(sha256sum "/tmp/assets/$INTEL_NAME" | awk '{print $1}')
-          else
-            INTEL_SHA=$ARM_SHA
-          fi
           CASK=tap/Casks/merino.rb
-          python3 - "$VERSION" "$ARM_SHA" "$INTEL_SHA" "$CASK" <<'PY'
+          python3 - "$VERSION" "$ARM_SHA" "$CASK" <<'PY'
           import pathlib, re, sys
-          ver, arm, intel, path = sys.argv[1:5]
+          ver, arm, path = sys.argv[1:4]
           p = pathlib.Path(path)
           t = p.read_text()
           t = re.sub(r'version "[^"]+"', f'version "{ver}"', t)
-          t = re.sub(
-              r'sha256 arm:\s*"[0-9a-fA-F]+",\s*\n\s*intel:\s*"[0-9a-fA-F]+"',
-              f'sha256 arm:   "{arm}",\n         intel: "{intel}"',
-              t,
-          )
+          t = re.sub(r'sha256 "[0-9a-fA-F]+"', f'sha256 "{arm}"', t)
           p.write_text(t)
           print(p.read_text())
           PY
