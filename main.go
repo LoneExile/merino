@@ -75,6 +75,7 @@ func main() {
 		animator     *trayicon.Animator
 		pairing      *web.Pairing
 		passProvider *web.PasswordProvider
+		devices      *web.DeviceStore
 		desk         *desktop.Settings
 	)
 
@@ -109,7 +110,7 @@ func main() {
 		webAddr = "0.0.0.0:8730"
 	}
 	var startErr error
-	srv, pair, passProv, startErr := startWeb(agents, webAddr, *behindProxy, *allowWrites, *allowSessionSwitch, assets, logger)
+	srv, pair, passProv, devStore, startErr := startWeb(agents, webAddr, *behindProxy, *allowWrites, *allowSessionSwitch, assets, logger)
 	if startErr != nil {
 		logger.Error("web dashboard failed to start", "err", startErr)
 		os.Exit(1)
@@ -117,14 +118,8 @@ func main() {
 	webSrv = srv
 	pairing = pair
 	passProvider = passProv
+	devices = devStore
 
-	var devices *web.DeviceStore
-	if webSrv != nil {
-		// Re-open is fine — same path; Settings needs a handle for Wails bindings.
-		if d, err := web.OpenDeviceStore(filepath.Dir(app.DefaultAuditPath())); err == nil {
-			devices = d
-		}
-	}
 	desk = desktop.NewSettings(nil, "dev.apinant.herdr-tunnel", version, "LoneExile/herdr-tunnel", pairing, devices, filepath.Dir(app.DefaultAuditPath()), webAddr, passProvider)
 
 	wailsApp = application.New(application.Options{
@@ -331,11 +326,11 @@ func showPanel(tray *application.SystemTray, panel *application.WebviewWindow) {
 // login wall + one-shot pairing tokens + revocable device grants — not "did
 // the operator remember --listen". CLI users can still pass an explicit
 // --listen address (including 127.0.0.1) to narrow the bind.
-func startWeb(src web.Source, addr string, behindProxy, allowWrites, allowSessionSwitch bool, assets embed.FS, logger *slog.Logger) (*web.Server, *web.Pairing, *web.PasswordProvider, error) {
+func startWeb(src web.Source, addr string, behindProxy, allowWrites, allowSessionSwitch bool, assets embed.FS, logger *slog.Logger) (*web.Server, *web.Pairing, *web.PasswordProvider, *web.DeviceStore, error) {
 	stateDir := filepath.Dir(app.DefaultAuditPath())
 	user, pass, generated, bootErr := web.LoadOrCreateBootstrap(stateDir)
 	if bootErr != nil {
-		return nil, nil, nil, bootErr
+		return nil, nil, nil, nil, bootErr
 	}
 	if generated {
 		logger.Info("generated local operator credentials for zero-config start",
@@ -344,7 +339,7 @@ func startWeb(src web.Source, addr string, behindProxy, allowWrites, allowSessio
 
 	dist, err := fs.Sub(assets, "frontend/dist")
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("locate frontend assets: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("locate frontend assets: %w", err)
 	}
 
 	// The audit log is opened whenever the dashboard runs, not only when
@@ -361,7 +356,7 @@ func startWeb(src web.Source, addr string, behindProxy, allowWrites, allowSessio
 	)
 	if a, auditErr := app.NewAudit(app.DefaultAuditPath()); auditErr != nil {
 		if allowWrites {
-			return nil, nil, nil, auditErr
+			return nil, nil, nil, nil, auditErr
 		}
 		logger.Warn("could not open audit log; push subscriptions will not be recorded",
 			"path", app.DefaultAuditPath(), "err", auditErr)
@@ -371,7 +366,7 @@ func startWeb(src web.Source, addr string, behindProxy, allowWrites, allowSessio
 	if allowWrites {
 		w, castOK := src.(web.Writer)
 		if !castOK {
-			return nil, nil, nil, errors.New("source does not support writes")
+			return nil, nil, nil, nil, errors.New("source does not support writes")
 		}
 		writer = w
 		logger.Warn("web dashboard can write to your agents",
@@ -391,7 +386,7 @@ func startWeb(src web.Source, addr string, behindProxy, allowWrites, allowSessio
 	if allowSessionSwitch {
 		sw, castOK := src.(web.SessionSwitcher)
 		if !castOK {
-			return nil, nil, nil, errors.New("source does not support session switching")
+			return nil, nil, nil, nil, errors.New("source does not support session switching")
 		}
 		switcher = sw
 		logger.Warn("web dashboard can switch herdr sessions",
@@ -409,7 +404,7 @@ func startWeb(src web.Source, addr string, behindProxy, allowWrites, allowSessio
 
 	devices, devErr := web.OpenDeviceStore(stateDir)
 	if devErr != nil {
-		return nil, nil, nil, devErr
+		return nil, nil, nil, nil, devErr
 	}
 	provider.SetDevices(devices)
 	provider.SetPasswordLogin(web.PasswordLoginEnabled(stateDir))
@@ -450,7 +445,7 @@ func startWeb(src web.Source, addr string, behindProxy, allowWrites, allowSessio
 		StateDir: stateDir,
 	})
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 
 	// Wire the edge-triggered blocked-transition hook straight into push.
@@ -462,7 +457,7 @@ func startWeb(src web.Source, addr string, behindProxy, allowWrites, allowSessio
 	}
 
 	if err := srv.Start(); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 
 	if h, _, splitErr := net.SplitHostPort(addr); splitErr == nil && (h == "0.0.0.0" || h == "" || h == "::") {
@@ -476,7 +471,7 @@ func startWeb(src web.Source, addr string, behindProxy, allowWrites, allowSessio
 				"note", "traffic is unencrypted HTTP; use a tunnel before exposing it beyond the LAN")
 		}
 	}
-	return srv, pairing, provider, nil
+	return srv, pairing, provider, devices, nil
 }
 
 // ipResolver picks how the client address is determined. Proxy headers are

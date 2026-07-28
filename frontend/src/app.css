@@ -2297,3 +2297,14 @@ code.mono {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+.panic-row {
+  display: grid;
+  gap: var(--space-2xs);
+  margin-top: var(--space-xs);
+}
+.panic-row__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2xs);
+}

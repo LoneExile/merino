@@ -129,13 +129,26 @@ export function SettingsSheet({
   const [passMsg, setPassMsg] = useState<string | null>(null);
   const [passwordLoginOn, setPasswordLoginOn] = useState(true);
   const [pwLoginBusy, setPwLoginBusy] = useState(false);
+  const [panicArmed, setPanicArmed] = useState(false);
 
   const refreshDevices = useCallback(() => {
     if (!client?.listDevices) return;
     void client
       .listDevices()
-      .then((r) => setDevices(r.devices || []))
-      .catch(() => {});
+      .then((r) => {
+        const list = (r.devices || []).map((d) => {
+          const rev = d.revokedAt as unknown;
+          // Wails may send null, "", or Go zero time.
+          const revoked =
+            rev &&
+            rev !== "0001-01-01T00:00:00Z" &&
+            rev !== "0001-01-01T00:00:00.000Z" &&
+            String(rev) !== "null";
+          return { ...d, revokedAt: revoked ? String(rev) : null };
+        });
+        setDevices(list);
+      })
+      .catch((e) => setDevErr(e instanceof Error ? e.message : String(e)));
   }, [client]);
 
   useEffect(() => {
@@ -607,26 +620,60 @@ export function SettingsSheet({
               </li>
             ))}
           </ul>
-          {client?.revokeAllDevices && (
-            <button
-              type="button"
-              className="btn"
-              disabled={devBusy || devices.every((d) => d.revokedAt)}
-              onClick={() => {
-                if (!window.confirm("Revoke every paired phone now?")) return;
-                setDevBusy(true);
-                setDevErr(null);
-                void client.revokeAllDevices?.()
-                  .then(() => {
-                    refreshDevices();
-                    void client.markFirstRunDone?.();
-                  })
-                  .catch((e) => setDevErr(e instanceof Error ? e.message : String(e)))
-                  .finally(() => setDevBusy(false));
-              }}
-            >
-              Panic revoke all phones
-            </button>
+          {client?.revokeAllDevices && devices.some((d) => !d.revokedAt) && (
+            <div className="panic-row">
+              {!panicArmed ? (
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={devBusy}
+                  onClick={() => setPanicArmed(true)}
+                >
+                  Panic revoke all phones
+                </button>
+              ) : (
+                <>
+                  <p className="settings-copy settings-copy--warn">
+                    Revoke every active phone grant? They must scan a new QR.
+                  </p>
+                  <div className="panic-row__actions">
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={devBusy}
+                      onClick={() => setPanicArmed(false)}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn--signout"
+                      disabled={devBusy}
+                      onClick={() => {
+                        setDevBusy(true);
+                        setDevErr(null);
+                        void client
+                          .revokeAllDevices?.()
+                          .then((n) => {
+                            setPanicArmed(false);
+                            refreshDevices();
+                            void client.markFirstRunDone?.();
+                            if (typeof n === "number" && n === 0) {
+                              setDevErr("No devices were revoked (store may be out of sync).");
+                            }
+                          })
+                          .catch((e) =>
+                            setDevErr(e instanceof Error ? e.message : String(e)),
+                          )
+                          .finally(() => setDevBusy(false));
+                      }}
+                    >
+                      {devBusy ? "Revoking…" : "Confirm revoke all"}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           )}
           {devErr && (
             <p className="composer__err" role="alert">
