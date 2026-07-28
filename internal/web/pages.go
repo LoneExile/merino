@@ -262,10 +262,23 @@ var loginTmpl = template.Must(template.New("login").Parse(`<!DOCTYPE html>
   var timer = null;
   var Detector = window.BarcodeDetector;
 
-  // Feature-detect: BarcodeDetector + camera. Hide the button when either is
-  // missing so iOS Safari (no detector yet) keeps the paste field primary.
-  var canScan = !!(Detector && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
-  if (!canScan) return;
+  // Feature-detect: BarcodeDetector + camera. Camera APIs require a secure
+  // context (HTTPS or http://localhost). Plain http://LAN and http://Tailscale
+  // are NOT secure — Chrome/Safari hide getUserMedia, so we explain and keep
+  // the paste field primary (same as iOS without BarcodeDetector).
+  var secure = window.isSecureContext === true;
+  var canScan = !!(secure && Detector && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  if (!canScan) {
+    btn.style.display = "block";
+    btn.disabled = true;
+    btn.textContent = secure
+      ? "Camera scan unavailable in this browser"
+      : "Camera scan needs HTTPS (not plain HTTP)";
+    btn.title = secure
+      ? "This browser has no QR detector. Paste the code from the Mac QR sheet."
+      : "Browsers only allow the camera on https:// or localhost. Use a public HTTPS tunnel, or paste the one-shot code under the QR on the Mac.";
+    return;
+  }
   btn.classList.add("is-ready");
 
   function stop() {

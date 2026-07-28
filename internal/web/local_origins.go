@@ -9,7 +9,7 @@ import (
 
 // AccessOrigin is a base URL the phone can open for pairing/login.
 type AccessOrigin struct {
-	// Kind is "local", "lan", or "public".
+	// Kind is "local", "lan", "tailscale", or "public".
 	Kind string `json:"kind"`
 	// Label is short UI copy, e.g. "This Mac" / "Wi‑Fi".
 	Label string `json:"label"`
@@ -19,9 +19,7 @@ type AccessOrigin struct {
 	Hint string `json:"hint"`
 }
 
-// LocalAccessOrigins returns localhost + primary LAN IPv4 origins for the
-// dashboard listen port. Used so first-run pairing works before Cloudflare.
-func LocalAccessOrigins(listenAddr string) []AccessOrigin {
+func listenPort(listenAddr string) string {
 	port := "8730"
 	if h, p, err := net.SplitHostPort(listenAddr); err == nil {
 		if p != "" {
@@ -34,6 +32,21 @@ func LocalAccessOrigins(listenAddr string) []AccessOrigin {
 	if _, err := strconv.Atoi(port); err != nil {
 		port = "8730"
 	}
+	return port
+}
+
+func isTailscaleIP(ip net.IP) bool {
+	// Tailscale userspace / CGNAT range 100.64.0.0/10
+	if ip4 := ip.To4(); ip4 != nil {
+		return ip4[0] == 100 && ip4[1] >= 64 && ip4[1] <= 127
+	}
+	return false
+}
+
+// LocalAccessOrigins returns localhost + primary LAN IPv4 + Tailscale origins
+// for the dashboard listen port. Used so first-run pairing works before Cloudflare.
+func LocalAccessOrigins(listenAddr string) []AccessOrigin {
+	port := listenPort(listenAddr)
 
 	out := []AccessOrigin{
 		{
@@ -44,17 +57,19 @@ func LocalAccessOrigins(listenAddr string) []AccessOrigin {
 		},
 	}
 
-	// Prefer a private IPv4 that is up and not loopback/link-local.
 	seen := map[string]bool{"127.0.0.1": true}
+	var lan *AccessOrigin
+	var ts *AccessOrigin
+
 	ifaces, _ := net.Interfaces()
 	for _, iface := range ifaces {
 		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
 			continue
 		}
-		// Skip awdl/llw/utun noise when possible.
 		name := strings.ToLower(iface.Name)
+		// Skip Apple AWDL / bridge noise. Keep utun — Tailscale lives there on macOS.
 		if strings.HasPrefix(name, "awdl") || strings.HasPrefix(name, "llw") ||
-			strings.HasPrefix(name, "utun") || strings.HasPrefix(name, "bridge") {
+			strings.HasPrefix(name, "bridge") {
 			continue
 		}
 		addrs, _ := iface.Addrs()
@@ -67,32 +82,58 @@ func LocalAccessOrigins(listenAddr string) []AccessOrigin {
 			if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
 				continue
 			}
-			if !ip.IsPrivate() {
-				continue
-			}
 			s := ip.String()
 			if seen[s] {
 				continue
 			}
 			seen[s] = true
-			out = append(out, AccessOrigin{
-				Kind:  "lan",
-				Label: "Wi‑Fi / LAN",
-				URL:   fmt.Sprintf("http://%s:%s", s, port),
-				Hint:  "Phone on the same network — no Cloudflare needed",
-			})
-			// One primary LAN IP is enough for the chips; more confuses.
-			return out
+
+			if isTailscaleIP(ip) {
+				if ts == nil {
+					o := AccessOrigin{
+						Kind:  "tailscale",
+						Label: "Tailscale",
+						URL:   fmt.Sprintf("http://%s:%s", s, port),
+						Hint:  "Phone on the same tailnet — still plain HTTP (no in-page camera)",
+					}
+					ts = &o
+				}
+				continue
+			}
+			if !ip.IsPrivate() {
+				continue
+			}
+			// Skip other 100.x that is not CGNAT tailscale if any
+			if lan == nil {
+				o := AccessOrigin{
+					Kind:  "lan",
+					Label: "Wi‑Fi / LAN",
+					URL:   fmt.Sprintf("http://%s:%s", s, port),
+					Hint:  "Phone on the same network — no Cloudflare needed",
+				}
+				lan = &o
+			}
 		}
+	}
+	if lan != nil {
+		out = append(out, *lan)
+	}
+	if ts != nil {
+		out = append(out, *ts)
 	}
 	return out
 }
 
-// PreferLANBase picks the best default QR base: first LAN origin, else local.
+// PreferLANBase picks the best default QR base: first LAN origin, else Tailscale, else local.
 func PreferLANBase(listenAddr string) string {
 	origins := LocalAccessOrigins(listenAddr)
 	for _, o := range origins {
 		if o.Kind == "lan" {
+			return o.URL
+		}
+	}
+	for _, o := range origins {
+		if o.Kind == "tailscale" {
 			return o.URL
 		}
 	}
