@@ -1778,12 +1778,22 @@ html.keyboard-open .jump-dock {
   border: 0;
 }
 
+
 .sheet--settings .sheet__foot {
   margin: 0;
   padding: var(--space-sm) var(--space-md);
   padding-bottom: max(var(--space-md), env(safe-area-inset-bottom));
   border-top: 1px solid var(--color-rule);
   background: var(--color-paper);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.sheet--settings .sheet__foot form {
+  margin: 0;
+  display: flex;
+  width: 100%;
 }
 
 .sheet--settings .sheet__foot .btn {

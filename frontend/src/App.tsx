@@ -392,6 +392,7 @@ export default function App() {
           session={session}
           client={client}
           onOpenPair={() => setOverlay("pair")}
+          onOpenSessions={() => setOverlay("sessions")}
           pref={pref}
           actual={actual}
           wrap={wrap}

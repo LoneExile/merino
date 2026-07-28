@@ -9,6 +9,8 @@ export interface SettingsSheetProps {
   client: Client | null;
   /** Desktop: open dedicated Pair phone sheet from Settings. */
   onOpenPair?: () => void;
+  /** Phone/web: open Session sheet (never Pair phone). */
+  onOpenSessions?: () => void;
   pref: ThemePref;
   actual: "light" | "dark";
   onPref: (p: ThemePref) => void;
@@ -95,6 +97,7 @@ export function SettingsSheet({
   session,
   client,
   onOpenPair,
+  onOpenSessions,
   pref,
   actual,
   onPref,
@@ -802,12 +805,19 @@ export function SettingsSheet({
       </section>
 
       {!isDesktop && (
-        <form className="sheet__foot" method="post" action="/logout">
-          {/* POST so a stray GET cannot CSRF-logout. */}
-          <button type="submit" className="btn btn--signout">
-            Sign out
-          </button>
-        </form>
+        <div className="sheet__foot">
+          {client?.sessions && onOpenSessions && (
+            <button type="button" className="btn btn--primary" onClick={onOpenSessions}>
+              Change session
+            </button>
+          )}
+          <form method="post" action="/logout">
+            {/* POST so a stray GET cannot CSRF-logout. */}
+            <button type="submit" className="btn btn--signout">
+              Sign out
+            </button>
+          </form>
+        </div>
       )}
     </Sheet>
   );
