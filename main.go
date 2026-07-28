@@ -523,7 +523,7 @@ func startWeb(src web.Source, addr string, behindProxy, allowWrites, allowSessio
 		Sessions:      sessions,
 		Switcher:      switcher,
 		SessionSwitch: allowSessionSwitch,
-		AllowWrites:    allowWrites,
+		AllowWrites:   allowWrites,
 		Pairing:       pairing,
 		PublicBaseURL: app.Env("PUBLIC_URL"),
 		// Same directory the audit log above resolves to, so an operator who

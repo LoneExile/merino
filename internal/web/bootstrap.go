@@ -255,4 +255,3 @@ func SetAllowWritesEnabled(dir string, enabled bool) error {
 	}
 	return os.WriteFile(allowWritesPath(dir), raw, 0o600)
 }
-

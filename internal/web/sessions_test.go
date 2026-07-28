@@ -230,15 +230,15 @@ func TestSessionSwitchRequiresAuth(t *testing.T) {
 // existing readOnly flag, tracking Switcher/Writer independently.
 func TestSessionEndpointReportsCapabilityFlags(t *testing.T) {
 	full, err := New(&fakeSource{agents: []app.Agent{agent("p1")}}, Config{
-		Provider: NewPasswordProvider("alice", "correct-horse", DirectIP, false),
-		Policy:   SingleOperator{},
-		Assets:   fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("<head></head>")}},
-		Logger:   slog.New(slog.DiscardHandler),
-		Writer:   &fakeWriter{},
+		Provider:    NewPasswordProvider("alice", "correct-horse", DirectIP, false),
+		Policy:      SingleOperator{},
+		Assets:      fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("<head></head>")}},
+		Logger:      slog.New(slog.DiscardHandler),
+		Writer:      &fakeWriter{},
 		AllowWrites: true,
-		Audit:    app.NewAuditTo(nopCloser{&bytes.Buffer{}}),
-		Sessions: &fakeSessions{},
-		Switcher: &fakeSwitcher{}, SessionSwitch: true,
+		Audit:       app.NewAuditTo(nopCloser{&bytes.Buffer{}}),
+		Sessions:    &fakeSessions{},
+		Switcher:    &fakeSwitcher{}, SessionSwitch: true,
 	})
 	if err != nil {
 		t.Fatalf("new server: %v", err)

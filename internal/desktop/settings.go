@@ -238,4 +238,3 @@ func (s *Settings) SetAllowWritesEnabled(on bool) error {
 	}
 	return nil
 }
-

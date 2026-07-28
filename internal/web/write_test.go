@@ -73,13 +73,13 @@ func writeServer(t *testing.T, policy Policy, wr Writer) (*Server, *bytes.Buffer
 		policy = SingleOperator{}
 	}
 	s, err := New(&fakeSource{agents: []app.Agent{agent("p1")}}, Config{
-		Provider: NewPasswordProvider("alice", "correct-horse", DirectIP, false),
-		Policy:   policy,
-		Assets:   fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("<head></head>")}},
-		Logger:   slog.New(slog.DiscardHandler),
-		Writer:   wr,
+		Provider:    NewPasswordProvider("alice", "correct-horse", DirectIP, false),
+		Policy:      policy,
+		Assets:      fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("<head></head>")}},
+		Logger:      slog.New(slog.DiscardHandler),
+		Writer:      wr,
 		AllowWrites: true,
-		Audit:    audit,
+		Audit:       audit,
 	})
 	if err != nil {
 		t.Fatalf("new server: %v", err)
@@ -92,9 +92,9 @@ func writeServer(t *testing.T, policy Policy, wr Writer) (*Server, *bytes.Buffer
 // exact combination this must never allow.
 func TestWritesRequireAudit(t *testing.T) {
 	_, err := New(&fakeSource{}, Config{
-		Provider: NewPasswordProvider("a", "b", DirectIP, false),
-		Policy:   SingleOperator{},
-		Writer:   &fakeWriter{},
+		Provider:    NewPasswordProvider("a", "b", DirectIP, false),
+		Policy:      SingleOperator{},
+		Writer:      &fakeWriter{},
 		AllowWrites: true,
 	})
 	if err == nil {
