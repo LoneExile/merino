@@ -109,8 +109,14 @@ func main() {
 		// tokens are one-shot + short TTL; device grants are revocable.
 		webAddr = "0.0.0.0:8730"
 	}
+	// Menubar .app: allow session switch on the phone dashboard by default.
+	// CLI still requires --allow-session-switch for deliberate headless exposes.
+	switchOK := *allowSessionSwitch
+	if *listen == "" {
+		switchOK = true
+	}
 	var startErr error
-	srv, pair, passProv, devStore, startErr := startWeb(agents, webAddr, *behindProxy, *allowWrites, *allowSessionSwitch, assets, logger)
+	srv, pair, passProv, devStore, startErr := startWeb(agents, webAddr, *behindProxy, *allowWrites, switchOK, assets, logger)
 	if startErr != nil {
 		logger.Error("web dashboard failed to start", "err", startErr)
 		os.Exit(1)

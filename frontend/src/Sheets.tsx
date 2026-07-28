@@ -130,6 +130,9 @@ export function SettingsSheet({
   const [passwordLoginOn, setPasswordLoginOn] = useState(true);
   const [pwLoginBusy, setPwLoginBusy] = useState(false);
   const [panicArmed, setPanicArmed] = useState(false);
+  const [herdSessions, setHerdSessions] = useState<SessionList | null>(null);
+  const [sessionBusy, setSessionBusy] = useState<string | null>(null);
+  const [sessionErr, setSessionErr] = useState<string | null>(null);
 
   const refreshDevices = useCallback(() => {
     if (!client?.listDevices) return;
@@ -154,6 +157,25 @@ export function SettingsSheet({
   useEffect(() => {
     refreshDevices();
   }, [refreshDevices]);
+
+  useEffect(() => {
+    let alive = true;
+    if (!client?.sessions) {
+      setHerdSessions(null);
+      return;
+    }
+    void client
+      .sessions()
+      .then((d) => {
+        if (alive) setHerdSessions(d);
+      })
+      .catch((e) => {
+        if (alive) setSessionErr(e instanceof Error ? e.message : String(e));
+      });
+    return () => {
+      alive = false;
+    };
+  }, [client]);
 
   useEffect(() => {
     let alive = true;
@@ -897,6 +919,72 @@ export function SettingsSheet({
           </p>
         )}
       </section>
+
+
+      {client?.sessions && (
+        <section className="settings-block" aria-labelledby="set-herd-session">
+          <header className="settings-block__head">
+            <h3 id="set-herd-session">Herdr session</h3>
+          </header>
+          <p className="settings-copy">
+            Which herdr instance this dashboard drives. Switching reloads the app.
+          </p>
+          {sessionErr && (
+            <p className="composer__err" role="alert">
+              {sessionErr}
+            </p>
+          )}
+          {!herdSessions && !sessionErr && (
+            <p className="settings-copy settings-copy--quiet">Looking for sessions…</p>
+          )}
+          <ul className="list list--plain">
+            {herdSessions?.sessions.map((hs) => (
+              <li key={hs.id}>
+                <button
+                  type="button"
+                  className={`row row--session${hs.current ? " is-on" : ""}`}
+                  disabled={
+                    !herdSessions.canSwitch ||
+                    hs.current ||
+                    sessionBusy !== null ||
+                    !hs.reachable
+                  }
+                  onClick={() => {
+                    if (!client.switchSession || hs.current) return;
+                    setSessionBusy(hs.id);
+                    setSessionErr(null);
+                    void client
+                      .switchSession(hs.id)
+                      .then(() => {
+                        window.location.reload();
+                      })
+                      .catch((e) => {
+                        setSessionErr(e instanceof Error ? e.message : String(e));
+                        setSessionBusy(null);
+                      });
+                  }}
+                >
+                  <span className="row__main">
+                    <span className="row__title">{hs.name}</span>
+                    <span className="mono row__sub">
+                      {hs.reachable
+                        ? `${hs.panes} panes · ${hs.agents} agents`
+                        : "not responding"}
+                      {sessionBusy === hs.id ? " · switching…" : ""}
+                    </span>
+                  </span>
+                  {hs.current && <span className="chip mono">current</span>}
+                </button>
+              </li>
+            ))}
+          </ul>
+          {herdSessions && !herdSessions.canSwitch && (
+            <p className="settings-copy settings-copy--quiet">
+              Switching is disabled on this server.
+            </p>
+          )}
+        </section>
+      )}
 
       <section className="settings-block" aria-labelledby="set-keys">
         <header className="settings-block__head">
