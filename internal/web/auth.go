@@ -322,13 +322,7 @@ func (p *PasswordProvider) redeemToken(w http.ResponseWriter, r *http.Request, t
 		return false
 	}
 	if p.devices != nil {
-		label := r.UserAgent()
-		if len(label) > 48 {
-			label = label[:48]
-		}
-		if label == "" {
-			label = "Phone"
-		}
+		label := friendlyDeviceName(r.UserAgent())
 		_, id, err := p.devices.Mint(label, "pairing", nil)
 		if err != nil {
 			// Do not leave the user with a burned token and no session.
@@ -340,6 +334,33 @@ func (p *PasswordProvider) redeemToken(w http.ResponseWriter, r *http.Request, t
 	}
 	success(w, r, Identity{Subject: p.user, Name: p.user, Provider: "pairing", Roles: []string{"view", "control"}})
 	return true
+}
+
+// friendlyDeviceName turns a User-Agent into a short Settings label.
+func friendlyDeviceName(ua string) string {
+	l := strings.ToLower(ua)
+	switch {
+	case strings.Contains(l, "iphone"):
+		return "iPhone"
+	case strings.Contains(l, "ipad"):
+		return "iPad"
+	case strings.Contains(l, "android"):
+		// Most Android browsers omit "Mobile" in compact UAs (e.g. "Android 10; K").
+		if strings.Contains(l, "tablet") {
+			return "Android tablet"
+		}
+		return "Android phone"
+	case strings.Contains(l, "macintosh") || strings.Contains(l, "mac os"):
+		return "Mac browser"
+	case strings.Contains(l, "windows"):
+		return "Windows browser"
+	case strings.Contains(l, "crios") || strings.Contains(l, "fxios"):
+		return "iPhone"
+	case ua == "":
+		return "Phone"
+	default:
+		return "Phone"
+	}
 }
 
 // IPResolver extracts the client address used for throttling and logging.

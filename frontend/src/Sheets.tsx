@@ -63,6 +63,32 @@ function urlBase64ToUint8Array(base64Url: string): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
+/** Short label for Settings — never dump a raw User-Agent. */
+function displaySessionName(session: Session | null | undefined): string {
+  if (!session) return "—";
+  const u = session.user?.trim() || "";
+  if (session.provider === "pairing" || /mozilla|applewebkit|android|iphone/i.test(u)) {
+    return friendlyUA(u) || "Phone";
+  }
+  return u || "—";
+}
+
+function friendlyUA(ua: string): string {
+  const l = ua.toLowerCase();
+  if (l.includes("iphone") || l.includes("crios") || l.includes("fxios")) return "iPhone";
+  if (l.includes("ipad")) return "iPad";
+  if (l.includes("android")) return l.includes("tablet") ? "Android tablet" : "Android phone";
+  if (l.includes("mac")) return "Mac browser";
+  if (l.includes("windows")) return "Windows browser";
+  if (!ua || /mozilla|webkit/i.test(ua)) return "Phone";
+  return ua.length > 28 ? `${ua.slice(0, 28)}…` : ua;
+}
+
+function displayDeviceName(name: string): string {
+  if (/mozilla|applewebkit|android|iphone/i.test(name)) return friendlyUA(name);
+  return name || "Phone";
+}
+
 export function SettingsSheet({
   session,
   client,
@@ -550,7 +576,7 @@ export function SettingsSheet({
               <li key={d.id}>
                 <div className={`row row--session${d.revokedAt ? "" : " is-on"}`}>
                   <span className="row__main">
-                    <span className="row__title">{d.name || d.id}</span>
+                    <span className="row__title">{displayDeviceName(d.name || "")}</span>
                     <span className="row__sub mono">
                       {d.provider}
                       {d.revokedAt ? " · revoked" : " · active"}
@@ -800,10 +826,10 @@ export function SettingsSheet({
           {!session?.readOnly && <span className="settings-pill settings-pill--warn">Writes on</span>}
           {session?.readOnly && <span className="settings-pill">Read-only</span>}
         </header>
-        <dl className="facts facts--dense">
+        <dl className="facts facts--dense facts--connection">
           <div>
-            <dt>User</dt>
-            <dd className="mono">{session?.user ?? "—"}</dd>
+            <dt>Signed in as</dt>
+            <dd title={session?.user}>{displaySessionName(session)}</dd>
           </div>
           <div>
             <dt>Auth</dt>
@@ -877,8 +903,8 @@ export function SettingsSheet({
 
       {!isDesktop && (
         <form className="sheet__foot" method="post" action="/logout">
-          {/* POST so a stray GET (prefetch / &lt;img&gt;) cannot CSRF-logout. */}
-          <button type="submit" className="btn btn--ghost-danger">
+          {/* POST so a stray GET cannot CSRF-logout. */}
+          <button type="submit" className="btn btn--signout">
             Sign out
           </button>
         </form>

@@ -1633,6 +1633,15 @@ html.keyboard-open .jump-dock {
   white-space: nowrap;
 }
 
+/* Connection block: single column so long labels never clip Auth/Transport. */
+.facts--connection {
+  grid-template-columns: 1fr;
+}
+.facts--connection dd {
+  white-space: normal;
+  word-break: break-word;
+}
+
 .facts--keys {
   /* MUST reset columns — base .facts is 2-col and would tile these rows. */
   display: grid;
@@ -1776,11 +1785,24 @@ html.keyboard-open .jump-dock {
 .sheet--settings .sheet__foot .btn {
   display: flex;
   width: 100%;
+  justify-content: center;
+  align-items: center;
   text-decoration: none;
+  min-height: var(--tap);
 }
 
-.sheet--settings .sheet__foot a.btn--ghost-danger {
+.sheet--settings .sheet__foot a.btn--ghost-danger,
+.sheet--settings .sheet__foot .btn--signout {
   color: var(--color-danger, var(--status-blocked));
+  border-color: color-mix(in oklab, var(--color-danger, var(--status-blocked)) 35%, var(--color-rule));
+  background: transparent;
+  font-weight: 600;
+}
+.sheet--settings .sheet__foot .btn--signout:hover {
+  background: color-mix(in oklab, var(--color-danger, var(--status-blocked)) 12%, transparent);
+}
+.sheet--settings .sheet__foot .btn--signout:active {
+  background: color-mix(in oklab, var(--color-danger, var(--status-blocked)) 18%, transparent);
 }
 
 .sheet--settings .pair {
@@ -2255,4 +2277,19 @@ code.mono {
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+}
+
+/* Paired device rows: keep revoke hit target; ellipsis the name. */
+.list--plain .row--session {
+  padding-inline-end: var(--space-2xs);
+}
+.list--plain .row--session .row__title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.list--plain .row--session .row__sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
