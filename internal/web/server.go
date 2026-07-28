@@ -294,8 +294,9 @@ func (s *Server) routes() http.Handler {
 
 	if s.cfg.Writer != nil {
 		s.mountWrites(mux)
-		s.mountPaste(mux)
 	}
+	// Image GETs are display-only; available even when writes are gated off.
+	s.mountPaste(mux)
 
 	if s.push != nil {
 		s.mountPush(mux)

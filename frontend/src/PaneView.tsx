@@ -4,7 +4,7 @@ import type { Client, SlashCommand } from "./client";
 import { usePaneStream } from "./usePaneStream";
 import { StatusDot } from "./StatusDot";
 import { parseAnsi } from "./ansi";
-import { pasteImageURL, splitPasteImages } from "./pasteImages";
+import { splitPasteImages } from "./pasteImages";
 import type { useTermFontPref } from "./termFontPref";
 import { findMatches, stripAnsi } from "./termSearch";
 
@@ -110,17 +110,18 @@ function renderTermBody(
     if (piece.kind === "img") {
       // Path characters count in plain text too.
       plainCursor += stripAnsi(piece.path).length;
+      const src = piece.src;
       nodes.push(
         <button
           key={`img-${pi}`}
           type="button"
           className="term__img-wrap"
-          onClick={() => onImg(pasteImageURL(piece.name), piece.path)}
+          onClick={() => onImg(src, piece.path)}
         >
           <img
             className="term__img"
-            src={pasteImageURL(piece.name)}
-            alt={piece.path}
+            src={src}
+            alt=""
             title="Tap to enlarge"
             loading="lazy"
           />
