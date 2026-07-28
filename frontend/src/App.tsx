@@ -7,9 +7,9 @@ import { useWrapPref } from "./wrapPref";
 import { PaneView } from "./PaneView";
 import { StatusDot, statusLabel } from "./StatusDot";
 import { Palette, type Command } from "./Palette";
-import { RenameSheet, SessionSheet, SettingsSheet } from "./Sheets";
+import { PairPhoneSheet, RenameSheet, SessionSheet, SettingsSheet } from "./Sheets";
 
-type Overlay = "settings" | "sessions" | "palette" | null;
+type Overlay = "settings" | "sessions" | "palette" | "pair" | null;
 
 /** Blocked first: the whole point of the dashboard is answering what is stuck. */
 const GROUPS: { key: string; label: string }[] = [
@@ -45,14 +45,11 @@ export default function App() {
   const [openPane, setOpenPane] = useState<string | null>(null);
   const [overlay, setOverlay] = useState<Overlay>(null);
   const [renaming, setRenaming] = useState<Agent | null>(null);
-  const [settingsFocusPair, setSettingsFocusPair] = useState(false);
-
   // First-run pairing: open Settings so the QR block is visible.
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (window.location.search.includes("pair=1")) {
-      setSettingsFocusPair(true);
-      setOverlay("settings");
+      setOverlay("pair");
     }
   }, []);
 
@@ -74,11 +71,9 @@ export default function App() {
               : undefined;
           const which = typeof data === "string" ? data : "";
           if (which === "settings") {
-            setSettingsFocusPair(false);
             setOverlay("settings");
           } else if (which === "pair") {
-            setSettingsFocusPair(true);
-            setOverlay("settings");
+            setOverlay("pair");
           } else if (which === "agents") {
             setOverlay(null);
             setOpenPane(null);
@@ -165,10 +160,7 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const closeOverlay = useCallback(() => {
-    setOverlay(null);
-    setSettingsFocusPair(false);
-  }, []);
+  const closeOverlay = useCallback(() => setOverlay(null), []);
 
   const counts = useMemo(() => {
     const blocked = agents.filter((a) => a.status === "blocked").length;
@@ -369,11 +361,17 @@ export default function App() {
       )}
 
       {overlay === "palette" && <Palette commands={commands} onClose={closeOverlay} />}
+      {overlay === "pair" && client && (
+        <PairPhoneSheet
+          client={client}
+          onClose={closeOverlay}
+          onOpenSettings={() => setOverlay("settings")}
+        />
+      )}
       {overlay === "settings" && (
         <SettingsSheet
           session={session}
           client={client}
-          focusPair={settingsFocusPair}
           pref={pref}
           actual={actual}
           wrap={wrap}

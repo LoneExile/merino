@@ -1242,3 +1242,149 @@ export function RenameSheet({ client, agent, onClose }: RenameSheetProps) {
     </Sheet>
   );
 }
+
+export interface PairPhoneSheetProps {
+  client: Client;
+  onClose: () => void;
+  /** Open full Settings (advanced). */
+  onOpenSettings?: () => void;
+}
+
+/**
+ * Dedicated tray "Pair phone…" surface: mint a one-shot QR without burying it
+ * inside the full Settings sheet.
+ */
+export function PairPhoneSheet({ client, onClose, onOpenSettings }: PairPhoneSheetProps) {
+  const [pair, setPair] = useState<PairingTicket | null>(null);
+  const [pairErr, setPairErr] = useState<string | null>(null);
+  const [pairBusy, setPairBusy] = useState(false);
+  const [pairBase, setPairBase] = useState(
+    () => localStorage.getItem("herdr.pairBase") ?? "",
+  );
+  const [accessOrigins, setAccessOrigins] = useState<AccessOrigin[]>([]);
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const origins = client.accessOrigins ? await client.accessOrigins() : [];
+        if (!alive) return;
+        setAccessOrigins(origins ?? []);
+        if (!pairBase) {
+          const def =
+            (client.defaultPairBase ? await client.defaultPairBase() : "") ||
+            origins?.find((o) => o.kind === "lan")?.url ||
+            origins?.[0]?.url ||
+            "";
+          if (def) setPairBase(def);
+        }
+      } catch {
+        /* origins optional */
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- boot once
+  }, [client]);
+
+  const mint = useCallback(() => {
+    if (!client.mintPairing) return;
+    setPairBusy(true);
+    setPairErr(null);
+    const base = pairBase.trim();
+    localStorage.setItem("herdr.pairBase", base);
+    void (async () => {
+      try {
+        if (client.setPairingBaseURL) await client.setPairingBaseURL(base);
+        const ticket = await client.mintPairing?.();
+        if (ticket) {
+          setPair(ticket);
+          void client.markFirstRunDone?.();
+        }
+      } catch (err) {
+        setPairErr(err instanceof Error ? err.message : String(err));
+      } finally {
+        setPairBusy(false);
+      }
+    })();
+  }, [client, pairBase]);
+
+  // Auto-mint on open so the tray path is one click → QR.
+  useEffect(() => {
+    if (!client.mintPairing) return;
+    const t = window.setTimeout(() => mint(), 30);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once on mount
+  }, [client]);
+
+  return (
+    <Sheet title="Pair phone" subtitle="One-shot QR · 2 min" panelClass="sheet--pair" onClose={onClose}>
+      <p className="settings-copy">
+        Scan with the phone camera, or paste the code on the login page. Prefer{" "}
+        <strong>Wi‑Fi / LAN</strong> on the same network; use HTTPS for in-page camera scan.
+      </p>
+
+      {accessOrigins.length > 0 && (
+        <div className="pair-origins" role="group" aria-label="Access origin">
+          {accessOrigins.map((o) => (
+            <button
+              key={o.kind + o.url}
+              type="button"
+              className={`btn pair-origins__chip${pairBase === o.url ? " is-on" : ""}`}
+              title={o.hint || o.url}
+              onClick={() => {
+                setPairBase(o.url);
+                localStorage.setItem("herdr.pairBase", o.url);
+              }}
+            >
+              <span className="pair-origins__label">{o.label}</span>
+              <span className="pair-origins__url mono">{o.url.replace(/^https?:\/\//, "")}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <label className="field__label" htmlFor="pair-sheet-base">
+        QR base URL
+      </label>
+      <input
+        id="pair-sheet-base"
+        className="field__input"
+        value={pairBase}
+        onChange={(e) => setPairBase(e.target.value)}
+        placeholder="http://192.168.x.x:8730 or https://your-tunnel.example"
+        spellCheck={false}
+        autoCapitalize="off"
+        autoCorrect="off"
+      />
+
+      <div className="sheet__actions" style={{ marginTop: "0.75rem" }}>
+        <button type="button" className="btn btn--solid" disabled={pairBusy} onClick={() => mint()}>
+          {pairBusy ? "Minting…" : pair ? "Refresh QR" : "Show QR code"}
+        </button>
+        {onOpenSettings && (
+          <button type="button" className="btn" onClick={onOpenSettings}>
+            All settings
+          </button>
+        )}
+      </div>
+
+      {pair && (
+        <div className="pair">
+          <img className="pair__qr" src={pair.qrPng} alt="Sign-in QR code" width={192} height={192} />
+          <p className="hint mono pair__token">{pair.token}</p>
+          <p className="settings-copy settings-copy--quiet">
+            Expires {new Date(pair.expiresAt * 1000).toLocaleTimeString()}. Paste the code on the
+            login page if you cannot scan.
+          </p>
+        </div>
+      )}
+      {pairErr && (
+        <p className="composer__err" role="alert">
+          {pairErr}
+        </p>
+      )}
+    </Sheet>
+  );
+}

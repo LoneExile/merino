@@ -2341,3 +2341,16 @@ code.mono {
 .sheet--settings .settings-group .settings-block {
   margin: 0;
 }
+
+
+.sheet--pair .pair {
+  margin-top: var(--space-m);
+  display: grid;
+  justify-items: center;
+  gap: var(--space-xs);
+}
+.sheet--pair .pair__qr {
+  border-radius: 12px;
+  background: #fff;
+  padding: 10px;
+}
