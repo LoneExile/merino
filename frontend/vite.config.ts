@@ -10,4 +10,19 @@ export default defineConfig({
     strictPort: true,
   },
   plugins: [react(), wails("./bindings")],
+  build: {
+    // Keep @wailsio/runtime out of a cycle with the dynamic wailsClient
+    // chunk. A cycle left the nanoid alphabet undefined at module init:
+    //   undefined is not an object (evaluating 'a[Math.random()*64|0]')
+    // which blanked the whole menubar panel.
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules/@wailsio/runtime") || id.includes("@wailsio/runtime/")) {
+            return "wails-runtime";
+          }
+        },
+      },
+    },
+  },
 });
