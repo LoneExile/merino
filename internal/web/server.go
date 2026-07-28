@@ -195,8 +195,11 @@ func (s *Server) routes() http.Handler {
 	s.mountPairing(mux)
 	s.mountDevices(mux)
 
+	// POST only — Settings uses a form method=post. GET would allow CSRF
+	// logout via <img src="/logout"> / link prefetch.
 	mux.HandleFunc("POST /logout", func(w http.ResponseWriter, r *http.Request) {
 		s.sessions.Clear(w)
+		w.Header().Set("Cache-Control", "no-store")
 		http.Redirect(w, r, s.cfg.Provider.LoginPath(), http.StatusSeeOther)
 	})
 

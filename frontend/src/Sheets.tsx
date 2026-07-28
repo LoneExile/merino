@@ -821,11 +821,12 @@ export function SettingsSheet({
       </section>
 
       {!isDesktop && (
-        <p className="sheet__foot">
-          <a className="btn btn--ghost-danger" href="/logout">
+        <form className="sheet__foot" method="post" action="/logout">
+          {/* POST so a stray GET (prefetch / &lt;img&gt;) cannot CSRF-logout. */}
+          <button type="submit" className="btn btn--ghost-danger">
             Sign out
-          </a>
-        </p>
+          </button>
+        </form>
       )}
     </Sheet>
   );
