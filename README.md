@@ -79,6 +79,45 @@ just app          # builds Merino.app and launches it
 
 Requirements: Go (see `go.mod`), Node 22+, macOS, [Wails v3](https://v3.wails.io) for packaging.
 
+### Uninstall
+
+One-liner (quits Merino, removes app + logs/caches/pairings):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/LoneExile/merino/main/scripts/uninstall.sh | bash
+```
+
+Keep paired devices / settings:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/LoneExile/merino/main/scripts/uninstall.sh | bash -s -- --keep-state
+```
+
+Preview only:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/LoneExile/merino/main/scripts/uninstall.sh | bash -s -- --dry-run
+```
+
+Manual:
+
+```bash
+# Quit
+osascript -e 'quit app "Merino"' 2>/dev/null || true
+
+# App (script install / drag-drop)
+rm -rf /Applications/Merino.app /Applications/merino.app
+
+# Or Homebrew
+brew uninstall --cask merino 2>/dev/null || true
+
+# Local state (audit log, device grants, bootstrap password, paste cache)
+rm -rf ~/Library/Logs/merino ~/Library/Caches/merino
+rm -f ~/Library/Preferences/dev.apinant.merino.plist
+```
+
+Does **not** remove [herdr](https://herdr.dev).
+
 ## Quick start
 
 1. Install and open **Merino** (menu bar sheep).
