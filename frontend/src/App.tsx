@@ -132,7 +132,7 @@ export default function App() {
       {!current && (
         <header className="rail">
           <div className="rail__brand">
-            <img className="rail__mark" src="/favicon-64.png" alt="" width="16" height="16" />
+            <img className="rail__mark" src="/favicon-64.png" alt="" width="22" height="22" />
             <span className="rail__name">Herdr</span>
             <span
               className={`rail__pulse${live ? " is-live" : ""}${!ready ? " is-boot" : ""}`}

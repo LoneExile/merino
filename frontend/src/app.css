@@ -252,9 +252,12 @@ html.desktop .app {
 }
 
 .rail__mark {
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
+  /* Was 16px — reads as a speck next to the rail type. 22px keeps the
+   * sheep legible in both the menubar panel and the browser/PWA rail
+   * without crowding the 40px chrome strip. */
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
   flex: none;
   display: block;
 }
