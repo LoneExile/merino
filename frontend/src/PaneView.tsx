@@ -493,63 +493,62 @@ export function PaneView({ client, agent, wrap, termFont, onBack, onRename }: Pa
         </div>
       </header>
 
-      {searchOpen && (
-        <div className="pane__find" role="search">
-          <input
-            ref={searchInputRef}
-            className="pane__find-input"
-            type="search"
-            value={searchQ}
-            placeholder="Find in loaded output…"
-            aria-label="Find in loaded output"
-            autoCapitalize="off"
-            autoCorrect="off"
-            spellCheck={false}
-            onChange={(e) => {
-              setSearchQ(e.target.value);
-              setMatchIdx(0);
-            }}
-          />
-          <span className="pane__find-count mono" aria-live="polite">
-            {searchQ.trim()
-              ? searchMatches.length
-                ? `${safeMatchIdx + 1}/${searchMatches.length}`
-                : canLoadMore
-                  ? "0 — loading older…"
-                  : "0"
-              : "—"}
-          </span>
-          <button
-            type="button"
-            className="btn btn--icon"
-            aria-label="Previous match"
-            disabled={searchMatches.length === 0}
-            onClick={() => goMatch(-1)}
-          >
-            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-              <path d="M4 10 8 6l4 4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            className="btn btn--icon"
-            aria-label="Next match"
-            disabled={searchMatches.length === 0}
-            onClick={() => goMatch(1)}
-          >
-            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-              <path d="M4 6 8 10l4-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-          <button type="button" className="btn btn--icon" aria-label="Close find" onClick={closeSearch}>
-            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-              <path d="m4 4 8 8M12 4l-8 8" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
-            </svg>
-          </button>
-        </div>
-      )}
-
       <div className="pane__body">
+        {searchOpen && (
+          <div className="pane__find" role="search">
+            <input
+              ref={searchInputRef}
+              className="pane__find-input"
+              type="search"
+              value={searchQ}
+              placeholder="Find in loaded output…"
+              aria-label="Find in loaded output"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              onChange={(e) => {
+                setSearchQ(e.target.value);
+                setMatchIdx(0);
+              }}
+            />
+            <span className="pane__find-count mono" aria-live="polite">
+              {searchQ.trim()
+                ? searchMatches.length
+                  ? `${safeMatchIdx + 1}/${searchMatches.length}`
+                  : canLoadMore
+                    ? "0 — loading older…"
+                    : "0"
+                : "—"}
+            </span>
+            <button
+              type="button"
+              className="btn btn--icon"
+              aria-label="Previous match"
+              disabled={searchMatches.length === 0}
+              onClick={() => goMatch(-1)}
+            >
+              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                <path d="M4 10 8 6l4 4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              className="btn btn--icon"
+              aria-label="Next match"
+              disabled={searchMatches.length === 0}
+              onClick={() => goMatch(1)}
+            >
+              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                <path d="M4 6 8 10l4-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            <button type="button" className="btn btn--icon" aria-label="Close find" onClick={closeSearch}>
+              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                <path d="m4 4 8 8M12 4l-8 8" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
+        )}
         <div className="pane__screen" ref={scroller} onScroll={onScroll} tabIndex={0}>
           {loadingMore && (
             <div className="pane__history mono" role="status">

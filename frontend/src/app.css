@@ -100,6 +100,8 @@ html,
 body,
 #root {
   height: 100%;
+  max-height: 100%;
+  overflow: hidden;
 }
 
 body {
@@ -162,24 +164,29 @@ html.desktop .app {
 .app {
   /* Prefer --app-height from visualViewport (main.tsx). Soft keyboards leave
    * 100dvh full-screen on mobile Chrome/Safari, so without this the composer
-   * sits under the keys. position:fixed + top tracks iOS offsetTop. */
+   * sits under the keys. top tracks iOS visualViewport.offsetTop. */
   position: fixed;
   top: var(--app-offset-top, 0px);
-  left: 50%;
-  transform: translateX(-50%);
-  width: min(56rem, 100%);
+  left: 0;
+  right: 0;
+  width: 100%;
+  max-width: 56rem;
+  margin-inline: auto;
   height: var(--app-height, 100dvh);
   max-height: var(--app-height, 100dvh);
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto minmax(0, 1fr);
   border-inline: 1px solid var(--color-rule);
   background: var(--color-paper);
   overflow: hidden;
+  /* Avoid transform: translateX(-50%) — it creates a containing block and
+   * interacts badly with visualViewport on iOS when the keyboard opens. */
 }
 
 @media (max-width: 57rem) {
   .app {
     border-inline: 0;
+    max-width: none;
   }
 }
 
@@ -196,11 +203,17 @@ html.desktop .app {
 
 /* Pane view owns its own header — one chrome strip on the phone. */
 .app--pane {
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .app--pane:not(:has(.banner)) {
-  grid-template-rows: 1fr;
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.app--pane > .pane {
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
 }
 
 .rail__brand {
@@ -589,17 +602,38 @@ html.desktop .app {
 /* ---------------------------------------------------------------- pane */
 
 .pane {
-  position: relative;
-  /* header · find(optional) · body(screen+jump) · composer. Only body scrolls. */
+  /* header · body(find+screen+jump) · composer — always 3 rows so the
+   * composer never loses its track when find is closed (a 4-row template
+   * mapped the body onto `auto` and let it blow past max-height, clipping
+   * the composer entirely on phones). */
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   min-height: 0;
+  height: 100%;
+  max-height: 100%;
   /* Grid items default to min-width: auto, i.e. their content's intrinsic
    * width — which for an unwrapped .term line is the width of its longest
    * row. Without this, a wide TUI screen would stretch .pane itself instead
    * of staying inside it and letting .pane__screen scroll horizontally. */
   min-width: 0;
   position: relative;
+}
+
+/* Explicit tracks — never depend on optional find child count. */
+.pane > .pane__bar {
+  grid-row: 1;
+}
+.pane > .pane__body {
+  grid-row: 2;
+  min-height: 0;
+}
+.pane > .composer {
+  grid-row: 3;
+}
+/* Fixed overlay — must not auto-place into a 4th track and shove the composer. */
+.pane > .lightbox {
+  grid-row: 1 / -1;
+  grid-column: 1;
 }
 
 .pane__find {
@@ -610,7 +644,9 @@ html.desktop .app {
   border-bottom: 1px solid var(--color-rule);
   background: var(--color-paper);
   min-height: var(--tap);
-  flex: none;
+  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
 }
 
 .pane__find-input {
@@ -749,8 +785,9 @@ html.dark .term__hit--active {
   position: relative;
   min-height: 0;
   min-width: 0;
-  display: grid;
-  grid-template-rows: 1fr;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .pane__screen {
@@ -760,6 +797,8 @@ html.dark .term__hit--active {
   -webkit-overflow-scrolling: touch;
   /* Same reasoning as .pane's min-width: 0 above, one grid level down. */
   min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
   min-height: 0;
 }
 
@@ -882,9 +921,43 @@ html.dark .term__hit--active {
   border-top: 1px solid var(--color-rule);
   background: var(--color-paper);
   padding: var(--space-xs) var(--space-sm);
-  padding-bottom: max(var(--space-xs), env(safe-area-inset-bottom));
-  display: grid;
+  /* --composer-pad-bottom is set in main.tsx: safe-area when kb closed,
+   * tight 8px when open so Send is not shoved under the keys. */
+  padding-bottom: var(--composer-pad-bottom, max(8px, env(safe-area-inset-bottom, 0px)));
+  display: flex;
+  flex-direction: column;
   gap: var(--space-2xs);
+  min-width: 0;
+  /* Default: size to content. NEVER put overflow+max-height on the resting
+   * composer — a flex/grid child with overflow:auto collapses its flex
+   * toolbar row to ~1px and clips Tab/Send (phone bug). */
+  overflow: visible;
+}
+
+/* Keyboard open: denser chrome only. Do NOT set max-height % here —
+ * percentage max-height on a grid `auto` track is circular (track sizes to
+ * content, content clamps to % of track) and collapses the composer so the
+ * input/Send row scrolls out of view inside a ~50px box. The pane grid
+ * (auto / 1fr / auto) already keeps the full composer visible by shrinking
+ * the terminal body instead. */
+html.keyboard-open .composer {
+  gap: 4px;
+  padding-top: 6px;
+  overflow: visible;
+}
+
+html.keyboard-open .composer__keys {
+  gap: 4px;
+}
+
+html.keyboard-open .btn--key,
+html.keyboard-open .btn--keypad {
+  min-height: 2.5rem;
+  min-width: 2.4rem;
+}
+
+html.keyboard-open .jump-dock {
+  display: none; /* pill collides with the keybar when the kb steals height */
 }
 
 .composer--ro {
@@ -904,16 +977,26 @@ html.dark .term__hit--active {
   align-items: stretch;
   gap: var(--space-2xs);
   overflow-x: auto;
+  overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
   padding-bottom: 1px; /* room for focus ring */
+  min-width: 0;
+  max-width: 100%;
+  /* Never let overflow:auto parent collapse this toolbar to 1px. */
+  flex: 0 0 auto;
+  min-height: var(--tap);
+  scrollbar-width: thin;
 }
 
 /* Segmented arrow cluster — one control, four cells. */
 .keypad {
   display: grid;
-  grid-template-columns: repeat(4, minmax(2.5rem, 1fr));
+  grid-template-columns: repeat(4, minmax(2.25rem, 1fr));
   flex: 1 1 auto;
-  min-width: 0;
+  min-width: 9rem;
+  max-width: 100%;
+  min-height: var(--tap);
+  align-self: stretch;
   border: 1px solid var(--color-rule);
   border-radius: var(--radius-control);
   overflow: hidden;
@@ -1046,6 +1129,12 @@ html.dark .term__hit--active {
   display: flex;
   gap: var(--space-2xs);
   align-items: flex-end;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.composer__row .btn--primary {
+  flex: 0 0 auto;
 }
 
 .composer__input {

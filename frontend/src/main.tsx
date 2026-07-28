@@ -23,18 +23,44 @@ if (!isWebMode) {
 // actually-visible area; keep --app-height in sync so .app fits above it.
 // Desktop Wails webview already has a fixed panel size — do not touch it.
 if (isWebMode) {
+  const root = document.documentElement;
+  const KEYBOARD_GAP_PX = 120; // layout vs visual — soft keyboard heuristic
+
   const syncViewportHeight = () => {
     const vv = window.visualViewport;
-    const height = vv?.height ?? window.innerHeight;
-    const offsetTop = vv?.offsetTop ?? 0;
-    const root = document.documentElement;
-    root.style.setProperty("--app-height", `${Math.round(height)}px`);
-    root.style.setProperty("--app-offset-top", `${Math.round(offsetTop)}px`);
+    // Prefer visualViewport; fall back to innerHeight. Never exceed innerHeight
+    // (some WebViews briefly report vv taller than the layout viewport).
+    const layoutH = window.innerHeight;
+    const vvH = vv?.height ?? layoutH;
+    const height = Math.min(Math.round(vvH), layoutH);
+    const offsetTop = Math.max(0, Math.round(vv?.offsetTop ?? 0));
+    const keyboardOpen = layoutH - height > KEYBOARD_GAP_PX;
+
+    root.style.setProperty("--app-height", `${height}px`);
+    root.style.setProperty("--app-offset-top", `${offsetTop}px`);
+    // While the keyboard is up the home-indicator safe-area is already outside
+    // the visual viewport — padding it again shoves Send under the keys.
+    root.style.setProperty(
+      "--composer-pad-bottom",
+      keyboardOpen ? "8px" : "max(8px, env(safe-area-inset-bottom, 0px))",
+    );
+    root.classList.toggle("keyboard-open", keyboardOpen);
   };
+
   syncViewportHeight();
   window.visualViewport?.addEventListener("resize", syncViewportHeight);
   window.visualViewport?.addEventListener("scroll", syncViewportHeight);
-  window.addEventListener("orientationchange", syncViewportHeight);
+  window.addEventListener("orientationchange", () => {
+    // iOS fires orientationchange before the new vv settles.
+    window.setTimeout(syncViewportHeight, 50);
+    window.setTimeout(syncViewportHeight, 250);
+  });
+  window.addEventListener("focusin", syncViewportHeight);
+  window.addEventListener("focusout", () => {
+    // After blur, iOS often animates the keyboard closed over ~200ms.
+    window.setTimeout(syncViewportHeight, 50);
+    window.setTimeout(syncViewportHeight, 300);
+  });
 }
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
