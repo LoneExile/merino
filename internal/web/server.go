@@ -71,10 +71,13 @@ type Config struct {
 	// route does not exist, the same absence convention Writer uses for the
 	// write routes.
 	Sessions SessionSource
-	// Switcher lets an authenticated browser repoint the server at a
-	// different herdr session. Nil means the switch route does not exist;
-	// wired from --allow-session-switch in main.go.
+	// Switcher repoints the server at a different herdr session when
+	// session switch is enabled (CLI flag and/or Settings toggle).
+	// Nil means the host cannot switch at all.
 	Switcher SessionSwitcher
+	// SessionSwitch starts enabled when true (CLI --allow-session-switch).
+	// Desktop Settings can flip it at runtime when Switcher != nil.
+	SessionSwitch bool
 	// PushDir is where the VAPID keypair and push-subscription store are
 	// persisted. Empty disables Web Push entirely: no VAPID keys are ever
 	// generated, the push routes do not exist, and /api/session reports
@@ -102,6 +105,9 @@ type Server struct {
 	sessions *Sessions
 	log      *slog.Logger
 	http     *http.Server
+	switchMu sync.Mutex
+	// switchOn gates POST /api/sessions/switch when cfg.Switcher != nil.
+	switchOn bool
 	// push is nil whenever Web Push was never configured (PushDir == "") or
 	// failed to initialise — see New. Every push-aware code path checks this
 	// rather than assuming a non-empty Config.PushDir implies success.
@@ -153,6 +159,7 @@ func New(src Source, cfg Config) (*Server, error) {
 		log:      cfg.Logger,
 		clients:  make(map[chan []byte]struct{}),
 		pairing:  cfg.Pairing,
+		switchOn: cfg.SessionSwitch && cfg.Switcher != nil,
 	}
 	if s.pairing != nil && cfg.PublicBaseURL != "" {
 		s.pairing.SetBaseURL(cfg.PublicBaseURL)
@@ -178,6 +185,33 @@ func New(src Source, cfg Config) (*Server, error) {
 		IdleTimeout: 120 * time.Second,
 	}
 	return s, nil
+}
+
+// SessionSwitchAllowed is true when the host can switch and the operator
+// left the gate open (CLI flag or Mac Settings toggle).
+func (s *Server) SessionSwitchAllowed() bool {
+	if s == nil || s.cfg.Switcher == nil {
+		return false
+	}
+	s.switchMu.Lock()
+	defer s.switchMu.Unlock()
+	return s.switchOn
+}
+
+// SetSessionSwitch turns the phone/web session-switch gate on or off.
+// No-op error if the host has no Switcher.
+func (s *Server) SetSessionSwitch(on bool) error {
+	if s == nil {
+		return errors.New("server unavailable")
+	}
+	if s.cfg.Switcher == nil {
+		return errors.New("this build cannot switch herdr sessions")
+	}
+	s.switchMu.Lock()
+	s.switchOn = on
+	s.switchMu.Unlock()
+	s.log.Info("session switch gate", "enabled", on)
+	return nil
 }
 
 func (s *Server) routes() http.Handler {
@@ -366,7 +400,7 @@ func (s *Server) handleSession(w http.ResponseWriter, _ *http.Request, id Identi
 		// enforcement is that the routes are absent, not these flags.
 		"readOnly":         s.cfg.Writer == nil,
 		"canRename":        s.cfg.Writer != nil,
-		"canSwitchSession": s.cfg.Switcher != nil,
+		"canSwitchSession": s.SessionSwitchAllowed(),
 		"pushEnabled":      s.push != nil,
 		"devicesEnabled":   s.cfg.Devices != nil,
 		"canManageDevices": !IsDeviceSubject(id.Subject) && s.cfg.Devices != nil,

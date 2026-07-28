@@ -21,6 +21,8 @@ type Settings struct {
 	// Password is the live HTTP password provider (same process as web server).
 	// Nil when web is down; file persistence still works.
 	Password *web.PasswordProvider
+	// webServer is set after start so Settings can flip runtime gates.
+	webServer *web.Server
 }
 
 // NewSettings wires the three optional backends. Any may be nil; methods then
@@ -173,6 +175,34 @@ func (s *Settings) SetPasswordLoginEnabled(on bool) error {
 	}
 	if s.Password != nil {
 		s.Password.SetPasswordLogin(on)
+	}
+	return nil
+}
+
+// SetWebServer wires the live web server for runtime Settings toggles.
+func (s *Settings) SetWebServer(srv *web.Server) {
+	if s == nil {
+		return
+	}
+	s.webServer = srv
+}
+
+// SessionSwitchEnabled reports whether phone/web may switch herdr sessions.
+func (s *Settings) SessionSwitchEnabled() bool {
+	if s != nil && s.webServer != nil {
+		return s.webServer.SessionSwitchAllowed()
+	}
+	return web.SessionSwitchEnabled(s.StateDir)
+}
+
+// SetSessionSwitchEnabled turns phone session switching on or off.
+// Persists to disk and updates the live gate immediately.
+func (s *Settings) SetSessionSwitchEnabled(on bool) error {
+	if err := web.SetSessionSwitchEnabled(s.StateDir, on); err != nil {
+		return err
+	}
+	if s.webServer != nil {
+		return s.webServer.SetSessionSwitch(on)
 	}
 	return nil
 }

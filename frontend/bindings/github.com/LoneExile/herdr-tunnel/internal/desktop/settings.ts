@@ -9,7 +9,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -23,19 +23,15 @@ import * as $models from "./models.js";
  * AccessOrigins returns localhost + LAN (and never invents a Cloudflare URL).
  * The Settings sheet uses these as one-tap QR bases before any tunnel setup.
  */
-export function AccessOrigins(): $CancellablePromise<web$0.AccessOrigin[]> {
-    return $Call.ByID(2231323965).then(($result: any) => {
-        return $$createType1($result);
-    });
+export function AccessOrigins(): $CancellablePromise<web$0.AccessOrigin[] | null> {
+    return $Call.ByID(2231323965);
 }
 
 /**
  * CheckUpdate looks up the latest GitHub release.
  */
 export function CheckUpdate(): $CancellablePromise<$models.UpdateInfo> {
-    return $Call.ByID(544266481).then(($result: any) => {
-        return $$createType2($result);
-    });
+    return $Call.ByID(544266481);
 }
 
 /**
@@ -62,10 +58,8 @@ export function LaunchAtLogin(): $CancellablePromise<boolean> {
 /**
  * ListDevices returns paired phones (including revoked).
  */
-export function ListDevices(): $CancellablePromise<web$0.Device[]> {
-    return $Call.ByID(3218586955).then(($result: any) => {
-        return $$createType4($result);
-    });
+export function ListDevices(): $CancellablePromise<web$0.Device[] | null> {
+    return $Call.ByID(3218586955);
 }
 
 /**
@@ -79,9 +73,7 @@ export function MarkFirstRunDone(): $CancellablePromise<void> {
  * MintPairing returns a short-lived QR ticket for phone login.
  */
 export function MintPairing(): $CancellablePromise<web$0.PairingTicket> {
-    return $Call.ByID(62924868).then(($result: any) => {
-        return $$createType5($result);
-    });
+    return $Call.ByID(62924868);
 }
 
 /**
@@ -110,6 +102,13 @@ export function RevokeAllDevices(): $CancellablePromise<number> {
  */
 export function RevokeDevice(id: string): $CancellablePromise<void> {
     return $Call.ByID(2930031968, id);
+}
+
+/**
+ * SessionSwitchEnabled reports whether phone/web may switch herdr sessions.
+ */
+export function SessionSwitchEnabled(): $CancellablePromise<boolean> {
+    return $Call.ByID(2814779745);
 }
 
 /**
@@ -142,10 +141,17 @@ export function SetPasswordLoginEnabled(on: boolean): $CancellablePromise<void> 
     return $Call.ByID(1377255459, on);
 }
 
-// Private type creation functions
-const $$createType0 = web$0.AccessOrigin.createFrom;
-const $$createType1 = $Create.Array($$createType0);
-const $$createType2 = $models.UpdateInfo.createFrom;
-const $$createType3 = web$0.Device.createFrom;
-const $$createType4 = $Create.Array($$createType3);
-const $$createType5 = web$0.PairingTicket.createFrom;
+/**
+ * SetSessionSwitchEnabled turns phone session switching on or off.
+ * Persists to disk and updates the live gate immediately.
+ */
+export function SetSessionSwitchEnabled(on: boolean): $CancellablePromise<void> {
+    return $Call.ByID(3468469857, on);
+}
+
+/**
+ * SetWebServer wires the live web server for runtime Settings toggles.
+ */
+export function SetWebServer(srv: web$0.Server | null): $CancellablePromise<void> {
+    return $Call.ByID(2389942825, srv);
+}

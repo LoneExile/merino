@@ -169,3 +169,40 @@ func SetPasswordLoginEnabled(dir string, enabled bool) error {
 	}
 	return os.WriteFile(passwordLoginPath(dir), raw, 0o600)
 }
+
+func sessionSwitchPath(dir string) string {
+	if dir == "" {
+		dir = StateDir()
+	}
+	return filepath.Join(dir, "session-switch.json")
+}
+
+type sessionSwitchFile struct {
+	Enabled bool `json:"enabled"`
+}
+
+// SessionSwitchEnabled reports whether phone/web may switch herdr sessions.
+// Missing file ⇒ disabled (safe default; same as --allow-session-switch off).
+func SessionSwitchEnabled(dir string) bool {
+	raw, err := os.ReadFile(sessionSwitchPath(dir))
+	if err != nil {
+		return false
+	}
+	var f sessionSwitchFile
+	if json.Unmarshal(raw, &f) != nil {
+		return false
+	}
+	return f.Enabled
+}
+
+// SetSessionSwitchEnabled persists the phone session-switch toggle.
+func SetSessionSwitchEnabled(dir string, enabled bool) error {
+	if err := os.MkdirAll(filepath.Dir(sessionSwitchPath(dir)), 0o700); err != nil {
+		return err
+	}
+	raw, err := json.MarshalIndent(sessionSwitchFile{Enabled: enabled}, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(sessionSwitchPath(dir), raw, 0o600)
+}

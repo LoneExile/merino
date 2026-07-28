@@ -41,13 +41,14 @@ func (f *fakeSwitcher) SwitchSession(id string) error {
 // in, reusing the same fixtures as writeServer/testServer.
 func sessionsServer(t *testing.T, sessions SessionSource, switcher SessionSwitcher) *Server {
 	t.Helper()
+	t.Helper()
 	s, err := New(&fakeSource{agents: []app.Agent{agent("p1")}}, Config{
 		Provider: NewPasswordProvider("alice", "correct-horse", DirectIP, false),
 		Policy:   SingleOperator{},
 		Assets:   fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("<head></head>")}},
 		Logger:   slog.New(slog.DiscardHandler),
 		Sessions: sessions,
-		Switcher: switcher,
+		Switcher: switcher, SessionSwitch: switcher != nil,
 	})
 	if err != nil {
 		t.Fatalf("new server: %v", err)
@@ -236,7 +237,7 @@ func TestSessionEndpointReportsCapabilityFlags(t *testing.T) {
 		Writer:   &fakeWriter{},
 		Audit:    app.NewAuditTo(nopCloser{&bytes.Buffer{}}),
 		Sessions: &fakeSessions{},
-		Switcher: &fakeSwitcher{},
+		Switcher: &fakeSwitcher{}, SessionSwitch: true,
 	})
 	if err != nil {
 		t.Fatalf("new server: %v", err)

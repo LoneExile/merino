@@ -109,12 +109,8 @@ func main() {
 		// tokens are one-shot + short TTL; device grants are revocable.
 		webAddr = "0.0.0.0:8730"
 	}
-	// Menubar .app: allow session switch on the phone dashboard by default.
-	// CLI still requires --allow-session-switch for deliberate headless exposes.
-	switchOK := *allowSessionSwitch
-	if *listen == "" {
-		switchOK = true
-	}
+	// Runtime gate: CLI flag OR Settings-persisted toggle (default off).
+	switchOK := *allowSessionSwitch || web.SessionSwitchEnabled(filepath.Dir(app.DefaultAuditPath()))
 	var startErr error
 	srv, pair, passProv, devStore, startErr := startWeb(agents, webAddr, *behindProxy, *allowWrites, switchOK, assets, logger)
 	if startErr != nil {
@@ -127,6 +123,7 @@ func main() {
 	devices = devStore
 
 	desk = desktop.NewSettings(nil, "dev.apinant.herdr-tunnel", version, "LoneExile/herdr-tunnel", pairing, devices, filepath.Dir(app.DefaultAuditPath()), webAddr, passProvider)
+	desk.SetWebServer(srv)
 
 	wailsApp = application.New(application.Options{
 		Name:        "Herdr Tunnel",
@@ -389,14 +386,17 @@ func startWeb(src web.Source, addr string, behindProxy, allowWrites, allowSessio
 	}
 
 	var switcher web.SessionSwitcher
-	if allowSessionSwitch {
-		sw, castOK := src.(web.SessionSwitcher)
-		if !castOK {
-			return nil, nil, nil, nil, errors.New("source does not support session switching")
-		}
+	if sw, castOK := src.(web.SessionSwitcher); castOK {
 		switcher = sw
-		logger.Warn("web dashboard can switch herdr sessions",
-			"note", "repointing the session changes which agents every signed-in browser sees")
+		if allowSessionSwitch {
+			logger.Warn("web dashboard session switch enabled",
+				"note", "repointing the session changes which agents every signed-in browser sees")
+		} else {
+			logger.Info("web dashboard session switch available but off",
+				"note", "enable from Mac Settings or --allow-session-switch")
+		}
+	} else if allowSessionSwitch {
+		return nil, nil, nil, nil, errors.New("source does not support session switching")
 	}
 
 	publicURL := os.Getenv("HERDR_TUNNEL_PUBLIC_URL")
@@ -442,6 +442,7 @@ func startWeb(src web.Source, addr string, behindProxy, allowWrites, allowSessio
 		Audit:         audit,
 		Sessions:      sessions,
 		Switcher:      switcher,
+		SessionSwitch: allowSessionSwitch,
 		Pairing:       pairing,
 		PublicBaseURL: os.Getenv("HERDR_TUNNEL_PUBLIC_URL"),
 		// Same directory the audit log above resolves to, so an operator who

@@ -183,5 +183,7 @@ export function wailsClient(): Client {
     defaultPairBase: () => DesktopSettings.DefaultPairBase(),
     passwordLoginEnabled: () => DesktopSettings.PasswordLoginEnabled(),
     setPasswordLoginEnabled: (on: boolean) => DesktopSettings.SetPasswordLoginEnabled(on),
+    sessionSwitchEnabled: () => DesktopSettings.SessionSwitchEnabled(),
+    setSessionSwitchEnabled: (on: boolean) => DesktopSettings.SetSessionSwitchEnabled(on),
   };
 }

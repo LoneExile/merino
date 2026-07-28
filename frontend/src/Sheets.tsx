@@ -128,6 +128,8 @@ export function SettingsSheet({
   const [phonePass, setPhonePass] = useState("");
   const [passMsg, setPassMsg] = useState<string | null>(null);
   const [passwordLoginOn, setPasswordLoginOn] = useState(true);
+  const [sessionSwitchOn, setSessionSwitchOn] = useState(false);
+  const [sessionSwitchBusy, setSessionSwitchBusy] = useState(false);
   const [pwLoginBusy, setPwLoginBusy] = useState(false);
   const [panicArmed, setPanicArmed] = useState(false);
   const [herdSessions, setHerdSessions] = useState<SessionList | null>(null);
@@ -186,6 +188,10 @@ export function SettingsSheet({
           if (alive) setPasswordLoginOn(on);
         } else if (typeof session?.passwordLoginEnabled === "boolean") {
           if (alive) setPasswordLoginOn(session.passwordLoginEnabled);
+        }
+        if (client?.sessionSwitchEnabled) {
+          const on = await client.sessionSwitchEnabled();
+          if (alive) setSessionSwitchOn(on);
         }
       } catch {
         /* ignore */
@@ -921,6 +927,47 @@ export function SettingsSheet({
       </section>
 
 
+
+      {isDesktop && client?.setSessionSwitchEnabled && (
+        <section className="settings-block" aria-labelledby="set-session-switch">
+          <header className="settings-block__head">
+            <h3 id="set-session-switch">Phone session switch</h3>
+          </header>
+          <div className="settings-row settings-row--toggle">
+            <div className="settings-row__meta">
+              <span className="settings-row__label">Allow phones to switch session</span>
+              <span className="settings-row__hint">
+                Same as --allow-session-switch. Off by default.
+              </span>
+            </div>
+            <label className="switch">
+              <input
+                type="checkbox"
+                checked={sessionSwitchOn}
+                disabled={sessionSwitchBusy}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  setSessionSwitchBusy(true);
+                  void client
+                    .setSessionSwitchEnabled?.(on)
+                    .then(() => {
+                      setSessionSwitchOn(on);
+                      setHerdSessions((prev) =>
+                        prev ? { ...prev, canSwitch: on } : prev,
+                      );
+                    })
+                    .catch((err) =>
+                      setSessionErr(err instanceof Error ? err.message : String(err)),
+                    )
+                    .finally(() => setSessionSwitchBusy(false));
+                }}
+              />
+              <span className="switch__ui" />
+            </label>
+          </div>
+        </section>
+      )}
+
       {client?.sessions && (
         <section className="settings-block" aria-labelledby="set-herd-session">
           <header className="settings-block__head">
@@ -980,7 +1027,9 @@ export function SettingsSheet({
           </ul>
           {herdSessions && !herdSessions.canSwitch && (
             <p className="settings-copy settings-copy--quiet">
-              Switching is disabled on this server.
+              {isDesktop
+                ? "Turn on “Allow phones to switch session” above to enable."
+                : "Switching is off. Enable it in the Mac menu-bar Settings."}
             </p>
           )}
         </section>

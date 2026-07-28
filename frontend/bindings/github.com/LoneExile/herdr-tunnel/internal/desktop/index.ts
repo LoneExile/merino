@@ -6,6 +6,6 @@ export {
     Settings
 };
 
-export {
+export type {
     UpdateInfo
 } from "./models.js";

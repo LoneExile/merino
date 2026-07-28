@@ -48,7 +48,7 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request, _ Identi
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"current":   current,
-		"canSwitch": s.cfg.Switcher != nil,
+		"canSwitch": s.SessionSwitchAllowed(),
 		"sessions":  sessions,
 	})
 }
@@ -58,6 +58,12 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request, _ Identi
 // handler at all already implies the operator opted in with
 // --allow-session-switch.
 func (s *Server) handleSessionSwitch(w http.ResponseWriter, r *http.Request, id Identity) {
+	if !s.SessionSwitchAllowed() {
+		writeJSON(w, http.StatusForbidden, map[string]string{
+			"error": "session switch is disabled; enable it in the Mac Settings",
+		})
+		return
+	}
 	body, ok := decode[struct {
 		ID string `json:"id"`
 	}](w, r)

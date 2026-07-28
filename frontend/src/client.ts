@@ -199,6 +199,8 @@ export interface Client {
   defaultPairBase?(): Promise<string>;
   passwordLoginEnabled?(): Promise<boolean>;
   setPasswordLoginEnabled?(on: boolean): Promise<void>;
+  sessionSwitchEnabled?(): Promise<boolean>;
+  setSessionSwitchEnabled?(on: boolean): Promise<void>;
 }
 
 export interface UpdateInfo {
