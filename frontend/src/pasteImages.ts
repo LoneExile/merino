@@ -5,12 +5,12 @@
  * to show what the user just attached.
  *
  * The same path often appears twice in the stream:
- *   1) user send: a line that is only the absolute path (Merino inject)
+ *   1) user send: absolute path line Merino injects
  *   2) agent echo: "Read ~/Library/Caches/merino/paste/paste-….jpg"
- * Promoting every match to <img> doubles the picture with a blank gap.
- * Rules:
- *   - only line-leading paths become images (after start/newline + spaces)
- *   - each paste basename is shown as an image at most once
+ * And when the history window scrolls, (1) may fall out while (2) remains.
+ *
+ * Rule: promote the **first** occurrence of each paste basename to <img>,
+ * wherever it sits on the line. Later mentions stay plain text (no double image).
  */
 
 export type TermPiece =
@@ -25,19 +25,6 @@ const PASTE_PATH =
 export function pasteImageKey(pathOrName: string): string {
   const base = pathOrName.split(/[/\\]/).pop() || pathOrName;
   return base.toLowerCase();
-}
-
-/** True when `index` sits at the start of a line (only whitespace before it). */
-export function isLineLeading(text: string, index: number): boolean {
-  if (index <= 0) return true;
-  let i = index - 1;
-  while (i >= 0) {
-    const c = text[i]!;
-    if (c === "\n" || c === "\r") return true;
-    if (c !== " " && c !== "\t") return false;
-    i--;
-  }
-  return true;
 }
 
 export function splitPasteImages(text: string): TermPiece[] {
@@ -55,12 +42,11 @@ export function splitPasteImages(text: string): TermPiece[] {
       out.push({ kind: "text", text: text.slice(last, at) });
     }
     const key = pasteImageKey(name);
-    const promote = isLineLeading(text, at) && !seen.has(key);
-    if (promote) {
+    if (!seen.has(key)) {
       seen.add(key);
       out.push({ kind: "img", name, path: full });
     } else {
-      // Mid-line (e.g. "Read …path") or duplicate basename → keep as text.
+      // Duplicate basename (agent Read echo, etc.) → keep path as text.
       out.push({ kind: "text", text: full });
     }
     last = at + full.length;

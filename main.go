@@ -44,7 +44,7 @@ func init() {
 
 // version is injected at link time: -ldflags "-X main.version=v0.2.0".
 // Falls back for local `go build` / just app so CheckUpdate stays honest.
-var version = "0.1.5-dev"
+var version = "0.1.6-dev"
 
 func main() {
 	behindProxy := flag.Bool("behind-proxy", false,
