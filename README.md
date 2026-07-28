@@ -37,21 +37,21 @@ No CLI polling. No `herdr` subprocess. One persistent socket, push events only.
 <table>
   <tr>
     <td align="center" width="50%">
-      <img src="assets/screenshot/pair-phone.png" alt="Menubar agent list" width="420" /><br />
+      <img src="assets/screenshot/agent-list.png" alt="Menubar agent list" width="420" /><br />
       <sub><b>Menubar</b> — live agent list, blocked first</sub>
     </td>
     <td align="center" width="50%">
-      <img src="assets/screenshot/agent-list.png" alt="Pair phone QR" width="420" /><br />
+      <img src="assets/screenshot/pair-phone.png" alt="Pair phone QR" width="420" /><br />
       <sub><b>Pair phone</b> — QR + one-shot code, Mac / LAN / Tailscale</sub>
     </td>
   </tr>
   <tr>
     <td align="center" width="50%">
-      <img src="assets/screenshot/phone-slash.jpg" alt="Phone pane with inline image" width="420" /><br />
+      <img src="assets/screenshot/phone-pane.jpg" alt="Phone pane with inline image" width="420" /><br />
       <sub><b>Phone pane</b> — stream + inline images like Kitty</sub>
     </td>
     <td align="center" width="50%">
-      <img src="assets/screenshot/phone-pane.jpg" alt="Phone slash command typeahead" width="420" /><br />
+      <img src="assets/screenshot/phone-slash.jpg" alt="Phone slash command typeahead" width="420" /><br />
       <sub><b>Composer</b> — slash commands, attach image, send</sub>
     </td>
   </tr>
