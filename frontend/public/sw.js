@@ -1,4 +1,4 @@
-// Hand-rolled service worker for the Herdr Tunnel PWA.
+// Hand-rolled service worker for the Merino PWA.
 //
 // Scope: cache the static app shell so the dashboard opens instantly (and
 // offline) from a home-screen icon. Deliberately NOT caching /api/*: a
@@ -129,7 +129,7 @@ self.addEventListener("push", (event) => {
   // A missing or malformed payload must still show SOMETHING — a
   // notification that silently never appears looks exactly like a bug, not
   // like "nothing happened".
-  let payload = { title: "Herdr Tunnel", body: "An agent needs you." };
+  let payload = { title: "Merino", body: "An agent needs you." };
   try {
     if (event.data) payload = { ...payload, ...event.data.json() };
   } catch {

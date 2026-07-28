@@ -1,13 +1,13 @@
 [Desktop Entry]
 Version=1.0
-Name=Herdr Tunnel
+Name=Merino
 Comment=Menubar dashboard for herdr agents
 # The Exec line includes %u to pass the URL to the application
-Exec=/usr/local/bin/herdr-tunnel %u
+Exec=/usr/local/bin/merino %u
 Terminal=false
 Type=Application
-Icon=herdr-tunnel
+Icon=merino
 Categories=Utility;
-StartupWMClass=herdr-tunnel
+StartupWMClass=merino
 
  

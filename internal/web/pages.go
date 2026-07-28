@@ -20,7 +20,7 @@ var loginTmpl = template.Must(template.New("login").Parse(`<!DOCTYPE html>
 <meta name="color-scheme" content="dark light">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<title>Sign in · Herdr Tunnel</title>
+<title>Sign in · Merino</title>
 <style>
   :root {
     --bg: #0c0e14;
@@ -216,7 +216,7 @@ var loginTmpl = template.Must(template.New("login").Parse(`<!DOCTYPE html>
   </div>
   <div class="card">
     <form id="login-form" method="POST" action="/login">
-      <h1>Herdr Tunnel</h1>
+      <h1>Merino</h1>
       <p class="sub">{{if .AllowPassword}}Sign in to view your agents.{{else}}Scan a QR from the Mac app to sign in.{{end}}</p>
       {{if .AllowPassword}}
       <label for="username">Username</label>

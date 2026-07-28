@@ -18,7 +18,7 @@ func StateDir() string {
 }
 
 // BootstrapCreds is the break-glass local operator account used when
-// HERDR_TUNNEL_USER/PASS are not set (GUI double-click path).
+// MERINO_USER/PASS (or legacy HERDR_TUNNEL_*) are not set (GUI path).
 type BootstrapCreds struct {
 	User string `json:"user"`
 	Pass string `json:"pass"`
@@ -27,7 +27,7 @@ type BootstrapCreds struct {
 // LoadOrCreateBootstrap returns env creds when set, otherwise a persisted
 // random pair so the GUI can start a dashboard with zero config.
 func LoadOrCreateBootstrap(dir string) (user, pass string, generated bool, err error) {
-	if u, p := os.Getenv("HERDR_TUNNEL_USER"), os.Getenv("HERDR_TUNNEL_PASS"); u != "" && p != "" {
+	if u, p := app.Env("USER"), app.Env("PASS"); u != "" && p != "" {
 		return u, p, false, nil
 	}
 	if dir == "" {

@@ -2,7 +2,8 @@ package web
 
 import (
 	"net/http"
-	"os"
+
+	"github.com/LoneExile/herdr-tunnel/internal/app"
 )
 
 // OIDCConfig enables the optional OAuth rung of the identity ladder.
@@ -21,10 +22,10 @@ type OIDCConfig struct {
 // OIDCFromEnv reads optional OAuth settings. All empty ⇒ disabled.
 func OIDCFromEnv() OIDCConfig {
 	return OIDCConfig{
-		ClientID:     os.Getenv("HERDR_TUNNEL_OIDC_CLIENT_ID"),
-		ClientSecret: os.Getenv("HERDR_TUNNEL_OIDC_CLIENT_SECRET"),
-		Issuer:       os.Getenv("HERDR_TUNNEL_OIDC_ISSUER"),
-		RedirectURL:  os.Getenv("HERDR_TUNNEL_OIDC_REDIRECT_URL"),
+		ClientID:     app.Env("OIDC_CLIENT_ID"),
+		ClientSecret: app.Env("OIDC_CLIENT_SECRET"),
+		Issuer:       app.Env("OIDC_ISSUER"),
+		RedirectURL:  app.Env("OIDC_REDIRECT_URL"),
 	}
 }
 
@@ -51,7 +52,7 @@ func (p *OIDCProvider) Mount(mux *http.ServeMux, success func(http.ResponseWrite
 	_ = success
 	mux.HandleFunc("GET /login/oidc", func(w http.ResponseWriter, r *http.Request) {
 		if !p.Cfg.Enabled() {
-			http.Error(w, "OAuth login is not configured. Set HERDR_TUNNEL_OIDC_* and a public HTTPS URL.", http.StatusNotImplemented)
+			http.Error(w, "OAuth login is not configured. Set MERINO_OIDC_* (or legacy HERDR_TUNNEL_OIDC_*) and a public HTTPS URL.", http.StatusNotImplemented)
 			return
 		}
 		// Real redirect to the IdP belongs here.

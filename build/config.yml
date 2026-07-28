@@ -6,11 +6,11 @@ version: '3'
 # This information is used to generate the build assets.
 info:
   companyName: "LoneExile" # The name of the company
-  productName: "Herdr Tunnel" # The name of the application
-  productIdentifier: "dev.apinant.herdr-tunnel" # The unique product identifier
-  description: "Menubar dashboard for herdr agents" # The application description
+  productName: "Merino" # The name of the application
+  productIdentifier: "dev.apinant.merino" # The unique product identifier
+  description: "Merino — herdr from the menu bar" # The application description
   copyright: "© 2026 LoneExile" # Copyright text
-  comments: "https://herdr-tunnel.apinant.dev" # Comments
+  comments: "https://github.com/LoneExile/herdr-tunnel" # Comments
   version: "0.1.0" # The application version
   # cfBundleIconName: "appicon" # The macOS icon name in Assets.car icon bundles (optional)
   #                               # Should match the name of your .icon file without the extension

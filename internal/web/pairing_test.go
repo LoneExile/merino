@@ -7,12 +7,12 @@ import (
 )
 
 func TestPairingMintAndConsumeOnce(t *testing.T) {
-	p := NewPairing("https://herdr-tunnel.example")
+	p := NewPairing("https://merino.example")
 	ticket, err := p.Mint()
 	if err != nil {
 		t.Fatalf("mint: %v", err)
 	}
-	if !strings.HasPrefix(ticket.URL, "https://herdr-tunnel.example/login?token=") {
+	if !strings.HasPrefix(ticket.URL, "https://merino.example/login?token=") {
 		t.Fatalf("url = %q", ticket.URL)
 	}
 	if !strings.HasPrefix(ticket.QRPNG, "data:image/png;base64,") {

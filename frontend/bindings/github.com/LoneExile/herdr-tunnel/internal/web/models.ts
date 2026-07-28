@@ -6,7 +6,7 @@
  */
 export interface AccessOrigin {
     /**
-     * Kind is "local", "lan", or "public".
+     * Kind is "local", "lan", "tailscale", or "public".
      */
     "kind": string;
 

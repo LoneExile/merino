@@ -1,4 +1,4 @@
-// Command herdr-tunnel is a menubar dashboard for herdr coding agents.
+// Command merino is a menubar dashboard for herdr coding agents.
 //
 // It holds a persistent connection to the herdr socket API and projects live
 // agent state into a tray label and an attached panel window. State is driven
@@ -138,7 +138,7 @@ func main() {
 	passProvider = passProv
 	devices = devStore
 
-	desk = desktop.NewSettings(nil, "dev.apinant.herdr-tunnel", version, "LoneExile/herdr-tunnel", pairing, devices, filepath.Dir(app.DefaultAuditPath()), webAddr, passProvider)
+	desk = desktop.NewSettings(nil, "dev.apinant.merino", version, "LoneExile/herdr-tunnel", pairing, devices, filepath.Dir(app.DefaultAuditPath()), webAddr, passProvider)
 	desk.SetWebServer(srv)
 	// Re-apply gate after the server exists so disk toggle and CLI flag cannot
 	// drift from the live switchOn bit (phone canSwitch reads this).
@@ -149,8 +149,8 @@ func main() {
 	}
 
 	wailsApp = application.New(application.Options{
-		Name:        "Herdr Tunnel",
-		Description: "Menubar dashboard for herdr agents",
+		Name:        "Merino",
+		Description: "Merino — herdr from the menu bar",
 		Services: []application.Service{
 			application.NewService(agents),
 			application.NewService(desk),
@@ -169,7 +169,7 @@ func main() {
 	})
 
 	// Autostart needs the live App pointer (SMAppService / LaunchAgent).
-	desk.Auto = desktop.NewAutostart(wailsApp, "dev.apinant.herdr-tunnel")
+	desk.Auto = desktop.NewAutostart(wailsApp, "dev.apinant.merino")
 
 	// A menubar panel, not an app window: frameless (no traffic lights),
 	// fixed size, floating above normal windows and visible on whichever
@@ -189,7 +189,7 @@ func main() {
 	}
 	panel := wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:   "panel",
-		Title:  "Herdr Tunnel",
+		Title:  "Merino",
 		Width:  panelW,
 		Height: panelH,
 		// First run: show immediately so the QR is the first paint after install.
@@ -228,7 +228,7 @@ func main() {
 	})
 
 	tray = wailsApp.SystemTray.New()
-	tray.SetTooltip("Herdr Tunnel")
+	tray.SetTooltip("Merino")
 	tray.SetLabel(trayLabel(app.Counts{}))
 
 	// setTrayIcon dispatches an animation frame to the platform-appropriate
@@ -318,7 +318,7 @@ func trayLabel(c app.Counts) string {
 }
 
 func logLevel() slog.Level {
-	if os.Getenv("HERDR_TUNNEL_DEBUG") != "" {
+	if app.Env("DEBUG") != "" {
 		return slog.LevelDebug
 	}
 	return slog.LevelInfo
@@ -439,7 +439,7 @@ func startWeb(src web.Source, addr string, behindProxy, allowWrites, allowSessio
 		return nil, nil, nil, nil, errors.New("source does not support session switching")
 	}
 
-	publicURL := os.Getenv("HERDR_TUNNEL_PUBLIC_URL")
+	publicURL := app.Env("PUBLIC_URL")
 	if publicURL == "" {
 		// Zero-config: QR targets this Mac on the LAN, not a missing tunnel host.
 		publicURL = web.PreferLANBase(addr)
@@ -461,7 +461,7 @@ func startWeb(src web.Source, addr string, behindProxy, allowWrites, allowSessio
 
 	// OAuth rung: mount scaffold routes only when explicitly configured AND
 	// we have a public HTTPS base (redirect URIs). Full code flow is TODO.
-	if oidc := web.OIDCFromEnv(); oidc.Enabled() && os.Getenv("HERDR_TUNNEL_PUBLIC_URL") != "" {
+	if oidc := web.OIDCFromEnv(); oidc.Enabled() && app.Env("PUBLIC_URL") != "" {
 		logger.Info("OIDC scaffold enabled (authorization code not implemented yet)",
 			"issuer", oidc.Issuer)
 		// Keep password as the Mount provider; OIDC routes are registered via
@@ -484,7 +484,7 @@ func startWeb(src web.Source, addr string, behindProxy, allowWrites, allowSessio
 		Switcher:      switcher,
 		SessionSwitch: allowSessionSwitch,
 		Pairing:       pairing,
-		PublicBaseURL: os.Getenv("HERDR_TUNNEL_PUBLIC_URL"),
+		PublicBaseURL: app.Env("PUBLIC_URL"),
 		// Same directory the audit log above resolves to, so an operator who
 		// already knows where one lives knows where to find the other.
 		PushDir:  stateDir,

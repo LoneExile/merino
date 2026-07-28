@@ -8,13 +8,13 @@
         AllowPromptForPassword="false">
     </Settings>
     <Installer
-        Path="herdr-tunnel"
+        Path="merino"
         Arguments=""
-        InstallLocation="C:\Program Files\LoneExile\Herdr Tunnel">
+        InstallLocation="C:\Program Files\LoneExile\Merino">
     </Installer>
     <PackageInformation
-        PackageName="Herdr Tunnel"
-        PackageDisplayName="Herdr Tunnel"
+        PackageName="Merino"
+        PackageDisplayName="Merino"
         PublisherName="CN=LoneExile"
         PublisherDisplayName="LoneExile"
         Version="0.1.0.0"
@@ -27,8 +27,8 @@
             <Application
                 Id="dev.loneexile.herdrtunnel"
                 Description="Menubar dashboard for herdr agents"
-                DisplayName="Herdr Tunnel"
-                ExecutableName="herdr-tunnel"
+                DisplayName="Merino"
+                ExecutableName="merino"
                 EntryPoint="Windows.FullTrustApplication">
                 
             </Application>
@@ -41,13 +41,13 @@
         </Dependencies>
         <Properties>
             <Framework>false</Framework>
-            <DisplayName>Herdr Tunnel</DisplayName>
+            <DisplayName>Merino</DisplayName>
             <PublisherDisplayName>LoneExile</PublisherDisplayName>
             <Description>Menubar dashboard for herdr agents</Description>
             <Logo>Assets\AppIcon.png</Logo>
         </Properties>
     </PackageInformation>
-    <SaveLocation PackagePath="herdr-tunnel.msix" />
+    <SaveLocation PackagePath="merino.msix" />
     <PackageIntegrity>
         <CertificatePath></CertificatePath>
     </PackageIntegrity>

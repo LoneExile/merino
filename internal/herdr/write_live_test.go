@@ -20,7 +20,7 @@ type probePane struct {
 	paneID string
 }
 
-const probeLabel = "herdr-tunnel-selftest"
+const probeLabel = "merino-selftest"
 
 // newProbePane creates an isolated tab and returns its pane. Cleanup is
 // registered with t.Cleanup so the tab is destroyed even if the test fails.

@@ -14,6 +14,7 @@ declare module "@wailsio/runtime" {
         interface CustomEvents {
             "agents:changed": app$0.Agent[] | null;
             "conn:changed": app$0.Conn;
+            "ui:open": string;
         }
     }
 }

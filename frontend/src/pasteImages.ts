@@ -1,5 +1,5 @@
 /**
- * Detect staged herdr-tunnel paste paths in pane text and turn them into
+ * Detect staged Merino paste paths in pane text and turn them into
  * inline image slots. Kitty graphics never reach the web view over pane.read —
  * only the path string does — so matching our paste store is the reliable way
  * to show what the user just attached.
@@ -9,9 +9,9 @@ export type TermPiece =
   | { kind: "text"; text: string }
   | { kind: "img"; name: string; path: string };
 
-// Match ".../herdr-tunnel/paste/paste-N.ext" with optional ~/ or absolute prefix.
+// Match ".../merino/paste/..." or legacy ".../herdr-tunnel/paste/...".
 const PASTE_RE =
-  /((?:~|\/)[^\s"'`]*\/herdr-tunnel\/paste\/(paste-\d+\.(?:png|jpe?g|gif|webp)))/g;
+  /((?:~|\/)[^\s"'`]*\/(?:merino|herdr-tunnel)\/paste\/(paste-\d+\.(?:png|jpe?g|gif|webp)))/g;
 
 export function splitPasteImages(text: string): TermPiece[] {
   if (!text) return [];

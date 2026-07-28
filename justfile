@@ -1,4 +1,4 @@
-# herdr-tunnel — local build and run.
+# merino — local build and run.
 #
 # Wails' own Taskfile still drives packaging and codegen; this wraps the
 # handful of commands you actually type, with the flags that are easy to get
@@ -8,8 +8,8 @@
 #   just            list every recipe
 #   just dev        hot-reload frontend against the real herd
 #   just app        build + launch the menu-bar app
-#   export HERDR_TUNNEL_PASS=… && just web     # loopback dashboard
-#   export HERDR_TUNNEL_PASS=… && just tunnel  # TLS tunnel (loopback + --behind-proxy)
+#   export MERINO_PASS=… && just web     # loopback dashboard
+#   export MERINO_PASS=… && just tunnel  # TLS tunnel (loopback + --behind-proxy)
 #   just gate       everything CI runs
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
@@ -17,8 +17,8 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 # The toolchains live under mise; recipes must not depend on the caller's PATH.
 export PATH := justfile_directory() + "/node_modules/.bin:" + env_var('HOME') + "/.local/share/mise/installs/go/1.26.4/bin:" + env_var('HOME') + "/.local/share/mise/installs/node/latest/bin:" + env_var('PATH')
 
-app_bundle := justfile_directory() + "/bin/herdr-tunnel.app"
-binary := justfile_directory() + "/bin/herdr-tunnel"
+app_bundle := justfile_directory() + "/bin/merino.app"
+binary := justfile_directory() + "/bin/merino"
 
 # Default herdr session. Empty means the default socket — your real herd.
 # Override for a throwaway: just sock=~/.config/herdr/sessions/test/herdr.sock app
@@ -49,35 +49,35 @@ package: frontend
 app: package
     # Rebuilds every time on purpose: a stale bundle that silently predates
     # your changes is the most confusing state this project has.
-    -pkill -f 'herdr-tunnel.app/Contents/MacOS' 2>/dev/null || true
+    -pkill -f 'merino.app/Contents/MacOS' 2>/dev/null || true
     open {{app_bundle}}
     @echo "running — look at the top-right of your menu bar"
 
 # Phone dashboard (loopback by default — safer).
 #
-# Password comes from env HERDR_TUNNEL_PASS so it never appears on argv:
-#   export HERDR_TUNNEL_PASS='…'
+# Password comes from env MERINO_PASS so it never appears on argv:
+#   export MERINO_PASS='…'
 #   just web
 #   just web 8730 lex          # port user
 #   just web-lan               # bind 0.0.0.0 (LAN; HTTP)
 #
 # just 1.57 treats key=value as a positional STRING, not a named override.
 web port="8730" user="lex": build
-    @test -n "${HERDR_TUNNEL_PASS:-}" || { echo "set HERDR_TUNNEL_PASS in the environment (not argv)"; exit 1; }
-    HERDR_TUNNEL_USER={{user}} \
+    @test -n "${MERINO_PASS:-}" || { echo "set MERINO_PASS in the environment (not argv)"; exit 1; }
+    MERINO_USER={{user}} \
     {{ if sock == "" { "" } else { "HERDR_SOCK=" + sock } }} \
     {{binary}} --listen 127.0.0.1:{{port}} --allow-writes --allow-session-switch
 
 # Same as web but reachable on the LAN (cleartext HTTP). Prefer a TLS tunnel.
 web-lan port="8730" user="lex": build
-    @test -n "${HERDR_TUNNEL_PASS:-}" || { echo "set HERDR_TUNNEL_PASS in the environment (not argv)"; exit 1; }
-    HERDR_TUNNEL_USER={{user}} \
+    @test -n "${MERINO_PASS:-}" || { echo "set MERINO_PASS in the environment (not argv)"; exit 1; }
+    MERINO_USER={{user}} \
     {{ if sock == "" { "" } else { "HERDR_SOCK=" + sock } }} \
     {{binary}} --listen 0.0.0.0:{{port}} --allow-writes --allow-session-switch
 
 # Serve behind Cloudflare Tunnel (Secure cookies, trust CF-Connecting-IP).
 #
-#   export HERDR_TUNNEL_PASS='…'
+#   export MERINO_PASS='…'
 #   just tunnel
 #
 # This host's cloudflared runs in Docker and dials the Mac LAN IP
@@ -91,15 +91,15 @@ web-lan port="8730" user="lex": build
 # For a pure loopback origin (cloudflared on the host, not Docker), use:
 #   just tunnel-loopback
 tunnel port="8730" user="lex": build
-    @test -n "${HERDR_TUNNEL_PASS:-}" || { echo "set HERDR_TUNNEL_PASS in the environment (not argv)"; exit 1; }
-    HERDR_TUNNEL_USER={{user}} \
+    @test -n "${MERINO_PASS:-}" || { echo "set MERINO_PASS in the environment (not argv)"; exit 1; }
+    MERINO_USER={{user}} \
     {{ if sock == "" { "" } else { "HERDR_SOCK=" + sock } }} \
     {{binary}} --listen 0.0.0.0:{{port}} --behind-proxy --allow-writes --allow-session-switch
 
 # Loopback-only origin for host-native cloudflared (not the Docker setup).
 tunnel-loopback port="8730" user="lex": build
-    @test -n "${HERDR_TUNNEL_PASS:-}" || { echo "set HERDR_TUNNEL_PASS in the environment (not argv)"; exit 1; }
-    HERDR_TUNNEL_USER={{user}} \
+    @test -n "${MERINO_PASS:-}" || { echo "set MERINO_PASS in the environment (not argv)"; exit 1; }
+    MERINO_USER={{user}} \
     {{ if sock == "" { "" } else { "HERDR_SOCK=" + sock } }} \
     {{binary}} --listen 127.0.0.1:{{port}} --behind-proxy --allow-writes --allow-session-switch
 
@@ -109,11 +109,11 @@ dev:
 
 # Foreground run with debug logs (incl. per-frame tray animation)
 debug: build
-    HERDR_TUNNEL_DEBUG=1 {{ if sock == "" { "" } else { "HERDR_SOCK=" + sock } }} {{binary}}
+    MERINO_DEBUG=1 {{ if sock == "" { "" } else { "HERDR_SOCK=" + sock } }} {{binary}}
 
 # Stop every running instance.
 stop:
-    -pkill -f 'herdr-tunnel' 2>/dev/null || true
+    -pkill -f 'merino' 2>/dev/null || true
     @echo stopped
 
 # --- checks ----------------------------------------------------------------

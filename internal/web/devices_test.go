@@ -46,6 +46,8 @@ func TestDeviceStoreMintRevoke(t *testing.T) {
 }
 
 func TestBootstrapCreds(t *testing.T) {
+	t.Setenv("MERINO_USER", "")
+	t.Setenv("MERINO_PASS", "")
 	t.Setenv("HERDR_TUNNEL_USER", "")
 	t.Setenv("HERDR_TUNNEL_PASS", "")
 	dir := t.TempDir()

@@ -81,7 +81,7 @@ func (s *Settings) MintPairing() (web.PairingTicket, error) {
 }
 
 // SetPairingBaseURL sets the public origin encoded into QR links
-// (e.g. https://herdr-tunnel.0dl.me).
+// (e.g. https://merino.example).
 func (s *Settings) SetPairingBaseURL(base string) error {
 	if s.Pairing == nil {
 		return fmt.Errorf("pairing requires the web dashboard")

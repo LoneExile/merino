@@ -1,8 +1,10 @@
-# herdr-tunnel
+# Merino
 
-A menubar dashboard for [herdr](https://herdr.dev) coding agents. Go + [Wails v3](https://v3.wails.io) + React 19.
+**Merino** is the menu-bar and phone control surface for [herdr](https://herdr.dev) coding agents.
 
-See which agents are working, which are blocked, and approve their prompts without leaving the menubar.
+See which agents are working, which are blocked, and approve their prompts without leaving the menubar — or from a phone on the same network / Tailscale / HTTPS tunnel.
+
+> Sheep mark, quiet instrument panel. Built on herdr\'s socket API.
 
 ## Design
 
@@ -41,126 +43,39 @@ so churn can never cause a missed pane.
 terminal. Canned approvals, key names, pane IDs and text length are all
 validated in `internal/app/guard.go` before anything reaches the socket.
 
-## herdr protocol notes
-
-Findings verified against a running herdr 0.7.5 (protocol 17). Several are not
-documented and cost real debugging time — they are encoded in the types and
-kept here so the next person doesn't rediscover them.
-
-**Ordinary calls are one-shot.** The server closes the connection after
-responding; a second request on the same connection fails with `EPIPE`. Dial
-per call. `events.subscribe` is the exception and stays open.
-
-**Status changes are invisible to global subscriptions.** `pane.updated` does
-**not** fire on agent status transitions. Four forced transitions on a probe
-pane produced *zero* `pane_updated` events for that pane while 58 fired for
-unrelated panes. Status is only observable via per-pane
-`pane.agent_status_changed`. Building on `pane.updated` yields an app that
-never once reports a blocked agent.
-
-**Two naming vocabularies.** Subscription *requests* use dotted names; delivered
-*events* use snake_case for global subscriptions and dotted for per-pane ones.
-Subscribing to `pane.updated` delivers events named `pane_updated`. Mixing them
-gives a subscription that succeeds but whose events never match — a silent,
-total failure.
-
-**Closing a tab emits no `pane_closed`.** It destroys the tab's panes but only
-emits `tab_closed`. Without handling that, panes leak in local state forever.
-
-**Reported state ≠ observed status.** `pane.report_agent` accepts
-`idle|working|blocked|unknown`; the stream reports
-`idle|working|blocked|done|unknown`. Reporting `idle` is observed as `done`.
-They are modelled as two distinct Go types for that reason.
-
-**`BSpace` is rejected.** herdr answers `unsupported key BSpace` — use
-`Backspace`. Also rejected: `^C`, `Home`, `End`, `PageUp`. Accepted: `Ctrl+c`,
-`C-c`, `ctrl+c`, `esc`/`escape`/`Escape`, `Enter`, `Tab`, `Space`,
-`Backspace`, arrows.
-
-Because two undocumented gaps turned up in a single session, a low-frequency
-(60s) reconcile against `pane.list` runs alongside the event stream. Events
-remain the primary mechanism; the reconcile bounds the damage of the next gap
-to one interval instead of forever.
-
-## Development
-
-Requires Go 1.25+, Node 22+, and a running herdr 0.7+.
+## Quick start
 
 ```bash
-go install github.com/wailsapp/wails/v3/cmd/wails3@latest   # or: see v3.wails.io
-cd frontend && npm install && cd ..
-
-wails3 dev            # live reload
-wails3 build          # binary into bin/
-wails3 package        # .app bundle
+just app          # build + launch the menu-bar app (Merino)
+export MERINO_PASS='…'
+just web          # loopback dashboard
+just tunnel       # LAN + --behind-proxy for a TLS tunnel
 ```
 
-Regenerate the TypeScript bindings after changing any Go service signature:
-
-```bash
-wails3 generate bindings -d frontend/bindings -ts
-```
-
-### Tests
-
-```bash
-go test ./... -race
-```
-
-Tests in `internal/herdr` marked `TestLive*` exercise a real herdr server and
-skip automatically when no socket is present.
-
-### Layout
-
-```
-main.go                     app, tray, panel window
-internal/herdr/             socket client — types, one-shot calls, event stream
-internal/app/               store, subscription manager, guard, bound service
-frontend/src/               React panel
-frontend/bindings/          generated from Go (committed; do not hand-edit)
-```
+Legacy env names `HERDR_TUNNEL_*` still work for one release.
 
 ## Configuration
 
-| Variable / flag | Purpose |
+| Flag / env | Purpose |
 | --- | --- |
-| `HERDR_SOCK` | Override the socket path (default `~/.config/herdr/herdr.sock`) |
-| `HERDR_TUNNEL_DEBUG` | Enable debug logging |
-| `--listen ADDR` | Serve the browser dashboard (e.g. `127.0.0.1:8730` or `0.0.0.0:8730`) |
-| `HERDR_TUNNEL_USER` / `HERDR_TUNNEL_PASS` | Required whenever `--listen` is set |
-| `--behind-proxy` | Trust `X-Forwarded-*` / CF headers; mark cookies Secure |
-| `--allow-writes` | Let signed-in browsers approve / type / interrupt |
-| `--allow-session-switch` | Let signed-in browsers repoint the herdr session |
-| `HERDR_TUNNEL_PUBLIC_URL` | Public origin embedded in phone QR links (e.g. `https://herdr-tunnel.example`) |
+| `--listen ADDR` | Serve the web dashboard (e.g. `127.0.0.1:8730` or `0.0.0.0:8730`) |
+| `--allow-writes` | Let the dashboard type into terminals (audit-logged) |
+| `--allow-session-switch` | Let the dashboard change herdr session |
+| `--behind-proxy` | Secure cookies + trust proxy headers (Cloudflare etc.) |
+| `MERINO_DEBUG` | Enable debug logging |
+| `MERINO_USER` / `MERINO_PASS` | Operator credentials when listening |
+| `MERINO_PUBLIC_URL` | Public origin embedded in phone QR links |
+| `MERINO_OIDC_*` | Optional OAuth scaffold |
+| `HERDR_SOCK` | herdr socket path |
 
-Quick starts:
+State and logs live under `~/Library/Logs/merino/` (macOS).
 
-```bash
-export HERDR_TUNNEL_PASS='…'
-just web                     # loopback dashboard (127.0.0.1)
-just web-lan                 # LAN bind 0.0.0.0 (HTTP)
-just tunnel                  # loopback + --behind-proxy for a TLS tunnel
-```
+## Brand
 
-### Phone sign-in (QR)
-
-With `--listen` running and a public URL (Cloudflare tunnel, etc.), open
-**Settings → Phone sign-in** in the menu-bar panel. Mint a QR; scan it on the
-phone. The code is single-use and expires in two minutes. If you cannot scan,
-paste the short code into the **Phone code** field on `/login`.
-
-Desktop Settings also exposes **Launch at login** and **Check for updates**
-(GitHub Releases). Tag a release (`v*`) to trigger `.github/workflows/release.yml`.
-
-## Status
-
-Working: live agent list grouped by workspace, blocked-first ordering, tray
-label with counts, approvals, interrupt, focus, live pane output, browser
-dashboard (password + QR pairing), Web Push, launch-at-login, GitHub update
-check, tagged macOS release packaging.
-
-Not built yet: Telegram bot, multi-machine over SSH.
+**Merino** is the product name. The mark is a sheep (same family as herdr).
+The Go module and GitHub repo may still be path-named `herdr-tunnel` until a
+repo rename; binaries and UI say Merino.
 
 ## License
 
-Apache-2.0 — see [LICENSE](LICENSE).
+See repository license file.

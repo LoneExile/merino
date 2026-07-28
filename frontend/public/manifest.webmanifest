@@ -1,7 +1,7 @@
 {
-  "name": "Herdr Tunnel",
-  "short_name": "Herdr",
-  "description": "Control surface for AI coding agents running in terminal panes.",
+  "name": "Merino",
+  "short_name": "Merino",
+  "description": "Merino — control surface for herdr agents on your phone and menu bar.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

@@ -14,7 +14,7 @@ pair a phone and get back to work.
 
 ## Product Purpose
 
-Herdr Tunnel is a control surface for live herdr agents. It shows which agents
+Merino is a control surface for live herdr agents. It shows which agents
 are working or blocked, streams pane output, and (when enabled) sends approvals,
 keys, and interrupts. Pairing is one-shot QR with revocable device grants.
 Success is: see blocked state immediately, answer without opening a full IDE,

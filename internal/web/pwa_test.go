@@ -22,7 +22,7 @@ func TestServiceWorkerAndManifestServedDirectly(t *testing.T) {
 	assets := fstest.MapFS{
 		"index.html":           &fstest.MapFile{Data: []byte("<head></head>")},
 		"sw.js":                &fstest.MapFile{Data: []byte(`self.addEventListener("install", () => {});`)},
-		"manifest.webmanifest": &fstest.MapFile{Data: []byte(`{"name":"Herdr Tunnel"}`)},
+		"manifest.webmanifest": &fstest.MapFile{Data: []byte(`{"name":"Merino"}`)},
 	}
 	s, err := New(&fakeSource{}, Config{
 		Provider: NewPasswordProvider("alice", "correct-horse", DirectIP, false),
@@ -120,7 +120,7 @@ func TestPWAAssetsAreReachableWithoutSession(t *testing.T) {
 	// this test is specifically about the OTHER files being reachable.
 	assets := fstest.MapFS{
 		"index.html":            &fstest.MapFile{Data: []byte("<head></head>")},
-		"manifest.webmanifest":  &fstest.MapFile{Data: []byte(`{"name":"Herdr Tunnel"}`)},
+		"manifest.webmanifest":  &fstest.MapFile{Data: []byte(`{"name":"Merino"}`)},
 		"sw.js":                 &fstest.MapFile{Data: []byte("// service worker\n")},
 		"icon-192.png":          &fstest.MapFile{Data: []byte("\x89PNG\r\n\x1a\n192")},
 		"icon-512.png":          &fstest.MapFile{Data: []byte("\x89PNG\r\n\x1a\n512")},

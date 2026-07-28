@@ -69,10 +69,10 @@ jobs:
         run: go test ./... -count=1 -race
 
       - name: Package binary
-        run: go build -o bin/herdr-tunnel .
+        run: go build -o bin/merino .
 
       - uses: actions/upload-artifact@v5
         with:
-          name: herdr-tunnel-macos
-          path: bin/herdr-tunnel
+          name: merino-macos
+          path: bin/merino
           retention-days: 7

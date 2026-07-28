@@ -17,14 +17,14 @@ import (
 
 // Pairing issues short-lived one-shot tokens for phone login via QR.
 //
-// The token is NEVER the master HERDR_TUNNEL_PASS. It is a random secret
+// The token is NEVER the master MERINO_PASS. It is a random secret
 // stored only in memory, single-use, and expired after a short window so a
 // photographed QR cannot become a permanent credential.
 type Pairing struct {
 	mu      sync.Mutex
 	tokens  map[string]time.Time // sha256 hex of raw token → expiry
 	ttl     time.Duration
-	baseURL string // public origin used in the QR, e.g. https://herdr-tunnel.0dl.me
+	baseURL string // public origin used in the QR, e.g. https://merino.example
 }
 
 // NewPairing builds a store. baseURL may be empty; Mint then returns a path-only

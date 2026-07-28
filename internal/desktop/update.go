@@ -60,7 +60,7 @@ func (u *Updater) Check(ctx context.Context) (UpdateInfo, error) {
 		return UpdateInfo{}, err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "herdr-tunnel/"+u.Current+" ("+runtime.GOOS+")")
+	req.Header.Set("User-Agent", "merino/"+u.Current+" ("+runtime.GOOS+")")
 
 	res, err := client.Do(req)
 	if err != nil {

@@ -59,22 +59,22 @@ jobs:
         run: |
           cd frontend && npm run build && cd ..
           # Inject version so desktop CheckUpdate matches the release tag.
-          go build -ldflags "-X main.version=${VERSION#v}" -o bin/herdr-tunnel .
+          go build -ldflags "-X main.version=${VERSION#v}" -o bin/merino .
           wails3 package
 
       - name: Stage artefacts
         run: |
           mkdir -p dist
-          if [ -d bin/herdr-tunnel.app ]; then
-            ditto -c -k --sequesterRsrc --keepParent bin/herdr-tunnel.app dist/herdr-tunnel-macos.zip
-          elif [ -d build/bin/herdr-tunnel.app ]; then
-            ditto -c -k --sequesterRsrc --keepParent build/bin/herdr-tunnel.app dist/herdr-tunnel-macos.zip
+          if [ -d bin/merino.app ]; then
+            ditto -c -k --sequesterRsrc --keepParent bin/merino.app dist/merino-macos.zip
+          elif [ -d build/bin/merino.app ]; then
+            ditto -c -k --sequesterRsrc --keepParent build/bin/merino.app dist/merino-macos.zip
           fi
           # Also ship the bare binary if the package step left one.
-          for f in bin/herdr-tunnel build/bin/herdr-tunnel; do
+          for f in bin/merino build/bin/merino; do
             if [ -f "$f" ]; then
-              cp "$f" dist/herdr-tunnel-darwin-arm64
-              chmod +x dist/herdr-tunnel-darwin-arm64
+              cp "$f" dist/merino-darwin-arm64
+              chmod +x dist/merino-darwin-arm64
               break
             fi
           done

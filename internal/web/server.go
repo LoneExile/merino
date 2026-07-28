@@ -89,7 +89,7 @@ type Config struct {
 	// Pairing enables short-lived QR/token phone login. Nil disables it.
 	Pairing *Pairing
 	// PublicBaseURL is the origin encoded into pairing QR links when set
-	// (e.g. https://herdr-tunnel.0dl.me). Empty yields a path-only URL.
+	// (e.g. https://merino.example). Empty yields a path-only URL.
 	PublicBaseURL string
 	// Devices persists paired phones. Nil disables per-device identity (tests).
 	Devices *DeviceStore

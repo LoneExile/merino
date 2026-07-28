@@ -23,7 +23,7 @@ func AttachDir() (string, error) {
 	if err != nil || base == "" {
 		base = os.TempDir()
 	}
-	dir := filepath.Join(base, "herdr-tunnel", "paste")
+	dir := filepath.Join(base, "merino", "paste")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", fmt.Errorf("attach dir: %w", err)
 	}

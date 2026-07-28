@@ -1,10 +1,10 @@
-# Design — Herdr Tunnel
+# Design — Merino
 
 A locked design system for this app. Every screen reads this file before emitting
 code. Do not regenerate per screen — extend or amend this file when the system
 needs to grow.
 
-The product is a **control surface for AI coding agents running in terminal
+**Merino** is a **control surface for AI coding agents running in terminal
 panes**, used primarily from a phone over a tunnel. It is an instrument panel,
 not a marketing page. Function carries every screen.
 

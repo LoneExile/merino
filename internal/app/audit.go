@@ -52,9 +52,9 @@ const auditDetailMax = 200
 func DefaultAuditPath() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "herdr-tunnel-audit.jsonl"
+		return "merino-audit.jsonl"
 	}
-	return filepath.Join(home, "Library", "Logs", "herdr-tunnel", "audit.jsonl")
+	return filepath.Join(home, "Library", "Logs", "merino", "audit.jsonl")
 }
 
 // NewAudit opens the log, creating parent directories as needed.

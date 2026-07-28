@@ -5,13 +5,13 @@
 !include "FileFunc.nsh"
 
 !ifndef INFO_PROJECTNAME
-    !define INFO_PROJECTNAME "herdr-tunnel"
+    !define INFO_PROJECTNAME "merino"
 !endif
 !ifndef INFO_COMPANYNAME
     !define INFO_COMPANYNAME "LoneExile"
 !endif
 !ifndef INFO_PRODUCTNAME
-    !define INFO_PRODUCTNAME "Herdr Tunnel"
+    !define INFO_PRODUCTNAME "Merino"
 !endif
 !ifndef INFO_PRODUCTVERSION
     !define INFO_PRODUCTVERSION "0.1.0"
