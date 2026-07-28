@@ -45,13 +45,53 @@ export default function App() {
   const [openPane, setOpenPane] = useState<string | null>(null);
   const [overlay, setOverlay] = useState<Overlay>(null);
   const [renaming, setRenaming] = useState<Agent | null>(null);
+  const [settingsFocusPair, setSettingsFocusPair] = useState(false);
 
   // First-run pairing: open Settings so the QR block is visible.
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (window.location.search.includes("pair=1")) {
+      setSettingsFocusPair(true);
       setOverlay("settings");
     }
+  }, []);
+
+  // Tray context menu → open Settings / Pair phone (desktop only).
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const isWeb =
+      document.querySelector('meta[name="herdr-mode"]')?.getAttribute("content") === "web";
+    if (isWeb) return;
+    let off: (() => void) | undefined;
+    let cancelled = false;
+    void import("@wailsio/runtime")
+      .then(({ Events }) => {
+        if (cancelled) return;
+        off = Events.On("ui:open", (e: unknown) => {
+          const data =
+            e && typeof e === "object" && "data" in e
+              ? (e as { data: unknown }).data
+              : undefined;
+          const which = typeof data === "string" ? data : "";
+          if (which === "settings") {
+            setSettingsFocusPair(false);
+            setOverlay("settings");
+          } else if (which === "pair") {
+            setSettingsFocusPair(true);
+            setOverlay("settings");
+          } else if (which === "agents") {
+            setOverlay(null);
+            setOpenPane(null);
+          }
+        });
+      })
+      .catch(() => {
+        /* browser path — no tray menu */
+      });
+    return () => {
+      cancelled = true;
+      off?.();
+    };
   }, []);
 
   const current = useMemo(
@@ -125,7 +165,10 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const closeOverlay = useCallback(() => setOverlay(null), []);
+  const closeOverlay = useCallback(() => {
+    setOverlay(null);
+    setSettingsFocusPair(false);
+  }, []);
 
   const counts = useMemo(() => {
     const blocked = agents.filter((a) => a.status === "blocked").length;
@@ -330,6 +373,7 @@ export default function App() {
         <SettingsSheet
           session={session}
           client={client}
+          focusPair={settingsFocusPair}
           pref={pref}
           actual={actual}
           wrap={wrap}

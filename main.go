@@ -35,6 +35,9 @@ func init() {
 	// Registering events gives the frontend strongly typed listeners for them.
 	application.RegisterEvent[[]app.Agent](app.EventAgentsChanged)
 	application.RegisterEvent[app.Conn](app.EventConnChanged)
+	// ui:open is emitted from the tray context menu so the panel can open
+	// Settings / Pair phone without a full reload.
+	application.RegisterEvent[string]("ui:open")
 }
 
 // version is injected at link time: -ldflags "-X main.version=v0.2.0".
@@ -250,7 +253,24 @@ func main() {
 	animator = trayicon.New(setTrayIcon)
 
 	menu := wailsApp.NewMenu()
-	menu.Add("Show agents").OnClick(func(*application.Context) { showPanel(tray, panel) })
+	menu.Add("Show agents").OnClick(func(*application.Context) {
+		showPanel(tray, panel)
+		if wailsApp != nil {
+			wailsApp.Event.Emit("ui:open", "agents")
+		}
+	})
+	menu.Add("Settings").OnClick(func(*application.Context) {
+		showPanel(tray, panel)
+		if wailsApp != nil {
+			wailsApp.Event.Emit("ui:open", "settings")
+		}
+	})
+	menu.Add("Pair phone…").OnClick(func(*application.Context) {
+		showPanel(tray, panel)
+		if wailsApp != nil {
+			wailsApp.Event.Emit("ui:open", "pair")
+		}
+	})
 	menu.AddSeparator()
 	menu.Add("Quit").OnClick(func(*application.Context) { wailsApp.Quit() })
 	tray.SetMenu(menu)
