@@ -380,6 +380,9 @@ async function httpClient(): Promise<Client> {
     },
 
     sessions: () => getJSON<SessionList>("/api/sessions"),
+    // Session switch is independent of --allow-writes. The server still
+    // enforces the Mac toggle / --allow-session-switch gate.
+    switchSession: (id: string) => postJSON("/api/sessions/switch", { id }),
 
     ...(session.canManageDevices
       ? {
@@ -467,10 +470,6 @@ async function httpClient(): Promise<Client> {
       postJSON(`/api/${kind === "workspace" ? "workspaces" : kind + "s"}/${pane(id)}/rename`, {
         name,
       }),
-    // Always wire the method; the server enforces the Mac toggle at request
-    // time. Gating on boot-time canSwitchSession left phones unable to switch
-    // after the operator flipped the setting without a full PWA reload.
-    switchSession: (id: string) => postJSON("/api/sessions/switch", { id }),
   };
 }
 
