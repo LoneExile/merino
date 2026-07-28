@@ -236,16 +236,13 @@ export function SettingsSheet({
       panelClass="sheet--settings"
       onClose={onClose}
     >
-
-      <div className="settings-group">
-        <h2 className="settings-group__title">Phone</h2>
 {isDesktop && (client?.mintPairing || onOpenPair) && (
         <section className="settings-block" aria-labelledby="set-pair" id="pair-section">
           <header className="settings-block__head">
             <h3 id="set-pair">Pair phone</h3>
           </header>
           <p className="settings-copy settings-copy--quiet">
-            One-shot QR for phones on Wi‑Fi, Tailscale, or a public HTTPS URL.
+            Mint a one-shot QR for a phone on this network.
           </p>
           <button
             type="button"
@@ -264,9 +261,9 @@ export function SettingsSheet({
           </header>
           <div className="settings-row settings-row--toggle">
             <div className="settings-row__meta">
-              <span className="settings-row__label">Allow phones to switch session</span>
+              <span className="settings-row__label">Allow session switch</span>
               <span className="settings-row__hint">
-                Same as --allow-session-switch. Off until you enable it.
+                Phones can change which herdr session this drives
               </span>
             </div>
             <label className="switch">
@@ -306,10 +303,7 @@ export function SettingsSheet({
           <div className="settings-row settings-row--toggle">
             <div className="settings-row__meta">
               <span className="settings-row__label">Allow username / password</span>
-              <span className="settings-row__hint">
-                Off = phones must use QR only. You can always turn this back on
-                from the Mac app Settings.
-              </span>
+              <span className="settings-row__hint">When off, phones pair with QR only</span>
             </div>
             <label className="switch">
               <input
@@ -383,9 +377,6 @@ export function SettingsSheet({
           {passMsg && <p className="settings-copy">{passMsg}</p>}
         </section>
       )}
-      </div>
-      <div className="settings-group">
-        <h2 className="settings-group__title">Devices</h2>
 {client?.listDevices && (
         <section className="settings-block" aria-labelledby="set-devices">
           <header className="settings-block__head">
@@ -495,9 +486,6 @@ export function SettingsSheet({
           )}
         </section>
       )}
-      </div>
-      <div className="settings-group">
-        <h2 className="settings-group__title">Appearance</h2>
 <section className="settings-block" aria-labelledby="set-appear">
         <header className="settings-block__head">
           <h3 id="set-appear">Appearance</h3>
@@ -573,9 +561,6 @@ export function SettingsSheet({
           </div>
         </div>
       </section>
-      </div>
-      <div className="settings-group">
-        <h2 className="settings-group__title">This Mac</h2>
 {isDesktop && (client?.setLaunchAtLogin || client?.checkUpdate) && (
         <section className="settings-block" aria-labelledby="set-machine">
           <header className="settings-block__head">
@@ -668,9 +653,6 @@ export function SettingsSheet({
           )}
         </section>
       )}
-      </div>
-      <div className="settings-group">
-        <h2 className="settings-group__title">Alerts</h2>
 {client?.pushSubscribe && (
         <section className="settings-block" aria-labelledby="set-push">
           <header className="settings-block__head">
@@ -739,9 +721,6 @@ export function SettingsSheet({
           </p>
         </section>
       )}
-      </div>
-      <div className="settings-group">
-        <h2 className="settings-group__title">Connection</h2>
 <section className="settings-block" aria-labelledby="set-conn">
         <header className="settings-block__head">
           <h3 id="set-conn">Connection</h3>
@@ -772,9 +751,6 @@ export function SettingsSheet({
           </p>
         )}
       </section>
-      </div>
-      <div className="settings-group">
-        <h2 className="settings-group__title">Shortcuts</h2>
 <section className="settings-block" aria-labelledby="set-keys">
         <header className="settings-block__head">
           <h3 id="set-keys">Shortcuts</h3>
@@ -824,7 +800,6 @@ export function SettingsSheet({
           </li>
         </ul>
       </section>
-      </div>
 
       {!isDesktop && (
         <form className="sheet__foot" method="post" action="/logout">
@@ -932,9 +907,7 @@ export function SessionSheet({ client, onClose }: SessionSheetProps) {
 
       {data && !data.canSwitch && (
         <p className="hint">
-          Switching is off. Enable <strong>Allow phones to switch session</strong> in the Mac
-          menu-bar Settings (or start with{" "}
-          <code className="mono">--allow-session-switch</code>).
+          Switching is off. Enable it under Settings on the Mac menu bar.
         </p>
       )}
     </Sheet>
