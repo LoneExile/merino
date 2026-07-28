@@ -89,14 +89,11 @@ jobs:
           wails3 task darwin:create:app:bundle
 
           test -d bin/merino.app
-          rm -rf bin/Merino.app
-          mv bin/merino.app bin/Merino.app
-          # Keep CLI artefact path stable for Stage artefacts.
-          cp "bin/Merino.app/Contents/MacOS/merino" bin/merino
+          # APFS is often case-insensitive: cannot mv merino.app → Merino.app in place.
+          # Ship merino.app (matches CFBundleExecutable / Homebrew cask).
+          cp "bin/merino.app/Contents/MacOS/merino" bin/merino
           chmod +x bin/merino
-          "bin/merino" --help >/dev/null 2>&1 || true
-          # Sanity: embedded version string (best-effort).
-          strings "bin/Merino.app/Contents/MacOS/merino" | grep -F "${VERSION}" | head -3 || true
+          strings "bin/merino.app/Contents/MacOS/merino" | grep -F "${VERSION}" | head -3 || true
 
       - name: Stage artefacts
         env:
@@ -111,7 +108,7 @@ jobs:
             *) ARCH_LABEL="$ARCH" ;;
           esac
 
-          ditto -c -k --sequesterRsrc --keepParent bin/Merino.app \
+          ditto -c -k --sequesterRsrc --keepParent bin/merino.app \
             "dist/Merino-${VERSION}-macos-${ARCH_LABEL}.zip"
 
           cp bin/merino "dist/merino-${VERSION}-darwin-${ARCH_LABEL}"

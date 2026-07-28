@@ -50,7 +50,7 @@ brew update && brew upgrade --cask merino
 ### GitHub Releases
 
 1. Download the latest **macOS** zip from [Releases](https://github.com/LoneExile/merino/releases/latest)
-2. Open `Merino.app` (right-click → Open the first time if Gatekeeper prompts)
+2. Open `merino.app` (right-click → Open the first time if Gatekeeper prompts)
 3. Look for the sheep in the menu bar
 
 ### Build from source
