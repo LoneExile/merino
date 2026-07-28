@@ -895,7 +895,7 @@ html.dark .term__hit--active {
 
 .term__img-wrap {
   display: block;
-  margin: var(--space-xs) 0;
+  margin: 0.15rem 0;
   max-width: 100%;
   padding: 0;
   border: 0;
