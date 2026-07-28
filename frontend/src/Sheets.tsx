@@ -1101,10 +1101,9 @@ export function SessionSheet({ client, onClose }: SessionSheetProps) {
 
       {data && !data.canSwitch && (
         <p className="hint">
-          Switching is disabled. Start the server with <code className="mono">
-            --allow-session-switch
-          </code>{" "}
-          to change session from here.
+          Switching is off. Enable <strong>Allow phones to switch session</strong> in the Mac
+          menu-bar Settings (or start with{" "}
+          <code className="mono">--allow-session-switch</code>).
         </p>
       )}
     </Sheet>
