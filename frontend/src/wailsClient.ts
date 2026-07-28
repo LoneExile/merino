@@ -181,5 +181,7 @@ export function wailsClient(): Client {
       }));
     },
     defaultPairBase: () => DesktopSettings.DefaultPairBase(),
+    passwordLoginEnabled: () => DesktopSettings.PasswordLoginEnabled(),
+    setPasswordLoginEnabled: (on: boolean) => DesktopSettings.SetPasswordLoginEnabled(on),
   };
 }

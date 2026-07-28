@@ -131,3 +131,41 @@ func MarkFirstRunDone(dir string) error {
 	}
 	return os.WriteFile(path, []byte("ok\n"), 0o600)
 }
+
+// passwordLoginPath stores whether HTTP username/password sign-in is allowed.
+func passwordLoginPath(dir string) string {
+	if dir == "" {
+		dir = StateDir()
+	}
+	return filepath.Join(dir, "password-login.json")
+}
+
+type passwordLoginFile struct {
+	Enabled bool `json:"enabled"`
+}
+
+// PasswordLoginEnabled reports whether user/pass HTTP login is on.
+// Missing file ⇒ enabled (legacy default).
+func PasswordLoginEnabled(dir string) bool {
+	raw, err := os.ReadFile(passwordLoginPath(dir))
+	if err != nil {
+		return true
+	}
+	var f passwordLoginFile
+	if json.Unmarshal(raw, &f) != nil {
+		return true
+	}
+	return f.Enabled
+}
+
+// SetPasswordLoginEnabled persists the HTTP password-login toggle.
+func SetPasswordLoginEnabled(dir string, enabled bool) error {
+	if err := os.MkdirAll(filepath.Dir(passwordLoginPath(dir)), 0o700); err != nil {
+		return err
+	}
+	raw, err := json.MarshalIndent(passwordLoginFile{Enabled: enabled}, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(passwordLoginPath(dir), raw, 0o600)
+}

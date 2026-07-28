@@ -78,6 +78,7 @@ export interface Session {
   oidcEnabled?: boolean;
   accessOrigins?: AccessOrigin[];
   defaultPairBase?: string;
+  passwordLoginEnabled?: boolean;
 }
 
 export interface PairedDevice {
@@ -195,6 +196,8 @@ export interface Client {
   optionalPasswordEnabled?(): Promise<boolean>;
   accessOrigins?(): Promise<AccessOrigin[]>;
   defaultPairBase?(): Promise<string>;
+  passwordLoginEnabled?(): Promise<boolean>;
+  setPasswordLoginEnabled?(on: boolean): Promise<void>;
 }
 
 export interface UpdateInfo {
@@ -373,6 +376,12 @@ async function httpClient(): Promise<Client> {
           },
           setOptionalPassword: (user: string, pass: string) =>
             postJSON("/api/auth/password", { user, pass }),
+          passwordLoginEnabled: async () => {
+            const r = await getJSON<{ enabled: boolean }>("/api/auth/password-login");
+            return !!r.enabled;
+          },
+          setPasswordLoginEnabled: (on: boolean) =>
+            postJSON("/api/auth/password-login", { enabled: on }),
           markFirstRunDone: () => postJSON("/api/first-run/done", {}),
         }
       : {}),

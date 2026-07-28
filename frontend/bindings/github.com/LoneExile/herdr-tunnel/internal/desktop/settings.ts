@@ -9,7 +9,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -23,15 +23,19 @@ import * as $models from "./models.js";
  * AccessOrigins returns localhost + LAN (and never invents a Cloudflare URL).
  * The Settings sheet uses these as one-tap QR bases before any tunnel setup.
  */
-export function AccessOrigins(): $CancellablePromise<web$0.AccessOrigin[] | null> {
-    return $Call.ByID(2231323965);
+export function AccessOrigins(): $CancellablePromise<web$0.AccessOrigin[]> {
+    return $Call.ByID(2231323965).then(($result: any) => {
+        return $$createType1($result);
+    });
 }
 
 /**
  * CheckUpdate looks up the latest GitHub release.
  */
 export function CheckUpdate(): $CancellablePromise<$models.UpdateInfo> {
-    return $Call.ByID(544266481);
+    return $Call.ByID(544266481).then(($result: any) => {
+        return $$createType2($result);
+    });
 }
 
 /**
@@ -58,8 +62,10 @@ export function LaunchAtLogin(): $CancellablePromise<boolean> {
 /**
  * ListDevices returns paired phones (including revoked).
  */
-export function ListDevices(): $CancellablePromise<web$0.Device[] | null> {
-    return $Call.ByID(3218586955);
+export function ListDevices(): $CancellablePromise<web$0.Device[]> {
+    return $Call.ByID(3218586955).then(($result: any) => {
+        return $$createType4($result);
+    });
 }
 
 /**
@@ -73,7 +79,9 @@ export function MarkFirstRunDone(): $CancellablePromise<void> {
  * MintPairing returns a short-lived QR ticket for phone login.
  */
 export function MintPairing(): $CancellablePromise<web$0.PairingTicket> {
-    return $Call.ByID(62924868);
+    return $Call.ByID(62924868).then(($result: any) => {
+        return $$createType5($result);
+    });
 }
 
 /**
@@ -81,6 +89,13 @@ export function MintPairing(): $CancellablePromise<web$0.PairingTicket> {
  */
 export function OptionalPasswordEnabled(): $CancellablePromise<boolean> {
     return $Call.ByID(3872930110);
+}
+
+/**
+ * PasswordLoginEnabled reports whether HTTP username/password sign-in is on.
+ */
+export function PasswordLoginEnabled(): $CancellablePromise<boolean> {
+    return $Call.ByID(723565347);
 }
 
 /**
@@ -118,3 +133,19 @@ export function SetOptionalPassword(user: string, pass: string): $CancellablePro
 export function SetPairingBaseURL(base: string): $CancellablePromise<void> {
     return $Call.ByID(224920250, base);
 }
+
+/**
+ * SetPasswordLoginEnabled turns HTTP user/pass sign-in on or off.
+ * QR pairing is unaffected. Re-enable anytime from this desktop Settings UI.
+ */
+export function SetPasswordLoginEnabled(on: boolean): $CancellablePromise<void> {
+    return $Call.ByID(1377255459, on);
+}
+
+// Private type creation functions
+const $$createType0 = web$0.AccessOrigin.createFrom;
+const $$createType1 = $Create.Array($$createType0);
+const $$createType2 = $models.UpdateInfo.createFrom;
+const $$createType3 = web$0.Device.createFrom;
+const $$createType4 = $Create.Array($$createType3);
+const $$createType5 = web$0.PairingTicket.createFrom;

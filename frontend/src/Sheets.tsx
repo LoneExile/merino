@@ -101,6 +101,8 @@ export function SettingsSheet({
   const [phoneUser, setPhoneUser] = useState("phone");
   const [phonePass, setPhonePass] = useState("");
   const [passMsg, setPassMsg] = useState<string | null>(null);
+  const [passwordLoginOn, setPasswordLoginOn] = useState(true);
+  const [pwLoginBusy, setPwLoginBusy] = useState(false);
 
   const refreshDevices = useCallback(() => {
     if (!client?.listDevices) return;
@@ -113,6 +115,25 @@ export function SettingsSheet({
   useEffect(() => {
     refreshDevices();
   }, [refreshDevices]);
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        if (client?.passwordLoginEnabled) {
+          const on = await client.passwordLoginEnabled();
+          if (alive) setPasswordLoginOn(on);
+        } else if (typeof session?.passwordLoginEnabled === "boolean") {
+          if (alive) setPasswordLoginOn(session.passwordLoginEnabled);
+        }
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [client, session]);
 
   useEffect(() => {
     let alive = true;
@@ -589,7 +610,41 @@ export function SettingsSheet({
         </section>
       )}
 
-      {client?.setOptionalPassword && (
+      {(client?.setPasswordLoginEnabled || client?.passwordLoginEnabled) && (
+        <section className="settings-block" aria-labelledby="set-pw-login">
+          <header className="settings-block__head">
+            <h3 id="set-pw-login">Password sign-in</h3>
+          </header>
+          <div className="settings-row settings-row--toggle">
+            <div className="settings-row__meta">
+              <span className="settings-row__label">Allow username / password</span>
+              <span className="settings-row__hint">
+                Off = phones must use QR only. You can always turn this back on
+                from the Mac app Settings.
+              </span>
+            </div>
+            <label className="switch">
+              <input
+                type="checkbox"
+                checked={passwordLoginOn}
+                disabled={pwLoginBusy || !client?.setPasswordLoginEnabled}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  setPwLoginBusy(true);
+                  void client
+                    ?.setPasswordLoginEnabled?.(on)
+                    .then(() => setPasswordLoginOn(on))
+                    .catch(() => {})
+                    .finally(() => setPwLoginBusy(false));
+                }}
+              />
+              <span className="switch__ui" />
+            </label>
+          </div>
+        </section>
+      )}
+
+      {client?.setOptionalPassword && passwordLoginOn && (
         <section className="settings-block" aria-labelledby="set-phone-pass">
           <header className="settings-block__head">
             <h3 id="set-phone-pass">Phone password</h3>

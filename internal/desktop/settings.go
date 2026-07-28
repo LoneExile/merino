@@ -18,11 +18,14 @@ type Settings struct {
 	Devices    *web.DeviceStore
 	StateDir   string
 	ListenAddr string // dashboard bind, e.g. 0.0.0.0:8730 — for LAN origin chips
+	// Password is the live HTTP password provider (same process as web server).
+	// Nil when web is down; file persistence still works.
+	Password *web.PasswordProvider
 }
 
 // NewSettings wires the three optional backends. Any may be nil; methods then
 // return a clear error the Settings sheet can show.
-func NewSettings(app *application.App, productID, version, repo string, pairing *web.Pairing, devices *web.DeviceStore, stateDir, listenAddr string) *Settings {
+func NewSettings(app *application.App, productID, version, repo string, pairing *web.Pairing, devices *web.DeviceStore, stateDir, listenAddr string, password *web.PasswordProvider) *Settings {
 	var auto *Autostart
 	if app != nil {
 		auto = NewAutostart(app, productID)
@@ -34,6 +37,7 @@ func NewSettings(app *application.App, productID, version, repo string, pairing 
 		Devices:    devices,
 		StateDir:   stateDir,
 		ListenAddr: listenAddr,
+		Password:   password,
 	}
 }
 
@@ -145,4 +149,24 @@ func (s *Settings) AccessOrigins() []web.AccessOrigin {
 // DefaultPairBase is the best LAN/local origin for a first QR.
 func (s *Settings) DefaultPairBase() string {
 	return web.PreferLANBase(s.ListenAddr)
+}
+
+// PasswordLoginEnabled reports whether HTTP username/password sign-in is on.
+func (s *Settings) PasswordLoginEnabled() bool {
+	if s.Password != nil {
+		return s.Password.PasswordLogin()
+	}
+	return web.PasswordLoginEnabled(s.StateDir)
+}
+
+// SetPasswordLoginEnabled turns HTTP user/pass sign-in on or off.
+// QR pairing is unaffected. Re-enable anytime from this desktop Settings UI.
+func (s *Settings) SetPasswordLoginEnabled(on bool) error {
+	if err := web.SetPasswordLoginEnabled(s.StateDir, on); err != nil {
+		return err
+	}
+	if s.Password != nil {
+		s.Password.SetPasswordLogin(on)
+	}
+	return nil
 }

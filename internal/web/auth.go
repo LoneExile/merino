@@ -59,6 +59,9 @@ type PasswordProvider struct {
 	altUser string
 	altPass [32]byte
 	hasAlt  bool
+	// allowPassword gates HTTP username/password (bootstrap + optional).
+	// QR/token pairing is unaffected. Default true.
+	allowPassword bool
 
 	mu       sync.Mutex
 	failures map[string]*attemptRecord
@@ -89,11 +92,12 @@ func NewPasswordProvider(user, password string, ip IPResolver, behindProxy bool)
 		ip = DirectIP
 	}
 	return &PasswordProvider{
-		user:        user,
-		passHash:    sha256.Sum256([]byte(password)),
-		ip:          ip,
-		behindProxy: behindProxy,
-		failures:    make(map[string]*attemptRecord),
+		user:          user,
+		passHash:      sha256.Sum256([]byte(password)),
+		ip:            ip,
+		behindProxy:   behindProxy,
+		allowPassword: true,
+		failures:      make(map[string]*attemptRecord),
 	}
 }
 
@@ -105,6 +109,13 @@ func (p *PasswordProvider) SetPairing(pair *Pairing) { p.pairing = pair }
 
 // SetDevices attaches the paired-device store used on QR redeem.
 func (p *PasswordProvider) SetDevices(d *DeviceStore) { p.devices = d }
+
+// SetPasswordLogin enables or disables HTTP username/password sign-in.
+// Pairing tokens (QR) always work. Desktop Settings uses Wails IPC, not this.
+func (p *PasswordProvider) SetPasswordLogin(on bool) { p.allowPassword = on }
+
+// PasswordLogin reports whether HTTP user/pass is currently accepted.
+func (p *PasswordProvider) PasswordLogin() bool { return p.allowPassword }
 
 // SetOptionalPassword enables a second username/password for phone login
 // without QR. Empty pass clears it.
@@ -214,7 +225,7 @@ const insecureMsg = "This page was loaded over plain HTTP. " +
 func (p *PasswordProvider) Mount(mux *http.ServeMux, success func(http.ResponseWriter, *http.Request, Identity)) {
 	mux.HandleFunc("GET /login", func(w http.ResponseWriter, r *http.Request) {
 		if insecureTransport(r, p.behindProxy) {
-			writeLoginPage(w, r, insecureMsg)
+			writeLoginPage(w, r, insecureMsg, p.allowPassword)
 			return
 		}
 		// Phone scanned a QR: /login?token=… redeems in one GET so the
@@ -224,7 +235,7 @@ func (p *PasswordProvider) Mount(mux *http.ServeMux, success func(http.ResponseW
 			client := p.ip(r)
 			if p.throttled(client) {
 				w.WriteHeader(http.StatusTooManyRequests)
-				writeLoginPage(w, r, "Too many attempts. Wait a minute and try again.")
+				writeLoginPage(w, r, "Too many attempts. Wait a minute and try again.", p.allowPassword)
 				return
 			}
 			if p.redeemToken(w, r, tok, success) {
@@ -232,28 +243,28 @@ func (p *PasswordProvider) Mount(mux *http.ServeMux, success func(http.ResponseW
 				return
 			}
 			p.recordFailure(client)
-			writeLoginPage(w, r, "That sign-in link expired or was already used. Ask the desktop app for a new QR.")
+			writeLoginPage(w, r, "That sign-in link expired or was already used. Ask the desktop app for a new QR.", p.allowPassword)
 			return
 		}
-		writeLoginPage(w, r, "")
+		writeLoginPage(w, r, "", p.allowPassword)
 	})
 
 	mux.HandleFunc("POST /login", func(w http.ResponseWriter, r *http.Request) {
 		if insecureTransport(r, p.behindProxy) {
 			// Refuse rather than issue a cookie the browser will throw away.
 			w.WriteHeader(http.StatusBadRequest)
-			writeLoginPage(w, r, insecureMsg)
+			writeLoginPage(w, r, insecureMsg, p.allowPassword)
 			return
 		}
 		client := p.ip(r)
 		if p.throttled(client) {
 			w.WriteHeader(http.StatusTooManyRequests)
-			writeLoginPage(w, r, "Too many attempts. Wait a minute and try again.")
+			writeLoginPage(w, r, "Too many attempts. Wait a minute and try again.", p.allowPassword)
 			return
 		}
 		if err := r.ParseForm(); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
-			writeLoginPage(w, r, "Malformed request.")
+			writeLoginPage(w, r, "Malformed request.", p.allowPassword)
 			return
 		}
 		// Token form field (manual paste fallback from the QR sheet).
@@ -263,17 +274,28 @@ func (p *PasswordProvider) Mount(mux *http.ServeMux, success func(http.ResponseW
 			}
 			p.recordFailure(client)
 			w.WriteHeader(http.StatusUnauthorized)
-			writeLoginPage(w, r, "That sign-in code expired or was already used.")
+			writeLoginPage(w, r, "That sign-in code expired or was already used.", p.allowPassword)
 			return
 		}
 		user := r.PostFormValue("username")
 		pass := r.PostFormValue("password")
+		// Empty password fields with no token → user submitted the password form.
+		if (user != "" || pass != "") && !p.allowPassword {
+			w.WriteHeader(http.StatusForbidden)
+			writeLoginPage(w, r, "Username and password sign-in is turned off. Scan a QR from the Mac app.", p.allowPassword)
+			return
+		}
+		if !p.allowPassword {
+			w.WriteHeader(http.StatusUnauthorized)
+			writeLoginPage(w, r, "Username and password sign-in is turned off. Scan a QR from the Mac app.", p.allowPassword)
+			return
+		}
 
 		if !p.verify(user, pass) {
 			p.recordFailure(client)
 			// Deliberately vague: do not reveal which field was wrong.
 			w.WriteHeader(http.StatusUnauthorized)
-			writeLoginPage(w, r, "Incorrect username or password.")
+			writeLoginPage(w, r, "Incorrect username or password.", p.allowPassword)
 			return
 		}
 		p.clearFailures(client)
@@ -310,7 +332,7 @@ func (p *PasswordProvider) redeemToken(w http.ResponseWriter, r *http.Request, t
 		_, id, err := p.devices.Mint(label, "pairing", nil)
 		if err != nil {
 			// Do not leave the user with a burned token and no session.
-			writeLoginPage(w, r, "Paired, but saving this device failed. Try minting a new QR.")
+			writeLoginPage(w, r, "Paired, but saving this device failed. Try minting a new QR.", p.allowPassword)
 			return true
 		}
 		success(w, r, id)

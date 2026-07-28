@@ -22,6 +22,8 @@ func (s *Server) mountDevices(mux *http.ServeMux) {
 	mux.Handle("POST /api/devices/revoke", s.authed(s.handleDeviceRevoke))
 	mux.Handle("POST /api/devices/revoke-all", s.authed(s.handleDeviceRevokeAll))
 	mux.Handle("POST /api/auth/password", s.authed(s.handleSetOptionalPassword))
+	mux.Handle("GET /api/auth/password-login", s.authed(s.handleGetPasswordLogin))
+	mux.Handle("POST /api/auth/password-login", s.authed(s.handleSetPasswordLogin))
 	mux.Handle("POST /api/first-run/done", s.authed(s.handleFirstRunDone))
 }
 
@@ -119,4 +121,44 @@ func (s *Server) stateDir() string {
 		return s.cfg.StateDir
 	}
 	return StateDir()
+}
+
+func (s *Server) handleGetPasswordLogin(w http.ResponseWriter, r *http.Request, id Identity) {
+	_ = r
+	if !isOperator(id) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "only the desktop operator can view this setting"})
+		return
+	}
+	on := true
+	if pp, ok := s.cfg.Provider.(*PasswordProvider); ok {
+		on = pp.PasswordLogin()
+	} else {
+		on = PasswordLoginEnabled(s.stateDir())
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"enabled": on})
+}
+
+func (s *Server) handleSetPasswordLogin(w http.ResponseWriter, r *http.Request, id Identity) {
+	if !isOperator(id) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "only the desktop operator can change this setting"})
+		return
+	}
+	var body struct {
+		Enabled *bool `json:"enabled"`
+	}
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10))
+	if err := dec.Decode(&body); err != nil || body.Enabled == nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "enabled bool required"})
+		return
+	}
+	on := *body.Enabled
+	if err := SetPasswordLoginEnabled(s.stateDir(), on); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if pp, ok := s.cfg.Provider.(*PasswordProvider); ok {
+		pp.SetPasswordLogin(on)
+	}
+	s.audit(r, id, "password_login_set", "", "", true, "")
+	writeJSON(w, http.StatusOK, map[string]any{"enabled": on})
 }

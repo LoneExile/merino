@@ -217,12 +217,16 @@ var loginTmpl = template.Must(template.New("login").Parse(`<!DOCTYPE html>
   <div class="card">
     <form id="login-form" method="POST" action="/login">
       <h1>Herdr Tunnel</h1>
-      <p class="sub">Sign in to view your agents.</p>
+      <p class="sub">{{if .AllowPassword}}Sign in to view your agents.{{else}}Scan a QR from the Mac app to sign in.{{end}}</p>
+      {{if .AllowPassword}}
       <label for="username">Username</label>
       <input id="username" name="username" autocomplete="username" autocapitalize="none" autocorrect="off">
       <label for="password">Password</label>
       <input id="password" name="password" type="password" autocomplete="current-password">
       <div class="or">or phone</div>
+      {{else}}
+      <p class="sub" style="margin-top:8px">Username/password sign-in is disabled on this server.</p>
+      {{end}}
       <button type="button" id="scan-btn" class="secondary">Scan desktop QR</button>
       <div id="scan" class="scan" hidden>
         <video id="scan-video" playsinline muted></video>
@@ -355,13 +359,14 @@ var loginTmpl = template.Must(template.New("login").Parse(`<!DOCTYPE html>
 </body>
 </html>`))
 
-func writeLoginPage(w http.ResponseWriter, r *http.Request, errMsg string) {
+func writeLoginPage(w http.ResponseWriter, r *http.Request, errMsg string, allowPassword bool) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	// Never cache a page that reflects auth state.
 	w.Header().Set("Cache-Control", "no-store")
 	nonce, _ := r.Context().Value(nonceKey{}).(string)
 	_ = loginTmpl.Execute(w, struct {
-		Error string
-		Nonce string
-	}{Error: errMsg, Nonce: nonce})
+		Error         string
+		Nonce         string
+		AllowPassword bool
+	}{Error: errMsg, Nonce: nonce, AllowPassword: allowPassword})
 }

@@ -12,7 +12,7 @@ import type * as app$0 from "../../../../LoneExile/herdr-tunnel/internal/app/mod
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
-            "agents:changed": app$0.Agent[] | null;
+            "agents:changed": app$0.Agent[];
             "conn:changed": app$0.Conn;
         }
     }
