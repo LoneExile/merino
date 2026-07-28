@@ -34,25 +34,40 @@ No CLI polling. No `herdr` subprocess. One persistent socket, push events only.
 
 ## Install
 
-### Homebrew (recommended)
+macOS **Apple Silicon** only for prebuilt binaries. Builds are **ad-hoc signed** (no Apple Developer ID / notarization yet), so install paths below clear the quarantine bit for you.
+
+### One-liner (recommended)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/LoneExile/merino/main/scripts/install.sh | bash
+```
+
+Downloads the latest [Release](https://github.com/LoneExile/merino/releases/latest) zip, installs **Merino.app** into `/Applications`, strips Gatekeeper quarantine, and opens it. Override location with `MERINO_APP_DIR=~/Applications`.
+
+### Manual (drag to Applications)
+
+1. Download **Merino-\*-macos-arm64.zip** from [Releases](https://github.com/LoneExile/merino/releases/latest)
+2. Unzip and drag **merino.app** → `/Applications` (rename to **Merino.app** if you like)
+3. Clear quarantine, then open:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Merino.app 2>/dev/null || \
+  xattr -dr com.apple.quarantine /Applications/merino.app
+open /Applications/Merino.app 2>/dev/null || open /Applications/merino.app
+```
+
+If macOS still shows *“Apple could not verify…”*: **System Settings → Privacy & Security → Open Anyway**, or right-click the app → **Open**.
+
+### Homebrew
 
 ```bash
 brew tap LoneExile/merino
-brew trust LoneExile/merino   # Homebrew third-party tap
-brew install --cask merino
+brew trust LoneExile/merino   # third-party tap
+# Prefer --no-quarantine so Gatekeeper never tags the download:
+brew install --cask --no-quarantine merino
 ```
 
-Upgrade later:
-
-```bash
-brew update && brew upgrade --cask merino
-```
-
-### GitHub Releases
-
-1. Download the latest **macOS** zip from [Releases](https://github.com/LoneExile/merino/releases/latest)
-2. Open `merino.app` (right-click → Open the first time if Gatekeeper prompts)
-3. Look for the sheep in the menu bar
+The cask also installs as **Merino.app** and runs an `xattr` postflight. Upgrade: `brew update && brew upgrade --cask --no-quarantine merino`.
 
 ### Build from source
 
