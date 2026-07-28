@@ -126,6 +126,34 @@ body {
   transition: none;
 }
 
+/* Slim scrollbars — the default macOS overlay bar is fine; Chromium (and
+ * the Wails webview) paint a chunky classic bar that eats the agent list
+ * and settings sheet. Keep them thin and low-contrast. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--color-ink-3) 55%, transparent) transparent;
+}
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--color-ink-3) 45%, transparent);
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklab, var(--color-ink-3) 70%, transparent);
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 /* Desktop menubar panel: clip the frameless window to rounded corners.
  * Wails' frameless NSWindow is a hard rectangle; rounding is done in CSS
  * (overflow:hidden on the root) so the panel matches the system popover
@@ -484,16 +512,14 @@ html.desktop .app {
 
 .row {
   display: flex;
-  align-items: center;
-  gap: var(--space-sm);
+  align-items: stretch;
+  gap: 0;
   width: 100%;
   min-height: var(--tap);
-  padding: var(--space-sm) var(--space-md);
+  padding: 0;
   background: transparent;
   border: 0;
   border-top: 1px solid var(--color-rule);
-  text-align: start;
-  cursor: pointer;
   color: inherit;
   font: inherit;
 }
@@ -502,8 +528,70 @@ html.desktop .app {
   border-bottom: 1px solid var(--color-rule);
 }
 
-.row:hover {
+.row:hover,
+.row:focus-within {
   background: var(--color-paper-2);
+}
+
+/* Primary hit target — opens the pane. */
+.row__open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-2xs) var(--space-sm) var(--space-md);
+  margin: 0;
+  background: transparent;
+  border: 0;
+  text-align: start;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+/* Trailing icon actions (focus-in-herdr, open chevron). */
+.row__icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--tap);
+  min-width: var(--tap);
+  min-height: var(--tap);
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: var(--color-ink-3);
+  cursor: pointer;
+  border-radius: var(--radius-control);
+}
+.row__icon:hover {
+  color: var(--color-ink);
+  background: color-mix(in oklab, var(--color-ink) 6%, transparent);
+}
+.row__icon:active {
+  background: color-mix(in oklab, var(--color-ink) 10%, transparent);
+}
+.row__icon--go {
+  margin-inline-end: var(--space-2xs);
+  color: var(--color-ink-3);
+}
+
+/* Session picker still uses a single <button class="row">. */
+button.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  cursor: pointer;
+  text-align: start;
+  font: inherit;
+  color: inherit;
+}
+button.row:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .row__main {

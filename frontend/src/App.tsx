@@ -249,23 +249,65 @@ export default function App() {
                 <ul className="list">
                   {list.map((a) => (
                     <li key={a.paneId}>
-                      <button className="row" onClick={() => setOpenPane(a.paneId)}>
-                        <StatusDot status={a.status} />
-                        <span className="row__main">
-                          <span className="row__title">{a.agent || "pane"}</span>
-                          <span className="row__sub mono">{a.project || a.cwd || a.paneId}</span>
-                        </span>
-                        <svg className="row__go" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-                          <path
-                            d="m6 3 5 5-5 5"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.6"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                      </button>
+                      <div className="row">
+                        <button
+                          type="button"
+                          className="row__open"
+                          onClick={() => setOpenPane(a.paneId)}
+                        >
+                          <StatusDot status={a.status} />
+                          <span className="row__main">
+                            <span className="row__title">{a.agent || "pane"}</span>
+                            <span className="row__sub mono">{a.project || a.cwd || a.paneId}</span>
+                          </span>
+                        </button>
+                        {client?.focus && (
+                          <button
+                            type="button"
+                            className="row__icon"
+                            aria-label={`Focus ${a.agent || "pane"} in herdr`}
+                            title="Focus in herdr"
+                            onClick={() => void client.focus?.(a.paneId)}
+                          >
+                            {/* Crosshair / target — bring this pane to the front in herdr. */}
+                            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                              <circle
+                                cx="8"
+                                cy="8"
+                                r="3.1"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.5"
+                              />
+                              <path
+                                d="M8 1.75v2.4M8 11.85v2.4M1.75 8h2.4M11.85 8h2.4"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.5"
+                                strokeLinecap="round"
+                              />
+                            </svg>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="row__icon row__icon--go"
+                          aria-label={`Open ${a.agent || "pane"}`}
+                          title="Open"
+                          onClick={() => setOpenPane(a.paneId)}
+                        >
+                          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                            <path
+                              d="m6 3 5 5-5 5"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.6"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        </button>
+                      </div>
                     </li>
                   ))}
                 </ul>
