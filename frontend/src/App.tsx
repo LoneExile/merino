@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Agent } from "../bindings/github.com/LoneExile/herdr-tunnel/internal/app";
 import { useHerd } from "./useHerd";
 import { useTheme } from "./theme";
@@ -23,6 +23,25 @@ export default function App() {
   const { pref, actual, setPref } = useTheme();
   const { wrap, setWrap } = useWrapPref();
   const termFont = useTermFontPref();
+
+  // Full-page sheep splash (index.html #splash). Hold at least ~500ms so the
+  // hop reads as intentional, then fade once the herd stream is ready.
+  const splashAt = useRef(typeof performance !== "undefined" ? performance.now() : 0);
+  useEffect(() => {
+    if (!ready) return;
+    const splash = document.getElementById("splash");
+    if (!splash || splash.classList.contains("is-done")) return;
+    const MIN_MS = 520;
+    const elapsed = (typeof performance !== "undefined" ? performance.now() : 0) - splashAt.current;
+    const wait = Math.max(0, MIN_MS - elapsed);
+    const t = window.setTimeout(() => {
+      splash.classList.add("is-done");
+      splash.setAttribute("aria-busy", "false");
+      window.setTimeout(() => splash.remove(), 360);
+    }, wait);
+    return () => window.clearTimeout(t);
+  }, [ready]);
+
   const [openPane, setOpenPane] = useState<string | null>(null);
   const [overlay, setOverlay] = useState<Overlay>(null);
   const [renaming, setRenaming] = useState<Agent | null>(null);

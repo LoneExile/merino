@@ -132,9 +132,88 @@ var loginTmpl = template.Must(template.New("login").Parse(`<!DOCTYPE html>
   .scan .hint.bad { color: var(--alert); }
   #scan-btn { display: none; }
   #scan-btn.is-ready { display: block; }
+
+  /* Boot splash — sheep hop until the form is painted. */
+  #splash {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: grid;
+    place-items: center;
+    background: var(--bg);
+    color: var(--dim);
+    transition: opacity .28s ease, visibility .28s ease;
+  }
+  #splash.is-done {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .splash__stage {
+    display: grid;
+    justify-items: center;
+    gap: 16px;
+    font: 12px/1.4 -apple-system, BlinkMacSystemFont, sans-serif;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+  .splash__hop {
+    position: relative;
+    width: 88px;
+    height: 100px;
+    display: grid;
+    place-items: end center;
+  }
+  .splash__sheep {
+    width: 64px;
+    height: 64px;
+    display: block;
+    transform-origin: 50% 100%;
+    animation: splash-hop 700ms cubic-bezier(.33,.9,.4,1) infinite;
+  }
+  .splash__shadow {
+    position: absolute;
+    left: 50%;
+    bottom: 4px;
+    width: 40px;
+    height: 9px;
+    margin-left: -20px;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: .18;
+    filter: blur(2px);
+    animation: splash-shadow 700ms cubic-bezier(.33,.9,.4,1) infinite;
+  }
+  @keyframes splash-hop {
+    0%, 100% { transform: translateY(0) scale(1,1); }
+    18% { transform: translateY(0) scale(1.06,.9); }
+    36% { transform: translateY(-26px) scale(.96,1.06); }
+    52% { transform: translateY(-32px) scale(.98,1.02); }
+    70% { transform: translateY(0) scale(1.08,.88); }
+    82% { transform: translateY(-5px) scale(.98,1.04); }
+  }
+  @keyframes splash-shadow {
+    0%, 100% { transform: scaleX(1); opacity: .2; }
+    18% { transform: scaleX(1.1); opacity: .24; }
+    36%, 52% { transform: scaleX(.55); opacity: .1; }
+    70% { transform: scaleX(1.15); opacity: .26; }
+    82% { transform: scaleX(.9); opacity: .16; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .splash__sheep, .splash__shadow { animation: none; }
+  }
 </style>
 </head>
 <body>
+  <div id="splash" role="status" aria-live="polite" aria-busy="true">
+    <div class="splash__stage">
+      <div class="splash__hop" aria-hidden="true">
+        <span class="splash__shadow"></span>
+        <img class="splash__sheep" src="/icon-192.png" width="64" height="64" alt="" decoding="async">
+      </div>
+      <span>Loading</span>
+    </div>
+  </div>
   <div class="card">
     <form id="login-form" method="POST" action="/login">
       <h1>Herdr Tunnel</h1>
@@ -158,6 +237,17 @@ var loginTmpl = template.Must(template.New("login").Parse(`<!DOCTYPE html>
     </form>
   </div>
   <script nonce="{{.Nonce}}">
+(function () {
+  var el = document.getElementById("splash");
+  if (!el) return;
+  var done = function () {
+    el.classList.add("is-done");
+    el.setAttribute("aria-busy", "false");
+    setTimeout(function () { el.remove(); }, 320);
+  };
+  if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) done();
+  else setTimeout(done, 480);
+})();
 (function () {
   var btn = document.getElementById("scan-btn");
   var panel = document.getElementById("scan");

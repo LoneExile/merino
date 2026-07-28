@@ -31,51 +31,267 @@
     <meta name="theme-color" content="#10141a" media="(prefers-color-scheme: dark)" />
     <title>Herdr Tunnel</title>
     <style>
-      /* Shown until React mounts over it. A blank window is impossible to
-         diagnose; this makes a failed mount say so. */
-      #boot {
-        font: 12px -apple-system, BlinkMacSystemFont, sans-serif;
-        color: #8b93a7;
-        padding: 16px;
+      /* Full-page boot splash. Painted before the JS bundle so cold starts
+         never flash a blank window. Dismissed by App once the herd is ready
+         (see dismissSplash in main.tsx / App.tsx). */
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #f8fafd;
+        color: #5b6475;
       }
-      #boot pre {
+      @media (prefers-color-scheme: dark) {
+        html,
+        body {
+          background: #10141a;
+          color: #8b93a7;
+        }
+      }
+      /* Stored theme wins over system preference (mirrors applyStoredTheme). */
+      html[data-theme="light"],
+      html[data-theme="light"] body {
+        background: #f8fafd;
+        color: #5b6475;
+      }
+      html[data-theme="dark"],
+      html[data-theme="dark"] body {
+        background: #10141a;
+        color: #8b93a7;
+      }
+
+      #splash {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: grid;
+        place-items: center;
+        background: inherit;
+        color: inherit;
+        transition: opacity 320ms ease, visibility 320ms ease;
+      }
+      #splash.is-done {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+      }
+      #splash.is-error .splash__sheep,
+      #splash.is-error .splash__shadow,
+      #splash.is-error .splash__label::after {
+        animation: none;
+      }
+      .splash__stage {
+        display: grid;
+        justify-items: center;
+        gap: 18px;
+        padding: 24px;
+        text-align: center;
+        font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        letter-spacing: 0.02em;
+      }
+      .splash__hop {
+        position: relative;
+        width: 96px;
+        height: 110px;
+        display: grid;
+        place-items: end center;
+      }
+      .splash__sheep {
+        width: 72px;
+        height: 72px;
+        display: block;
+        image-rendering: auto;
+        transform-origin: 50% 100%;
+        animation: splash-hop 700ms cubic-bezier(0.33, 0.9, 0.4, 1) infinite;
+        will-change: transform;
+        user-select: none;
+        -webkit-user-drag: none;
+      }
+      .splash__shadow {
+        position: absolute;
+        left: 50%;
+        bottom: 6px;
+        width: 44px;
+        height: 10px;
+        margin-left: -22px;
+        border-radius: 50%;
+        background: currentColor;
+        opacity: 0.18;
+        filter: blur(2px);
+        animation: splash-shadow 700ms cubic-bezier(0.33, 0.9, 0.4, 1) infinite;
+        will-change: transform, opacity;
+      }
+      .splash__label {
+        margin: 0;
+        font-size: 12px;
+        font-weight: 500;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        opacity: 0.85;
+      }
+      .splash__label::after {
+        content: "";
+        animation: splash-dots 1.2s steps(4, end) infinite;
+      }
+      /* #boot stays for load-error reporting (window error / 5s timeout). */
+      #boot {
+        max-width: 22rem;
+        font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
         color: #f87171;
         white-space: pre-wrap;
         word-break: break-word;
+        text-align: left;
+      }
+      #boot:empty {
+        display: none;
+      }
+      #boot pre {
         margin: 8px 0 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      @keyframes splash-hop {
+        0%,
+        100% {
+          transform: translateY(0) scale(1, 1);
+        }
+        18% {
+          transform: translateY(0) scale(1.06, 0.9);
+        }
+        36% {
+          transform: translateY(-28px) scale(0.96, 1.06);
+        }
+        52% {
+          transform: translateY(-34px) scale(0.98, 1.02);
+        }
+        70% {
+          transform: translateY(0) scale(1.08, 0.88);
+        }
+        82% {
+          transform: translateY(-6px) scale(0.98, 1.04);
+        }
+      }
+      @keyframes splash-shadow {
+        0%,
+        100% {
+          transform: scaleX(1);
+          opacity: 0.2;
+        }
+        18% {
+          transform: scaleX(1.1);
+          opacity: 0.24;
+        }
+        36%,
+        52% {
+          transform: scaleX(0.55);
+          opacity: 0.1;
+        }
+        70% {
+          transform: scaleX(1.15);
+          opacity: 0.26;
+        }
+        82% {
+          transform: scaleX(0.9);
+          opacity: 0.16;
+        }
+      }
+      @keyframes splash-dots {
+        0% {
+          content: "";
+        }
+        25% {
+          content: ".";
+        }
+        50% {
+          content: "..";
+        }
+        75% {
+          content: "...";
+        }
+      }
+      /* Keep the React root under the splash; no layout jump when splash goes. */
+      #root {
+        min-height: 100%;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .splash__sheep,
+        .splash__shadow,
+        .splash__label::after {
+          animation: none;
+        }
       }
     </style>
+    <script>
+      // Apply stored theme before first paint so the splash matches the app.
+      (function () {
+        try {
+          var t = localStorage.getItem("herdr.theme");
+          if (t === "light" || t === "dark") {
+            document.documentElement.setAttribute("data-theme", t);
+          }
+        } catch (_) {}
+      })();
+    </script>
   </head>
   <body>
-    <div id="root">
-      <div id="boot">Loading…</div>
+    <div id="splash" role="status" aria-live="polite" aria-busy="true">
+      <div class="splash__stage">
+        <div class="splash__hop" aria-hidden="true">
+          <span class="splash__shadow"></span>
+          <img
+            class="splash__sheep"
+            src="/icon-192.png"
+            width="72"
+            height="72"
+            alt=""
+            decoding="async"
+            fetchpriority="high"
+          />
+        </div>
+        <p class="splash__label">Loading</p>
+        <div id="boot"></div>
+      </div>
     </div>
+    <div id="root"></div>
     <script>
       // Surface load-time failures in the UI. Without this a bundle that fails
-      // to parse leaves only the window background colour, which looks
-      // identical to "the app is broken" and gives nothing to act on.
+      // to parse leaves only the splash forever, which looks identical to a
+      // hung connect and gives nothing to act on.
       (function () {
         function report(what, detail) {
           var boot = document.getElementById("boot");
+          var splash = document.getElementById("splash");
+          var label = document.querySelector(".splash__label");
+          if (label) label.textContent = what;
+          if (splash) {
+            splash.setAttribute("aria-busy", "false");
+            // Freeze the hop so the error reads as a stop, not a hang.
+            splash.classList.add("is-error");
+          }
           if (!boot) return;
-          boot.textContent = what;
+          boot.textContent = "";
           var pre = document.createElement("pre");
-          pre.textContent = String(detail);
+          pre.textContent = String(detail == null ? "" : detail);
           boot.appendChild(pre);
         }
         window.addEventListener("error", function (e) {
-          report("Frontend failed to load.", e.message || e.error || e);
+          report("Frontend failed to load", e.message || e.error || e);
         });
         window.addEventListener("unhandledrejection", function (e) {
-          report("Frontend error.", e.reason);
+          report("Frontend error", e.reason);
         });
-        // If React has not replaced #boot within a few seconds, the bundle
-        // never ran at all — a different failure from a thrown error.
+        // If React has not dismissed the splash within a few seconds, the
+        // bundle never ran — a different failure from a thrown error.
         setTimeout(function () {
-          if (document.getElementById("boot")) {
-            report("Frontend did not start.", "The app bundle did not execute within 5s.");
+          var splash = document.getElementById("splash");
+          if (splash && !splash.classList.contains("is-done") && !splash.classList.contains("is-error")) {
+            // Only complain if the root is still empty (bundle never mounted).
+            var root = document.getElementById("root");
+            if (root && root.childElementCount === 0) {
+              report("Frontend did not start", "The app bundle did not execute within 8s.");
+            }
           }
-        }, 5000);
+        }, 8000);
       })();
     </script>
     <script type="module" src="/src/main.tsx"></script>
