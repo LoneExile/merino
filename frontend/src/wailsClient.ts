@@ -157,7 +157,7 @@ export function wailsClient(): Client {
           id: d.id,
           name: d.name,
           provider: d.provider,
-          roles: d.roles,
+          roles: d.roles ?? undefined,
           createdAt: String(d.createdAt),
           lastSeen: String(d.lastSeen),
           revokedAt: d.revokedAt ? String(d.revokedAt) : null,
@@ -171,5 +171,15 @@ export function wailsClient(): Client {
     setOptionalPassword: (user: string, pass: string) => DesktopSettings.SetOptionalPassword(user, pass),
     markFirstRunDone: () => DesktopSettings.MarkFirstRunDone(),
     optionalPasswordEnabled: () => DesktopSettings.OptionalPasswordEnabled(),
+    accessOrigins: async () => {
+      const list = await DesktopSettings.AccessOrigins();
+      return (list || []).map((o) => ({
+        kind: o.kind,
+        label: o.label,
+        url: o.url,
+        hint: o.hint,
+      }));
+    },
+    defaultPairBase: () => DesktopSettings.DefaultPairBase(),
   };
 }

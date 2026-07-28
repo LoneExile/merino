@@ -51,6 +51,13 @@ function markAuthDead(): void {
 }
 
 
+export interface AccessOrigin {
+  kind: "local" | "lan" | "public" | string;
+  label: string;
+  url: string;
+  hint?: string;
+}
+
 export interface Session {
   user: string;
   provider: string;
@@ -69,6 +76,8 @@ export interface Session {
   canManageDevices?: boolean;
   firstRunPending?: boolean;
   oidcEnabled?: boolean;
+  accessOrigins?: AccessOrigin[];
+  defaultPairBase?: string;
 }
 
 export interface PairedDevice {
@@ -184,6 +193,8 @@ export interface Client {
   setOptionalPassword?(user: string, pass: string): Promise<void>;
   markFirstRunDone?(): Promise<void>;
   optionalPasswordEnabled?(): Promise<boolean>;
+  accessOrigins?(): Promise<AccessOrigin[]>;
+  defaultPairBase?(): Promise<string>;
 }
 
 export interface UpdateInfo {

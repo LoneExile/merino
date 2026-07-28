@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Agent } from "../bindings/github.com/LoneExile/herdr-tunnel/internal/app";
-import type { Client, HerdrSession, PairedDevice, PairingTicket, RenameKind, Session, SessionList, UpdateInfo } from "./client";
+import type { Client, HerdrSession, AccessOrigin, PairedDevice, PairingTicket, RenameKind, Session, SessionList, UpdateInfo } from "./client";
 import { Sheet } from "./Sheet";
 import type { ThemePref } from "./theme";
 
@@ -92,8 +92,9 @@ export function SettingsSheet({
   const [pairErr, setPairErr] = useState<string | null>(null);
   const [pairBusy, setPairBusy] = useState(false);
   const [pairBase, setPairBase] = useState(
-    () => localStorage.getItem("herdr.pairBase") ?? "https://herdr-tunnel.0dl.me",
+    () => localStorage.getItem("herdr.pairBase") ?? "",
   );
+  const [accessOrigins, setAccessOrigins] = useState<AccessOrigin[]>([]);
   const [devices, setDevices] = useState<PairedDevice[]>([]);
   const [devBusy, setDevBusy] = useState(false);
   const [devErr, setDevErr] = useState<string | null>(null);
@@ -112,6 +113,51 @@ export function SettingsSheet({
   useEffect(() => {
     refreshDevices();
   }, [refreshDevices]);
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        let origins: AccessOrigin[] = [];
+        if (client?.accessOrigins) {
+          origins = await client.accessOrigins();
+        } else if (session?.accessOrigins) {
+          origins = session.accessOrigins;
+        }
+        if (!alive) return;
+        setAccessOrigins(origins);
+        // Prefer stored choice only if still non-empty; else LAN/local default.
+        let stored = localStorage.getItem("herdr.pairBase")?.trim() ?? "";
+        // Pre-LAN-default builds seeded Cloudflare; treat that as "unset" so
+        // zero-config users land on Wi‑Fi instead of a dead public host.
+        if (
+          stored === "https://herdr-tunnel.0dl.me" ||
+          stored === "http://herdr-tunnel.0dl.me"
+        ) {
+          localStorage.removeItem("herdr.pairBase");
+          stored = "";
+        }
+        if (stored) {
+          setPairBase(stored);
+          return;
+        }
+        if (client?.defaultPairBase) {
+          const d = await client.defaultPairBase();
+          if (alive && d) setPairBase(d);
+        } else if (session?.defaultPairBase) {
+          setPairBase(session.defaultPairBase);
+        } else {
+          const lan = origins.find((o) => o.kind === "lan") ?? origins[0];
+          if (lan) setPairBase(lan.url);
+        }
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [client, session]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -601,21 +647,46 @@ export function SettingsSheet({
             <h3 id="set-pair">Phone sign-in</h3>
           </header>
           <p className="settings-copy">
-            One-shot QR. Expires in two minutes. No password typing on the phone.
+            One-shot QR (2 min). Same Wi‑Fi works with no tunnel — pick{" "}
+            <strong>Wi‑Fi / LAN</strong> first. Add a public HTTPS URL later for
+            off-home access (Cloudflare, etc.).
           </p>
+          {accessOrigins.length > 0 && (
+            <div className="pair-origins" role="group" aria-label="Access origin">
+              {accessOrigins.map((o) => (
+                <button
+                  key={o.kind + o.url}
+                  type="button"
+                  className={`btn pair-origins__chip${pairBase === o.url ? " is-on" : ""}`}
+                  title={o.hint || o.url}
+                  onClick={() => {
+                    setPairBase(o.url);
+                    localStorage.setItem("herdr.pairBase", o.url);
+                  }}
+                >
+                  <span className="pair-origins__label">{o.label}</span>
+                  <span className="pair-origins__url mono">{o.url.replace(/^https?:\/\//, "")}</span>
+                </button>
+              ))}
+            </div>
+          )}
           <label className="field__label" htmlFor="pair-base">
-            Public URL
+            QR base URL
           </label>
           <input
             id="pair-base"
             className="field__input"
             value={pairBase}
             onChange={(e) => setPairBase(e.target.value)}
-            placeholder="https://herdr-tunnel.0dl.me"
+            placeholder="http://192.168.x.x:8730 or https://your-tunnel.example"
             spellCheck={false}
             autoCapitalize="off"
             autoCorrect="off"
           />
+          <p className="settings-copy settings-copy--quiet">
+            Localhost only works on this Mac. LAN needs the phone on the same
+            network. Public tunnel is optional.
+          </p>
           <button
             type="button"
             className="btn btn--solid"

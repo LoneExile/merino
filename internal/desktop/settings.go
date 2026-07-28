@@ -12,26 +12,28 @@ import (
 // Settings is the Wails-bound surface for desktop-only preferences:
 // launch-at-login, GitHub updates, and phone pairing QR tickets.
 type Settings struct {
-	Auto     *Autostart
-	Update   *Updater
-	Pairing  *web.Pairing
-	Devices  *web.DeviceStore
-	StateDir string
+	Auto       *Autostart
+	Update     *Updater
+	Pairing    *web.Pairing
+	Devices    *web.DeviceStore
+	StateDir   string
+	ListenAddr string // dashboard bind, e.g. 0.0.0.0:8730 — for LAN origin chips
 }
 
 // NewSettings wires the three optional backends. Any may be nil; methods then
 // return a clear error the Settings sheet can show.
-func NewSettings(app *application.App, productID, version, repo string, pairing *web.Pairing, devices *web.DeviceStore, stateDir string) *Settings {
+func NewSettings(app *application.App, productID, version, repo string, pairing *web.Pairing, devices *web.DeviceStore, stateDir, listenAddr string) *Settings {
 	var auto *Autostart
 	if app != nil {
 		auto = NewAutostart(app, productID)
 	}
 	return &Settings{
-		Auto:     auto,
-		Update:   &Updater{Repo: repo, Current: version},
-		Pairing:  pairing,
-		Devices:  devices,
-		StateDir: stateDir,
+		Auto:       auto,
+		Update:     &Updater{Repo: repo, Current: version},
+		Pairing:    pairing,
+		Devices:    devices,
+		StateDir:   stateDir,
+		ListenAddr: listenAddr,
 	}
 }
 
@@ -132,4 +134,15 @@ func (s *Settings) SetOptionalPassword(user, pass string) error {
 func (s *Settings) OptionalPasswordEnabled() bool {
 	_, _, ok := web.LoadOptionalPassword(s.StateDir)
 	return ok
+}
+
+// AccessOrigins returns localhost + LAN (and never invents a Cloudflare URL).
+// The Settings sheet uses these as one-tap QR bases before any tunnel setup.
+func (s *Settings) AccessOrigins() []web.AccessOrigin {
+	return web.LocalAccessOrigins(s.ListenAddr)
+}
+
+// DefaultPairBase is the best LAN/local origin for a first QR.
+func (s *Settings) DefaultPairBase() string {
+	return web.PreferLANBase(s.ListenAddr)
 }

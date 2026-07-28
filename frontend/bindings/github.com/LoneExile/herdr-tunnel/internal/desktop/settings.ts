@@ -20,6 +20,14 @@ import * as web$0 from "../web/models.js";
 import * as $models from "./models.js";
 
 /**
+ * AccessOrigins returns localhost + LAN (and never invents a Cloudflare URL).
+ * The Settings sheet uses these as one-tap QR bases before any tunnel setup.
+ */
+export function AccessOrigins(): $CancellablePromise<web$0.AccessOrigin[] | null> {
+    return $Call.ByID(2231323965);
+}
+
+/**
  * CheckUpdate looks up the latest GitHub release.
  */
 export function CheckUpdate(): $CancellablePromise<$models.UpdateInfo> {
@@ -27,53 +35,10 @@ export function CheckUpdate(): $CancellablePromise<$models.UpdateInfo> {
 }
 
 /**
- * LaunchAtLogin reports whether the app opens at login.
+ * DefaultPairBase is the best LAN/local origin for a first QR.
  */
-export function LaunchAtLogin(): $CancellablePromise<boolean> {
-    return $Call.ByID(4163321067);
-}
-
-/**
- * MintPairing returns a short-lived QR ticket for phone login.
- */
-export function MintPairing(): $CancellablePromise<web$0.PairingTicket> {
-    return $Call.ByID(62924868);
-}
-
-/**
- * SetLaunchAtLogin enables or disables open-at-login.
- */
-export function SetLaunchAtLogin(on: boolean): $CancellablePromise<void> {
-    return $Call.ByID(768195563, on);
-}
-
-/**
- * SetPairingBaseURL sets the public origin encoded into QR links
- * (e.g. https://herdr-tunnel.0dl.me).
- */
-export function SetPairingBaseURL(base: string): $CancellablePromise<void> {
-    return $Call.ByID(224920250, base);
-}
-
-/**
- * ListDevices returns paired phones (including revoked).
- */
-export function ListDevices(): $CancellablePromise<web$0.Device[]> {
-    return $Call.ByID(3218586955);
-}
-
-/**
- * RevokeDevice marks one paired device revoked.
- */
-export function RevokeDevice(id: string): $CancellablePromise<void> {
-    return $Call.ByID(2930031968, id);
-}
-
-/**
- * RevokeAllDevices panic-revokes every paired phone session grant.
- */
-export function RevokeAllDevices(): $CancellablePromise<number> {
-    return $Call.ByID(3398594536);
+export function DefaultPairBase(): $CancellablePromise<string> {
+    return $Call.ByID(3168493468);
 }
 
 /**
@@ -84,10 +49,59 @@ export function FirstRunPending(): $CancellablePromise<boolean> {
 }
 
 /**
+ * LaunchAtLogin reports whether the app opens at login.
+ */
+export function LaunchAtLogin(): $CancellablePromise<boolean> {
+    return $Call.ByID(4163321067);
+}
+
+/**
+ * ListDevices returns paired phones (including revoked).
+ */
+export function ListDevices(): $CancellablePromise<web$0.Device[] | null> {
+    return $Call.ByID(3218586955);
+}
+
+/**
  * MarkFirstRunDone suppresses the first-run pairing splash on later launches.
  */
 export function MarkFirstRunDone(): $CancellablePromise<void> {
     return $Call.ByID(1665771882);
+}
+
+/**
+ * MintPairing returns a short-lived QR ticket for phone login.
+ */
+export function MintPairing(): $CancellablePromise<web$0.PairingTicket> {
+    return $Call.ByID(62924868);
+}
+
+/**
+ * OptionalPasswordEnabled reports whether a user-set phone password exists.
+ */
+export function OptionalPasswordEnabled(): $CancellablePromise<boolean> {
+    return $Call.ByID(3872930110);
+}
+
+/**
+ * RevokeAllDevices panic-revokes every paired phone session grant.
+ */
+export function RevokeAllDevices(): $CancellablePromise<number> {
+    return $Call.ByID(3398594536);
+}
+
+/**
+ * RevokeDevice marks one paired device revoked.
+ */
+export function RevokeDevice(id: string): $CancellablePromise<void> {
+    return $Call.ByID(2930031968, id);
+}
+
+/**
+ * SetLaunchAtLogin enables or disables open-at-login.
+ */
+export function SetLaunchAtLogin(on: boolean): $CancellablePromise<void> {
+    return $Call.ByID(768195563, on);
 }
 
 /**
@@ -98,8 +112,9 @@ export function SetOptionalPassword(user: string, pass: string): $CancellablePro
 }
 
 /**
- * OptionalPasswordEnabled reports whether a user-set phone password exists.
+ * SetPairingBaseURL sets the public origin encoded into QR links
+ * (e.g. https://herdr-tunnel.0dl.me).
  */
-export function OptionalPasswordEnabled(): $CancellablePromise<boolean> {
-    return $Call.ByID(3872930110);
+export function SetPairingBaseURL(base: string): $CancellablePromise<void> {
+    return $Call.ByID(224920250, base);
 }

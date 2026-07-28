@@ -2218,3 +2218,41 @@ code.mono {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* pairing origin chips */
+.pair-origins {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 var(--space-sm);
+}
+.pair-origins__chip {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+  align-items: baseline;
+  gap: 8px 12px;
+  width: 100%;
+  text-align: start;
+  min-height: var(--tap);
+  padding: 8px 12px;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-control);
+  background: var(--color-paper-2);
+  color: inherit;
+  cursor: pointer;
+}
+.pair-origins__chip.is-on {
+  border-color: var(--color-accent);
+  background: var(--color-accent-wash);
+}
+.pair-origins__label {
+  font-weight: 600;
+  font-size: var(--text-sm);
+}
+.pair-origins__url {
+  font-size: var(--text-2xs);
+  color: var(--color-ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}

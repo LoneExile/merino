@@ -122,7 +122,7 @@ func main() {
 			devices = d
 		}
 	}
-	desk = desktop.NewSettings(nil, "dev.apinant.herdr-tunnel", version, "LoneExile/herdr-tunnel", pairing, devices, filepath.Dir(app.DefaultAuditPath()))
+	desk = desktop.NewSettings(nil, "dev.apinant.herdr-tunnel", version, "LoneExile/herdr-tunnel", pairing, devices, filepath.Dir(app.DefaultAuditPath()), webAddr)
 
 	wailsApp = application.New(application.Options{
 		Name:        "Herdr Tunnel",
@@ -395,7 +395,12 @@ func startWeb(src web.Source, addr string, behindProxy, allowWrites, allowSessio
 			"note", "repointing the session changes which agents every signed-in browser sees")
 	}
 
-	pairing := web.NewPairing(os.Getenv("HERDR_TUNNEL_PUBLIC_URL"))
+	publicURL := os.Getenv("HERDR_TUNNEL_PUBLIC_URL")
+	if publicURL == "" {
+		// Zero-config: QR targets this Mac on the LAN, not a missing tunnel host.
+		publicURL = web.PreferLANBase(addr)
+	}
+	pairing := web.NewPairing(publicURL)
 	provider := web.NewPasswordProvider(user, pass, ipResolver(behindProxy), behindProxy)
 	provider.SetPairing(pairing)
 

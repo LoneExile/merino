@@ -346,6 +346,15 @@ func securityHeaders(next http.Handler) http.Handler {
 }
 
 func (s *Server) handleSession(w http.ResponseWriter, _ *http.Request, id Identity) {
+	origins := LocalAccessOrigins(s.cfg.Addr)
+	if s.cfg.PublicBaseURL != "" {
+		origins = append(origins, AccessOrigin{
+			Kind:  "public",
+			Label: "Public tunnel",
+			URL:   trimRightSlash(s.cfg.PublicBaseURL),
+			Hint:  "Cloudflare / public HTTPS — off-home access",
+		})
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"user":     id.Name,
 		"provider": id.Provider,
@@ -360,6 +369,8 @@ func (s *Server) handleSession(w http.ResponseWriter, _ *http.Request, id Identi
 		"canManageDevices": !IsDeviceSubject(id.Subject) && s.cfg.Devices != nil,
 		"firstRunPending":  FirstRunPending(s.stateDir()),
 		"oidcEnabled":      OIDCFromEnv().Enabled() && s.cfg.PublicBaseURL != "",
+		"accessOrigins":    origins,
+		"defaultPairBase":  PreferLANBase(s.cfg.Addr),
 	})
 }
 

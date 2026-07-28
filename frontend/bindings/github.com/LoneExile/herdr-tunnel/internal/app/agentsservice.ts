@@ -9,28 +9,39 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
 /**
+ * AttachImage stages one image for a known pane and returns the host path.
+ * The caller is expected to send that path into the agent (SendText / prompt).
+ */
+export function AttachImage(paneID: string, declaredMIME: string, data: string | null): $CancellablePromise<string> {
+    return $Call.ByID(1154461307, paneID, declaredMIME, data);
+}
+
+/**
+ * AttachImageB64 is the Wails-friendly form: base64-encoded image bytes.
+ */
+export function AttachImageB64(paneID: string, mime: string, b64: string): $CancellablePromise<string> {
+    return $Call.ByID(2892862713, paneID, mime, b64);
+}
+
+/**
  * Connection reports herdr connectivity.
  */
 export function Connection(): $CancellablePromise<$models.Conn> {
-    return $Call.ByID(2291788203).then(($result: any) => {
-        return $$createType0($result);
-    });
+    return $Call.ByID(2291788203);
 }
 
 /**
  * Counts returns a summary of the herd.
  */
 export function Counts(): $CancellablePromise<$models.Counts> {
-    return $Call.ByID(3973762459).then(($result: any) => {
-        return $$createType1($result);
-    });
+    return $Call.ByID(3973762459);
 }
 
 /**
@@ -48,27 +59,11 @@ export function Interrupt(paneID: string): $CancellablePromise<void> {
 }
 
 /**
- * AttachImageB64 stages a base64 image on the host and returns its path.
- * Bound by name until bindings are regenerated with a stable ByID.
- */
-export function AttachImageB64(paneID: string, mime: string, b64: string): $CancellablePromise<string> {
-    return $Call.ByName(
-        "github.com/LoneExile/herdr-tunnel/internal/app.AgentsService.AttachImageB64",
-        paneID,
-        mime,
-        b64,
-    );
-}
-
-/**
  * List returns the current agents, most urgent first.
  */
-export function List(): $CancellablePromise<$models.Agent[]> {
-    return $Call.ByID(2878599779).then(($result: any) => {
-        return $$createType3($result);
-    });
+export function List(): $CancellablePromise<$models.Agent[] | null> {
+    return $Call.ByID(2878599779);
 }
-
 
 /**
  * Read returns recent plain-text output for a pane.
@@ -125,7 +120,7 @@ export function Respond(paneID: string, text: string): $CancellablePromise<void>
 /**
  * SendKeys presses allowlisted keys in a pane.
  */
-export function SendKeys(paneID: string, keys: string[]): $CancellablePromise<void> {
+export function SendKeys(paneID: string, keys: string[] | null): $CancellablePromise<void> {
     return $Call.ByID(2624467717, paneID, keys);
 }
 
@@ -148,21 +143,19 @@ export function SendText(paneID: string, text: string): $CancellablePromise<void
  * Sessions enumerates every herdr session this machine knows about,
  * best-effort probed for reachability and pane/agent counts.
  */
-export function Sessions(): $CancellablePromise<$models.SessionInfo[]> {
-    return $Call.ByID(482238306).then(($result: any) => {
-        return $$createType5($result);
-    });
+export function Sessions(): $CancellablePromise<$models.SessionInfo[] | null> {
+    return $Call.ByID(482238306);
 }
 
 /**
  * SlashCommands returns typeahead hits for the composer when the user types
- * "/…" in a pane. paneID selects project skills from the store CWD only.
- * agent/query label-match; query may include the leading slash.
+ * "/…" in a pane. paneID is the active pane: project skills are loaded from
+ * that pane's known CWD only — never from a client-supplied path.
+ * agent/query may still be passed for label matching; empty agent falls back
+ * to the store projection for the pane.
  */
-export function SlashCommands(paneID: string, agent: string, query: string): $CancellablePromise<$models.SlashCommand[]> {
-    return $Call.ByID(2459391730, paneID, agent, query).then(($result: any) => {
-        return $$createType7($result);
-    });
+export function SlashCommands(paneID: string, agent: string, query: string): $CancellablePromise<$models.SlashCommand[] | null> {
+    return $Call.ByID(2459391730, paneID, agent, query);
 }
 
 /**
@@ -197,13 +190,3 @@ export function StreamOutputANSI(paneID: string, lines: number, onText: any): $C
 export function SwitchSession(id: string): $CancellablePromise<void> {
     return $Call.ByID(3209187573, id);
 }
-
-// Private type creation functions
-const $$createType0 = $models.Conn.createFrom;
-const $$createType1 = $models.Counts.createFrom;
-const $$createType2 = $models.Agent.createFrom;
-const $$createType3 = $Create.Array($$createType2);
-const $$createType4 = $models.SessionInfo.createFrom;
-const $$createType5 = $Create.Array($$createType4);
-const $$createType6 = $models.SlashCommand.createFrom;
-const $$createType7 = $Create.Array($$createType6);
