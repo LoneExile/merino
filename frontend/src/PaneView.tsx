@@ -5,6 +5,7 @@ import { usePaneStream } from "./usePaneStream";
 import { StatusDot } from "./StatusDot";
 import { parseAnsi } from "./ansi";
 import { splitPasteImages } from "./pasteImages";
+import { rememberImage } from "./imageCache";
 import type { useTermFontPref } from "./termFontPref";
 import { findMatches, stripAnsi } from "./termSearch";
 
@@ -94,6 +95,36 @@ function ImageLightbox({
 }
 
 
+/** Inline paste/agent image — hide entirely if load fails (no empty box). */
+function TermImg({
+  src,
+  path,
+  onOpen,
+}: {
+  src: string;
+  path: string;
+  onOpen: (src: string, alt: string) => void;
+}) {
+  const [ok, setOk] = useState(true);
+  if (!ok) return null;
+  return (
+    <button
+      type="button"
+      className="term__img-wrap"
+      onClick={() => onOpen(src, path)}
+    >
+      <img
+        className="term__img"
+        src={src}
+        alt=""
+        title="Tap to enlarge"
+        loading="lazy"
+        onError={() => setOk(false)}
+      />
+    </button>
+  );
+}
+
 /** Render pane text with optional search highlights + inline paste images. */
 function renderTermBody(
   text: string,
@@ -108,23 +139,15 @@ function renderTermBody(
 
   pieces.forEach((piece, pi) => {
     if (piece.kind === "img") {
-      plainCursor += piece.plainLen > 0 ? piece.plainLen : stripAnsi(piece.path).length;
-      const src = piece.src;
+      // plainLen is authoritative (0 = insert-before-Read, no text consumed).
+      plainCursor += piece.plainLen;
       nodes.push(
-        <button
+        <TermImg
           key={`img-${pi}`}
-          type="button"
-          className="term__img-wrap"
-          onClick={() => onImg(src, piece.path)}
-        >
-          <img
-            className="term__img"
-            src={src}
-            alt=""
-            title="Tap to enlarge"
-            loading="lazy"
-          />
-        </button>,
+          src={piece.src}
+          path={piece.path}
+          onOpen={onImg}
+        />,
       );
       return;
     }
@@ -791,6 +814,21 @@ function Composer({ client, agent, readOnly = false, onSent }: ComposerProps) {
         }
         const { path, mime } = await client.attachImage(agent.paneId, upload);
         const name = nameGuess.split("/").pop() || path.split("/").pop() || "image";
+        // Durable cache entry (data URL). Chip preview blob is revoked on send —
+        // caching that blob URL would leave a dead src and an empty gap.
+        try {
+          const buf = new Uint8Array(await upload.arrayBuffer());
+          let bin = "";
+          const chunk = 0x8000;
+          for (let i = 0; i < buf.length; i += chunk) {
+            bin += String.fromCharCode(...buf.subarray(i, i + chunk));
+          }
+          const dataUrl = `data:${mime || upload.type || "image/jpeg"};base64,${btoa(bin)}`;
+          rememberImage(name, dataUrl);
+          rememberImage(path, dataUrl);
+        } catch {
+          /* cache optional — /api/paste still works */
+        }
         setPending((prev) => {
           if (prev.length >= MAX_ATTACH) return prev;
           return [

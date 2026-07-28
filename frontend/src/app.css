@@ -912,13 +912,16 @@ html.dark .term__hit--active {
 .term__img {
   display: block;
   max-width: min(100%, 36rem);
-  max-height: 50vh;
+  max-height: min(40vh, 24rem);
   width: auto;
   height: auto;
   object-fit: contain;
   border: 1px solid var(--color-rule);
   border-radius: var(--radius-control);
-  background: var(--color-paper-2);
+  background: transparent; /* no gray empty plate while loading/failing */
+}
+.term__img-wrap:has(img[data-failed]) {
+  display: none;
 }
 
 .term {

@@ -1,94 +1,111 @@
 import assert from "node:assert/strict";
+import { clearImageCache, rememberImage } from "../imageCache.ts";
 import {
+  collapseKittyBlankLines,
   imageSrcForPath,
+  isReadImageLine,
   pasteImageKey,
-  readPrefixLength,
   splitPasteImages,
 } from "../pasteImages.ts";
 import { stripAnsi } from "../termSearch.ts";
 
 const abs =
-  "/Users/lex/Library/Caches/merino/paste/paste-1785215834288577000.jpg";
-const home = "~/Library/Caches/merino/paste/paste-1785215834288577000.jpg";
-const gen = "~/generated-images/donut.jpg";
+  "/Users/lex/Library/Caches/merino/paste/paste-1785218725441449000.jpg";
+const home = "~/Library/Caches/merino/paste/paste-1785218725441449000.jpg";
+const gen =
+  "~/generated-images/20260728_131646_A_delicious_glazed_donut_with_colorful_s.jpg";
 
-function pieces(text: string) {
-  return splitPasteImages(text);
+function pieces(t: string) {
+  return splitPasteImages(t);
 }
-function imgs(text: string) {
-  return pieces(text).filter((p) => p.kind === "img");
+function imgs(t: string) {
+  return pieces(t).filter((p) => p.kind === "img");
 }
-function allText(text: string): string {
-  return pieces(text)
-    .filter((p): p is { kind: "text"; text: string } => p.kind === "text")
-    .map((p) => p.text)
-    .join("");
-}
-function plainVisible(text: string): string {
-  return stripAnsi(allText(text));
+function plain(t: string) {
+  return stripAnsi(
+    pieces(t)
+      .filter((p): p is { kind: "text"; text: string } => p.kind === "text")
+      .map((p) => p.text)
+      .join(""),
+  );
 }
 
-// Bare path → image, no path text.
+// blanks
+assert.ok(
+  collapseKittyBlankLines("a\n" + (" ".repeat(80) + "\n").repeat(40) + "b\n").split("\n")
+    .length < 8,
+);
+
+// Bare user path stays text — image only after Read (like terminal)
 {
   const t = `${abs}\nWhat is this?\n`;
+  assert.equal(imgs(t).length, 0);
+  assert.ok(plain(t).includes("paste-1785218725441449000"));
+  assert.ok(plain(t).includes("What is this?"));
+}
+
+// Shell keeps path, no image
+{
+  const t = `$ file "${abs}" && md5 "${abs}"\n`;
+  assert.equal(imgs(t).length, 0);
+  assert.ok(plain(t).includes("paste-1785218725441449000"));
+}
+
+// Read → image ABOVE Read line; Read text kept
+{
+  const t = `Looking now.\n \uf111 Read ${home}\nDonuts.\n`;
   assert.equal(imgs(t).length, 1);
-  assert.ok(!plainVisible(t).includes("paste-1785215834288577000"));
+  const order = pieces(t).map((p) => p.kind);
+  // text … img … text(with Read)
+  assert.ok(order.includes("img"));
+  assert.ok(/\bRead\b/.test(plain(t)), "Read line stays like terminal");
+  assert.ok(plain(t).includes("paste-1785218725441449000") || plain(t).includes("~/Library"));
+  assert.ok(plain(t).includes("Donuts."));
 }
 
-// Plain Read line.
+// ANSI + icon Read
 {
-  const t = `Read ${home}\n`;
+  const t = ` \uf111 \x1b[35mRead\x1b[0m ${home}\n`;
   assert.equal(imgs(t).length, 1);
-  const v = plainVisible(t);
-  assert.ok(!v.includes("Read"), JSON.stringify(pieces(t)));
-  assert.ok(!v.includes("paste-1785215834288577000"), v);
+  assert.ok(/\bRead\b/.test(plain(t)));
 }
 
-// ANSI-colored Read (OMP) — the real bug.
+// Saved-to alone does NOT inject (wait for Read, like Kitty)
 {
-  const t = `\x1b[35mRead\x1b[0m ${home}\n`;
-  assert.equal(imgs(t).length, 1, JSON.stringify(pieces(t)));
-  const v = plainVisible(t);
-  assert.ok(!v.includes("Read"), `still has Read: ${JSON.stringify(pieces(t))}`);
-  assert.ok(!v.includes("paste-1785215834288577000"), v);
-  assert.ok(imgs(t)[0]!.plainLen > home.length, "plainLen includes Read chrome");
+  const t = `Image saved to: ${gen}\nHere's your donut:\n`;
+  assert.equal(imgs(t).length, 0);
 }
 
-// Bullet + ANSI Read.
+// Full flow: bare path + blanks + Read x2 → 1 image, path/Read kept
 {
-  const t = `• \x1b[38;5;13mRead\x1b[0m ${abs}\n`;
+  const blanks = (" ".repeat(200) + "\n").repeat(44);
+  const t =
+    `${abs}\nWhat is this?\nLooking now.\n` +
+    blanks +
+    ` \uf111 Read ${home}\nAnswer\n` +
+    blanks +
+    ` \uf111 Read ${home}\nMore\n`;
   assert.equal(imgs(t).length, 1);
-  assert.ok(!plainVisible(t).includes("Read"));
-}
-
-// Path + later ANSI Read same file → one image, second gone.
-{
-  const t = `${abs}\nWhat is this?\n\n\x1b[35mRead\x1b[0m ${home}\nThe user asked\n`;
-  assert.equal(imgs(t).length, 1, JSON.stringify(pieces(t)));
-  const v = plainVisible(t);
-  assert.ok(!v.includes("paste-1785215834288577000"), v);
-  assert.ok(!/\bRead\b/.test(v), v);
+  const v = plain(t);
   assert.ok(v.includes("What is this?"));
-  assert.ok(v.includes("The user asked"));
+  assert.ok(/\bRead\b/.test(v));
+  assert.ok(v.includes("Answer"));
+  assert.ok(!/\n{10,}/.test(v));
 }
 
-// Agent-generated home image.
-{
-  const t = `\x1b[35mRead\x1b[0m ${gen}\n`;
-  assert.equal(imgs(t).length, 1);
-  assert.ok(imgs(t)[0]!.src.includes("/api/local-image?path="));
-  assert.ok(!plainVisible(t).includes("donut.jpg"));
-}
+// isReadImageLine
+assert.equal(isReadImageLine(` \uf111 Read ${home}`, 8, 8 + home.length), true);
+assert.equal(isReadImageLine(abs, 0, abs.length), false);
 
-assert.equal(imgs(`${abs}\n${gen}\n`).length, 2);
-assert.ok(imgs(`${abs}\n`)[0]!.src.startsWith("/api/paste/"));
+// cache
+clearImageCache();
+rememberImage("paste-1.jpg", "data:image/jpeg;base64,xx");
+assert.equal(
+  imageSrcForPath("/x/merino/paste/paste-1.jpg", "paste-1.jpg"),
+  "data:image/jpeg;base64,xx",
+);
+clearImageCache();
+
 assert.equal(pasteImageKey(abs), pasteImageKey(home));
-assert.ok(imageSrcForPath(gen, "donut.jpg").includes("local-image"));
-
-{
-  const s = `Read ${abs}`;
-  const idx = s.indexOf("/");
-  assert.equal(readPrefixLength(s, idx, 0), "Read ".length);
-}
 
 console.log("pasteImages.check.ts: ok");

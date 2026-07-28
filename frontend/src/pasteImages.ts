@@ -1,16 +1,23 @@
 /**
- * Detect image file paths in pane text and turn them into inline <img> slots.
- * Kitty graphics never reach the web view over pane.read — only path strings.
+ * Approximate Kitty inline images in Merino's pane view.
  *
- * Matching runs on ANSI-stripped text (OMP colors "Read" with CSI). Spans map
- * back to raw indices so we can splice the original buffer correctly.
+ * pane.read is plain/ANSI text only — Kitty graphics never arrive. Live dumps
+ * show the real shape of a herdr terminal:
  *
- * Rules:
- *   - First basename → one <img>; swallow same-line Read chrome (plain)
- *   - Later same basename → drop path + Read chrome (no text residue)
+ *   user path line stays as text
+ *   agent runs Read → Kitty paints the image above the Read status line
+ *   ~40 full-width space-padded blank rows fill the old image cell
+ *   shell `$ file "…"` paths stay as text
+ *
+ * So we:
+ *   1) collapse space-padded blank runs (the gap)
+ *   2) only inject <img> at OMP Read chrome of an image path
+ *   3) keep the Read line + every other path string as text
+ *   4) one img per basename (second Read does not re-insert)
  */
 
 import { stripAnsi } from "./termSearch.ts";
+import { lookupImage } from "./imageCache.ts";
 
 export type TermPiece =
   | { kind: "text"; text: string }
@@ -19,22 +26,14 @@ export type TermPiece =
       name: string;
       path: string;
       src: string;
-      /** Visible plain length consumed (Read chrome + path) for search cursors. */
       plainLen: number;
     };
 
-const MERINO_PASTE =
-  /((?:~|\/)[^\s"'`]*\/(?:merino|herdr-tunnel)\/paste\/(paste-\d+\.(?:png|jpe?g|gif|webp)))/gi;
-
-const HOME_IMAGE =
+const IMAGE_PATH =
   /((?:~|\/)[^\s"'`()\[\]{}<>|,;]+\.(?:png|jpe?g|gif|webp))/gi;
 
-/** Same-line tool chrome before a path on stripped text. */
-const READ_LINE = /^(?:[ \t]*(?:[•●·▪][ \t]*)?)?(?:Read|read)[ \t]+$/;
-
 export function pasteImageKey(pathOrName: string): string {
-  const base = pathOrName.split(/[/\\]/).pop() || pathOrName;
-  return base.toLowerCase();
+  return (pathOrName.split(/[/\\]/).pop() || pathOrName).toLowerCase();
 }
 
 function isMerinoPastePath(p: string): boolean {
@@ -42,29 +41,28 @@ function isMerinoPastePath(p: string): boolean {
 }
 
 export function imageSrcForPath(path: string, name: string): string {
+  const cached = lookupImage(name) || lookupImage(path);
+  if (cached) return cached;
   if (isMerinoPastePath(path) || /^paste-\d+\./i.test(name)) {
     return `/api/paste/${encodeURIComponent(name)}`;
   }
   return `/api/local-image?path=${encodeURIComponent(path)}`;
 }
 
-/**
- * Build plain text + plainIndex → rawIndex map.
- * plainToRaw[i] = raw offset of plain character i; plainToRaw[plain.length] = raw.length.
- */
+/** Kitty placeholder rows: full-width spaces then newline, repeated. */
+export function collapseKittyBlankLines(raw: string): string {
+  let s = raw.replace(/[ \t\u00A0]+$/gm, "");
+  s = s.replace(/(?:\r?\n){3,}/g, "\n\n");
+  return s;
+}
+
 export function buildPlainMap(raw: string): { plain: string; plainToRaw: number[] } {
-  // Walk with the same strip rules as stripAnsi, recording kept indices.
   const plainToRaw: number[] = [];
   let plain = "";
   let i = 0;
   const n = raw.length;
-  const push = (rawIdx: number, ch: string) => {
-    plainToRaw.push(rawIdx);
-    plain += ch;
-  };
   while (i < n) {
     if (raw[i] === "\u001b") {
-      // OSC: ESC ] ... BEL or ST
       if (raw[i + 1] === "]") {
         let j = i + 2;
         while (j < n) {
@@ -81,7 +79,6 @@ export function buildPlainMap(raw: string): { plain: string; plainToRaw: number[
         i = j;
         continue;
       }
-      // DCS: ESC P ... ST
       if (raw[i + 1] === "P") {
         let j = i + 2;
         while (j < n) {
@@ -94,12 +91,10 @@ export function buildPlainMap(raw: string): { plain: string; plainToRaw: number[
         i = j;
         continue;
       }
-      // CSI: ESC [ ... final
       if (raw[i + 1] === "[") {
         let j = i + 2;
         while (j < n) {
           const c = raw.charCodeAt(j);
-          // Final byte of CSI: @ through ~
           if (c >= 0x40 && c <= 0x7e) {
             j++;
             break;
@@ -109,78 +104,51 @@ export function buildPlainMap(raw: string): { plain: string; plainToRaw: number[
         i = j;
         continue;
       }
-      // Other ESC X — drop ESC + one char
-      i += 2;
+      i += raw[i + 1] != null ? 2 : 1;
       continue;
     }
-    push(i, raw[i]!);
+    plainToRaw.push(i);
+    plain += raw[i]!;
     i++;
   }
-  plainToRaw.push(n); // sentinel
-  // Sanity: stripAnsi should match our plain builder.
-  if (plain !== stripAnsi(raw) && plain.length !== stripAnsi(raw).length) {
-    // Fall back to strip-only map (slower linear scan) if rules diverge.
-    return buildPlainMapFallback(raw);
+  plainToRaw.push(n);
+  const stripped = stripAnsi(raw);
+  if (plain !== stripped) {
+    // Fallback: map by progressive stripAnsi (slower, correct).
+    const map: number[] = [];
+    let prev = 0;
+    for (let r = 0; r < raw.length; r++) {
+      const len = stripAnsi(raw.slice(0, r + 1)).length;
+      if (len > prev) {
+        map.push(r);
+        prev = len;
+      }
+    }
+    map.push(raw.length);
+    if (map.length - 1 === stripped.length) {
+      return { plain: stripped, plainToRaw: map };
+    }
   }
   return { plain, plainToRaw };
 }
 
-function buildPlainMapFallback(raw: string): { plain: string; plainToRaw: number[] } {
-  const plain = stripAnsi(raw);
-  // Approximate: walk raw with strip, same as primary.
-  const plainToRaw: number[] = [];
-  let pi = 0;
-  let i = 0;
-  const stripped = stripAnsi;
-  void stripped;
-  // Character-by-character: if stripAnsi(raw.slice(0,i+1)).length increased, keep.
-  let prevLen = 0;
-  for (i = 0; i < raw.length; i++) {
-    const len = stripAnsi(raw.slice(0, i + 1)).length;
-    if (len > prevLen) {
-      plainToRaw.push(i);
-      prevLen = len;
-      pi++;
-    }
-  }
-  plainToRaw.push(raw.length);
-  if (pi !== plain.length) {
-    // Last resort: identity (wrong for CSI but better than crash).
-    const id: number[] = [];
-    for (let k = 0; k < plain.length; k++) id.push(k);
-    id.push(raw.length);
-    return { plain, plainToRaw: id };
-  }
-  return { plain, plainToRaw };
-}
+type PathHit = { plainStart: number; plainEnd: number; full: string; name: string };
 
-type PlainHit = {
-  plainStart: number;
-  plainEnd: number; // exclusive, path only
-  full: string;
-  name: string;
-};
-
-function collectPlainHits(plain: string): PlainHit[] {
-  const hits: PlainHit[] = [];
-  const push = (re: RegExp, nameFrom: (m: RegExpExecArray) => string) => {
-    re.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(plain)) !== null) {
-      const full = m[1]!;
-      if (re === HOME_IMAGE && isMerinoPastePath(full)) continue;
-      hits.push({
-        plainStart: m.index,
-        plainEnd: m.index + full.length,
-        full,
-        name: nameFrom(m),
-      });
-    }
-  };
-  push(MERINO_PASTE, (m) => m[2]!);
-  push(HOME_IMAGE, (m) => m[1]!.split(/[/\\]/).pop() || m[1]!);
+function collectPathHits(plain: string): PathHit[] {
+  const hits: PathHit[] = [];
+  IMAGE_PATH.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = IMAGE_PATH.exec(plain)) !== null) {
+    const full = m[1]!;
+    hits.push({
+      plainStart: m.index,
+      plainEnd: m.index + full.length,
+      full,
+      name: full.split(/[/\\]/).pop() || full,
+    });
+  }
   hits.sort((a, b) => a.plainStart - b.plainStart || b.full.length - a.full.length);
-  const out: PlainHit[] = [];
+  const out: PathHit[] = [];
   let end = 0;
   for (const h of hits) {
     if (h.plainStart < end) continue;
@@ -190,20 +158,41 @@ function collectPlainHits(plain: string): PlainHit[] {
   return out;
 }
 
+function lineBounds(plain: string, index: number): { start: number; end: number } {
+  const start = plain.lastIndexOf("\n", index - 1) + 1;
+  let end = plain.indexOf("\n", index);
+  if (end < 0) end = plain.length;
+  return { start, end };
+}
+
 /**
- * On stripped text: length of same-line Read chrome immediately before pathIndex,
- * not looking before `fromPlain`.
+ * True when this path is on an OMP Read status line — the moment Kitty paints.
+ * Prefix may include Nerd Font icons (U+E000–U+F8FF) and ANSI already stripped.
  */
+export function isReadImageLine(plain: string, pathStart: number, pathEnd: number): boolean {
+  const { start, end } = lineBounds(plain, pathStart);
+  const before = plain.slice(start, pathStart);
+  const after = plain.slice(pathEnd, end);
+  // Reject quoted / shell
+  if (/["'`]/.test(before) || /["'`]/.test(after)) return false;
+  if (/\$/.test(before)) return false;
+  // "… Read path" or "… read path" with optional private-use icons
+  return (
+    /^(?:[\s\uE000-\uF8FF•●·▪◦○◉◎]*)(?:Read|read)[\s\u00A0]+$/u.test(before) &&
+    /^[\s\uE000-\uF8FF]*$/.test(after)
+  );
+}
+
+/** @deprecated kept for checks that import the old name */
+export function isDisplayPathContext(plain: string, pathStart: number, pathEnd: number): boolean {
+  return isReadImageLine(plain, pathStart, pathEnd);
+}
+
 export function readPrefixLength(plain: string, pathIndex: number, fromPlain: number): number {
-  if (pathIndex <= fromPlain) return 0;
-  const lineStart = plain.lastIndexOf("\n", pathIndex - 1) + 1;
-  const start = Math.max(fromPlain, lineStart);
-  const before = plain.slice(start, pathIndex);
-  if (READ_LINE.test(before)) return before.length;
-  // Ends with Read chrome after whitespace-only head on this line segment.
-  const m = /^(.*?)((?:[ \t]*(?:[•●·▪][ \t]*)?)(?:Read|read)[ \t]+)$/s.exec(before);
-  if (m?.[2] && /^[\s•●·▪]*$/.test(m[1] ?? "")) return before.length;
-  if (m?.[2]) return m[2].length;
+  // We no longer swallow the Read line — image is inserted before it.
+  void plain;
+  void pathIndex;
+  void fromPlain;
   return 0;
 }
 
@@ -211,50 +200,46 @@ function pushText(out: TermPiece[], text: string) {
   if (text) out.push({ kind: "text", text });
 }
 
-export function splitPasteImages(raw: string): TermPiece[] {
-  if (!raw) return [];
+/**
+ * Split pane text into text + img pieces.
+ * Image is inserted immediately BEFORE each first Read-of-image line
+ * (Kitty paints above the status line). Read text itself is kept.
+ */
+export function splitPasteImages(rawInput: string): TermPiece[] {
+  if (!rawInput) return [];
+  const raw = collapseKittyBlankLines(rawInput);
   const { plain, plainToRaw } = buildPlainMap(raw);
-  const hits = collectPlainHits(plain);
+  const hits = collectPathHits(plain);
   if (hits.length === 0) return [{ kind: "text", text: raw }];
 
   const out: TermPiece[] = [];
   let lastRaw = 0;
-  let lastPlain = 0;
   const seen = new Set<string>();
 
   for (const h of hits) {
-    const prefixLen = readPrefixLength(plain, h.plainStart, lastPlain);
-    const plainSpanStart = h.plainStart - prefixLen;
-    const plainSpanEnd = h.plainEnd; // exclusive
-    const rawSpanStart = plainToRaw[plainSpanStart] ?? h.plainStart;
-    const rawSpanEnd = plainToRaw[plainSpanEnd] ?? raw.length;
-
-    if (rawSpanStart > lastRaw) {
-      pushText(out, raw.slice(lastRaw, rawSpanStart));
-    }
-
+    if (!isReadImageLine(plain, h.plainStart, h.plainEnd)) continue;
     const key = pasteImageKey(h.name);
-    const plainLen = plainSpanEnd - plainSpanStart;
-    if (!seen.has(key)) {
-      seen.add(key);
-      out.push({
-        kind: "img",
-        name: h.name,
-        path: h.full,
-        src: imageSrcForPath(h.full, h.name),
-        plainLen,
-      });
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    // Insert image at the start of the Read line (Kitty places pixels above status).
+    const { start: lineStart } = lineBounds(plain, h.plainStart);
+    const rawAtLine = plainToRaw[lineStart] ?? 0;
+
+    if (rawAtLine > lastRaw) {
+      pushText(out, raw.slice(lastRaw, rawAtLine));
     }
-    // duplicate → emit nothing (drop Read+path)
-
-    lastRaw = rawSpanEnd;
-    lastPlain = plainSpanEnd;
+    out.push({
+      kind: "img",
+      name: h.name,
+      path: h.full,
+      src: imageSrcForPath(h.full, h.name),
+      plainLen: 0,
+    });
+    lastRaw = rawAtLine; // Read line text still emitted from lastRaw onward
   }
 
-  if (lastRaw < raw.length) {
-    pushText(out, raw.slice(lastRaw));
-  }
-
+  if (lastRaw < raw.length) pushText(out, raw.slice(lastRaw));
   return normalizePieces(out);
 }
 
@@ -264,21 +249,10 @@ function normalizePieces(pieces: TermPiece[]): TermPiece[] {
     if (p.kind === "text") {
       let t = p.text.replace(/\n{3,}/g, "\n\n");
       if (!t) continue;
-      const prev = out[out.length - 1];
-      if (prev?.kind === "img") {
-        t = t.replace(/^\n+/, "\n");
-      }
-      if (!t) continue;
-      // Drop text that is only ANSI + whitespace (leftover color codes around removed Read).
+      // Drop pure-whitespace chunks (Kitty residue after collapse).
       if (!stripAnsi(t).replace(/\s/g, "")) continue;
       out.push({ kind: "text", text: t });
     } else {
-      const prev = out[out.length - 1];
-      if (prev?.kind === "text") {
-        // Trim trailing spaces before image; keep newlines.
-        prev.text = prev.text.replace(/[ \t]+$/u, "");
-        if (prev.text === "") out.pop();
-      }
       out.push(p);
     }
   }
