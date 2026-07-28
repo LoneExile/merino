@@ -28,6 +28,13 @@ export function AccessOrigins(): $CancellablePromise<web$0.AccessOrigin[] | null
 }
 
 /**
+ * AllowWritesEnabled reports whether phone/web may write to panes.
+ */
+export function AllowWritesEnabled(): $CancellablePromise<boolean> {
+    return $Call.ByID(634830236);
+}
+
+/**
  * CheckUpdate looks up the latest GitHub release (read-only; does not download).
  */
 export function CheckUpdate(): $CancellablePromise<$models.UpdateInfo> {
@@ -118,6 +125,14 @@ export function RevokeDevice(id: string): $CancellablePromise<void> {
  */
 export function SessionSwitchEnabled(): $CancellablePromise<boolean> {
     return $Call.ByID(2060384351);
+}
+
+/**
+ * SetAllowWritesEnabled turns phone pane writes on or off.
+ * Persists to disk and updates the live gate immediately.
+ */
+export function SetAllowWritesEnabled(on: boolean): $CancellablePromise<void> {
+    return $Call.ByID(657839220, on);
 }
 
 /**

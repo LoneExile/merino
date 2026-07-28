@@ -284,6 +284,7 @@ export default function App() {
           key={current.paneId}
           client={client}
           agent={current}
+          readOnly={session?.readOnly}
           wrap={wrap}
           termFont={termFont}
           onBack={() => setOpenPane(null)}

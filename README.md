@@ -125,14 +125,14 @@ Does **not** remove [herdr](https://herdr.dev).
 3. Scan the QR (or paste the code) on your phone.
 4. Optional: Settings → allow session switch / password sign-in.
 
-Phone dashboard defaults to read-only. Enable writes only if you want the phone to type into live terminals (all writes are audit-logged).
+Phone can answer asks when **Allow phone writes** is on in Mac Settings (menubar default: on). Toggle anytime; reload the phone PWA after changing. All writes are audit-logged.
 
 ## Configuration
 
 | Flag / env | Purpose |
 | --- | --- |
 | `--listen ADDR` | Web dashboard bind (e.g. `0.0.0.0:8730`) |
-| `--allow-writes` | Approve prompts, keys, interrupts (audit-logged) |
+| `--allow-writes` | Force phone writes on (else Mac Settings / menubar default on) |
 | `--allow-session-switch` | Change which herdr session the dashboard drives |
 | `--behind-proxy` | Secure cookies + trust proxy headers (TLS terminator) |
 | `MERINO_USER` / `MERINO_PASS` | HTTP operator credentials when listening |

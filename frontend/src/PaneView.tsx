@@ -17,6 +17,8 @@ const PIN_SLACK = 48;
 export interface PaneViewProps {
   client: Client;
   agent: Agent;
+  /** From /api/session — live write gate (Mac Settings). */
+  readOnly?: boolean;
   wrap: boolean;
   termFont: ReturnType<typeof useTermFontPref>;
   onBack: () => void;
@@ -184,7 +186,7 @@ function renderTermBody(
   return nodes;
 }
 
-export function PaneView({ client, agent, wrap, termFont, onBack, onRename }: PaneViewProps) {
+export function PaneView({ client, agent, readOnly = false, wrap, termFont, onBack, onRename }: PaneViewProps) {
   // pinned is declared below; the stream hook only needs it to release a
   // history hold when the user returns to the live tail — initialise true.
   const [pinned, setPinned] = useState(true);
@@ -598,7 +600,7 @@ export function PaneView({ client, agent, wrap, termFont, onBack, onRename }: Pa
         )}
       </div>
 
-      <Composer client={client} agent={agent} onSent={() => setPinned(true)} />
+      <Composer client={client} agent={agent} readOnly={readOnly} onSent={() => setPinned(true)} />
 
       {lightbox && (
         <ImageLightbox src={lightbox.src} alt={lightbox.alt} onClose={() => setLightbox(null)} />
@@ -610,6 +612,7 @@ export function PaneView({ client, agent, wrap, termFont, onBack, onRename }: Pa
 interface ComposerProps {
   client: Client;
   agent: Agent;
+  readOnly?: boolean;
   onSent: () => void;
 }
 
@@ -653,7 +656,7 @@ function slashTokenAt(
   return { start: i, end: j, query: text.slice(i + 1, j) };
 }
 
-function Composer({ client, agent, onSent }: ComposerProps) {
+function Composer({ client, agent, readOnly = false, onSent }: ComposerProps) {
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -670,9 +673,9 @@ function Composer({ client, agent, onSent }: ComposerProps) {
   const slashRange = useRef<{ start: number; end: number } | null>(null);
   const slashOpen = slashHits.length > 0;
 
-  const canWrite = Boolean(client.sendText);
-  const canKeys = Boolean(client.sendKeys);
-  const canApprove = Boolean(client.respond) && agent.status === "blocked";
+  const canWrite = Boolean(client.sendText) && !readOnly;
+  const canKeys = Boolean(client.sendKeys) && !readOnly;
+  const canApprove = Boolean(client.respond) && agent.status === "blocked" && !readOnly;
   const canAttach = Boolean(client.attachImage) && canWrite;
 
   // Grow with the content up to a cap, so a long reply is readable while the
@@ -886,7 +889,9 @@ function Composer({ client, agent, onSent }: ComposerProps) {
   if (!canWrite && !canApprove && !canKeys) {
     return (
       <footer className="composer composer--ro">
-        <span className="mono">read-only · writes are disabled on this server</span>
+        <span className="mono">
+          read-only · enable &quot;Allow phone writes&quot; in Mac Settings, then reload
+        </span>
       </footer>
     );
   }

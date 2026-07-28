@@ -29,6 +29,7 @@ func renameServer(t *testing.T, policy Policy, wr Writer, agents []app.Agent) (*
 		Assets:   fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("<head></head>")}},
 		Logger:   slog.New(slog.DiscardHandler),
 		Writer:   wr,
+		AllowWrites: true,
 		Audit:    audit,
 	})
 	if err != nil {

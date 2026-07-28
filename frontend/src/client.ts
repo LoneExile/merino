@@ -202,6 +202,8 @@ export interface Client {
   setPasswordLoginEnabled?(on: boolean): Promise<void>;
   sessionSwitchEnabled?(): Promise<boolean>;
   setSessionSwitchEnabled?(on: boolean): Promise<void>;
+  allowWritesEnabled?(): Promise<boolean>;
+  setAllowWritesEnabled?(on: boolean): Promise<void>;
 }
 
 export interface UpdateInfo {
@@ -300,7 +302,7 @@ async function httpClient(): Promise<Client> {
     kind: "web",
     readOnly: session.readOnly,
 
-    session: async () => session,
+    session: () => getJSON<Session>("/api/session"),
     list: () => getJSON<Agent[]>("/api/agents"),
 
     slashCommands: (paneId: string, agent: string, query: string) => {
@@ -434,8 +436,9 @@ async function httpClient(): Promise<Client> {
       }
     : {};
 
-  if (session.readOnly) return { ...base, ...pushMethods };
-
+  // Write methods always attached; server enforces the live gate and
+  // /api/session.readOnly drives the UI (refreshed on focus). Boot-time
+  // omission would freeze the phone composer until a full PWA reload.
   return {
     ...base,
     ...pushMethods,

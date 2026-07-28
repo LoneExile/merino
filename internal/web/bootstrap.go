@@ -212,3 +212,47 @@ func SetSessionSwitchEnabled(dir string, enabled bool) error {
 	}
 	return os.WriteFile(sessionSwitchPath(dir), raw, 0o600)
 }
+
+func allowWritesPath(dir string) string {
+	if dir == "" {
+		dir = StateDir()
+	}
+	return filepath.Join(dir, "allow-writes.json")
+}
+
+type allowWritesFile struct {
+	Enabled bool `json:"enabled"`
+}
+
+// AllowWritesExplicit is true when the operator has saved a preference.
+func AllowWritesExplicit(dir string) bool {
+	_, err := os.ReadFile(allowWritesPath(dir))
+	return err == nil
+}
+
+// AllowWritesEnabled reports whether phone/web may write to panes.
+// Missing file ⇒ false for explicit reads; main.go may default menubar on.
+func AllowWritesEnabled(dir string) bool {
+	raw, err := os.ReadFile(allowWritesPath(dir))
+	if err != nil {
+		return false
+	}
+	var f allowWritesFile
+	if json.Unmarshal(raw, &f) != nil {
+		return false
+	}
+	return f.Enabled
+}
+
+// SetAllowWritesEnabled persists the phone write toggle.
+func SetAllowWritesEnabled(dir string, enabled bool) error {
+	if err := os.MkdirAll(filepath.Dir(allowWritesPath(dir)), 0o700); err != nil {
+		return err
+	}
+	raw, err := json.MarshalIndent(allowWritesFile{Enabled: enabled}, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(allowWritesPath(dir), raw, 0o600)
+}
+

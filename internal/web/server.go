@@ -60,8 +60,10 @@ type Config struct {
 	Assets fs.FS
 	Logger *slog.Logger
 
-	// Writer enables the write endpoints. Nil means read-only, and read-only
-	// means the routes do not exist rather than being refused at runtime.
+	// Writer enables write route registration when non-nil. Live acceptance is
+	// gated by AllowWrites / SetAllowWrites (CLI or Mac Settings) so the operator
+	// can open the gate without restarting. Nil Writer still means this build
+	// cannot write at all.
 	Writer Writer
 	// Audit records every write. Required whenever Writer is set: an
 	// internet-reachable path into a live terminal without a durable record of
@@ -78,6 +80,9 @@ type Config struct {
 	// SessionSwitch starts enabled when true (CLI --allow-session-switch).
 	// Desktop Settings can flip it at runtime when Switcher != nil.
 	SessionSwitch bool
+	// AllowWrites starts the write gate open when true (CLI --allow-writes).
+	// Desktop Settings can flip it at runtime when Writer != nil.
+	AllowWrites bool
 	// PushDir is where the VAPID keypair and push-subscription store are
 	// persisted. Empty disables Web Push entirely: no VAPID keys are ever
 	// generated, the push routes do not exist, and /api/session reports
@@ -108,6 +113,9 @@ type Server struct {
 	switchMu sync.Mutex
 	// switchOn gates POST /api/sessions/switch when cfg.Switcher != nil.
 	switchOn bool
+	// writeOn gates pane write handlers when cfg.Writer != nil.
+	// Routes stay registered so Settings can open the gate without restart.
+	writeOn bool
 	// push is nil whenever Web Push was never configured (PushDir == "") or
 	// failed to initialise — see New. Every push-aware code path checks this
 	// rather than assuming a non-empty Config.PushDir implies success.
@@ -160,6 +168,7 @@ func New(src Source, cfg Config) (*Server, error) {
 		clients:  make(map[chan []byte]struct{}),
 		pairing:  cfg.Pairing,
 		switchOn: cfg.SessionSwitch && cfg.Switcher != nil,
+		writeOn:  cfg.AllowWrites && cfg.Writer != nil,
 	}
 	if s.pairing != nil && cfg.PublicBaseURL != "" {
 		s.pairing.SetBaseURL(cfg.PublicBaseURL)
@@ -212,6 +221,37 @@ func (s *Server) SetSessionSwitch(on bool) error {
 	s.switchMu.Unlock()
 	if s.log != nil {
 		s.log.Info("session switch gate", "enabled", on)
+	}
+	return nil
+}
+
+// WritesAllowed is true when a Writer is wired and the operator left the
+// write gate open (CLI --allow-writes or Mac Settings toggle).
+func (s *Server) WritesAllowed() bool {
+	if s == nil || s.cfg.Writer == nil {
+		return false
+	}
+	s.switchMu.Lock()
+	defer s.switchMu.Unlock()
+	return s.writeOn
+}
+
+// SetAllowWrites turns the phone/web write gate on or off.
+func (s *Server) SetAllowWrites(on bool) error {
+	if s == nil {
+		return errors.New("server unavailable")
+	}
+	if s.cfg.Writer == nil {
+		return errors.New("this build cannot accept pane writes")
+	}
+	if on && s.cfg.Audit == nil {
+		return errors.New("writes require an audit log")
+	}
+	s.switchMu.Lock()
+	s.writeOn = on
+	s.switchMu.Unlock()
+	if s.log != nil {
+		s.log.Info("write gate", "enabled", on)
 	}
 	return nil
 }
@@ -398,10 +438,9 @@ func (s *Server) handleSession(w http.ResponseWriter, _ *http.Request, id Identi
 		"user":     id.Name,
 		"provider": id.Provider,
 		"subject":  id.Subject,
-		// A UX hint so the browser can hide affordances it cannot use. The
-		// enforcement is that the routes are absent, not these flags.
-		"readOnly":         s.cfg.Writer == nil,
-		"canRename":        s.cfg.Writer != nil,
+		// Live write gate (Settings / CLI), not merely "Writer was constructed".
+		"readOnly":         !s.WritesAllowed(),
+		"canRename":        s.WritesAllowed(),
 		"canSwitchSession": s.SessionSwitchAllowed(),
 		"pushEnabled":      s.push != nil,
 		"devicesEnabled":   s.cfg.Devices != nil,

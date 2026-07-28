@@ -44,7 +44,7 @@ func init() {
 
 // version is injected at link time: -ldflags "-X main.version=v0.2.0".
 // Falls back for local `go build` / just app so CheckUpdate stays honest.
-var version = "0.1.3-dev"
+var version = "0.1.4-dev"
 
 func main() {
 	behindProxy := flag.Bool("behind-proxy", false,
@@ -119,18 +119,30 @@ func main() {
 	//   else session-switch.json from Mac Settings (default off when missing)
 	//   menubar GUI also treats missing file as on so phone switch works
 	//   zero-config (matches pre-toggle behaviour); toggle still forces off.
-	stateDirForSwitch := filepath.Dir(app.DefaultAuditPath())
+	stateDir := filepath.Dir(app.DefaultAuditPath())
 	switchOK := *allowSessionSwitch
 	if !*allowSessionSwitch {
-		if web.SessionSwitchExplicit(stateDirForSwitch) {
-			switchOK = web.SessionSwitchEnabled(stateDirForSwitch)
+		if web.SessionSwitchExplicit(stateDir) {
+			switchOK = web.SessionSwitchEnabled(stateDir)
 		} else if *listen == "" {
 			// Menubar double-click path, no explicit preference yet.
 			switchOK = true
 		}
 	}
+	// Write gate (phone composer): CLI forces on; else disk; menubar default ON
+	// when unset so answering blocked agents works zero-config (same idea as
+	// session-switch). Headless --listen without flag stays off until Settings
+	// or --allow-writes.
+	writesOK := *allowWrites
+	if !*allowWrites {
+		if web.AllowWritesExplicit(stateDir) {
+			writesOK = web.AllowWritesEnabled(stateDir)
+		} else if *listen == "" {
+			writesOK = true
+		}
+	}
 	var startErr error
-	srv, pair, passProv, devStore, startErr := startWeb(agents, webAddr, *behindProxy, *allowWrites, switchOK, assets, logger)
+	srv, pair, passProv, devStore, startErr := startWeb(agents, webAddr, *behindProxy, writesOK, switchOK, assets, logger)
 	if startErr != nil {
 		logger.Error("web dashboard failed to start", "err", startErr)
 		os.Exit(1)
@@ -148,6 +160,11 @@ func main() {
 		logger.Debug("session switch gate not applied", "err", err)
 	} else {
 		logger.Info("session switch gate", "enabled", switchOK)
+	}
+	if err := srv.SetAllowWrites(writesOK); err != nil {
+		logger.Debug("write gate not applied", "err", err)
+	} else {
+		logger.Info("write gate", "enabled", writesOK)
 	}
 
 	wailsApp = application.New(application.Options{
@@ -420,15 +437,24 @@ func startWeb(src web.Source, addr string, behindProxy, allowWrites, allowSessio
 	} else {
 		audit = a
 	}
-	if allowWrites {
-		w, castOK := src.(web.Writer)
-		if !castOK {
+	// Always wire Writer when the source supports it and audit is open, so
+	// Mac Settings can flip the live gate without restart. allowWrites only
+	// sets the initial gate (CLI / disk / menubar default).
+	if w, castOK := src.(web.Writer); castOK && audit != nil {
+		writer = w
+		if allowWrites {
+			logger.Warn("web dashboard can write to your agents",
+				"audit", app.DefaultAuditPath(),
+				"note", "approvals, keys and interrupts are accepted from any signed-in browser")
+		} else {
+			logger.Info("web dashboard writes available but off",
+				"note", "enable from Mac Settings or --allow-writes")
+		}
+	} else if allowWrites {
+		if _, castOK := src.(web.Writer); !castOK {
 			return nil, nil, nil, nil, errors.New("source does not support writes")
 		}
-		writer = w
-		logger.Warn("web dashboard can write to your agents",
-			"audit", app.DefaultAuditPath(),
-			"note", "approvals, keys and interrupts are accepted from any signed-in browser")
+		return nil, nil, nil, nil, errors.New("writes require an audit log")
 	}
 
 	// Session discovery is always offered: it is read-only, and knowing
@@ -497,6 +523,7 @@ func startWeb(src web.Source, addr string, behindProxy, allowWrites, allowSessio
 		Sessions:      sessions,
 		Switcher:      switcher,
 		SessionSwitch: allowSessionSwitch,
+		AllowWrites:    allowWrites,
 		Pairing:       pairing,
 		PublicBaseURL: app.Env("PUBLIC_URL"),
 		// Same directory the audit log above resolves to, so an operator who

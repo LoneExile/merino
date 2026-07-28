@@ -218,3 +218,24 @@ func (s *Settings) SetSessionSwitchEnabled(on bool) error {
 	}
 	return nil
 }
+
+// AllowWritesEnabled reports whether phone/web may write to panes.
+func (s *Settings) AllowWritesEnabled() bool {
+	if s != nil && s.webServer != nil {
+		return s.webServer.WritesAllowed()
+	}
+	return web.AllowWritesEnabled(s.StateDir)
+}
+
+// SetAllowWritesEnabled turns phone pane writes on or off.
+// Persists to disk and updates the live gate immediately.
+func (s *Settings) SetAllowWritesEnabled(on bool) error {
+	if err := web.SetAllowWritesEnabled(s.StateDir, on); err != nil {
+		return err
+	}
+	if s.webServer != nil {
+		return s.webServer.SetAllowWrites(on)
+	}
+	return nil
+}
+

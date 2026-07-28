@@ -129,6 +129,9 @@ export function SettingsSheet({
   const [passwordLoginOn, setPasswordLoginOn] = useState(true);
   const [sessionSwitchOn, setSessionSwitchOn] = useState(false);
   const [sessionSwitchBusy, setSessionSwitchBusy] = useState(false);
+  const [allowWritesOn, setAllowWritesOn] = useState(false);
+  const [allowWritesBusy, setAllowWritesBusy] = useState(false);
+  const [writesErr, setWritesErr] = useState<string | null>(null);
   const [pwLoginBusy, setPwLoginBusy] = useState(false);
   const [panicArmed, setPanicArmed] = useState(false);
   const [sessionErr, setSessionErr] = useState<string | null>(null);
@@ -170,6 +173,39 @@ export function SettingsSheet({
         if (alive) setLoginLaunchErr(e instanceof Error ? e.message : String(e));
       },
     );
+    return () => {
+      alive = false;
+    };
+  }, [client]);
+
+  // Load Mac Settings toggles from the live host (disk + gate).
+  useEffect(() => {
+    if (!client) return;
+    let alive = true;
+    if (client.sessionSwitchEnabled) {
+      void client.sessionSwitchEnabled().then(
+        (on) => {
+          if (alive) setSessionSwitchOn(on);
+        },
+        () => undefined,
+      );
+    }
+    if (client.allowWritesEnabled) {
+      void client.allowWritesEnabled().then(
+        (on) => {
+          if (alive) setAllowWritesOn(on);
+        },
+        () => undefined,
+      );
+    }
+    if (client.passwordLoginEnabled) {
+      void client.passwordLoginEnabled().then(
+        (on) => {
+          if (alive) setPasswordLoginOn(on);
+        },
+        () => undefined,
+      );
+    }
     return () => {
       alive = false;
     };
@@ -293,6 +329,52 @@ export function SettingsSheet({
           {sessionErr && (
             <p className="composer__err" role="alert">
               {sessionErr}
+            </p>
+          )}
+        </section>
+      )}
+
+{isDesktop && client?.setAllowWritesEnabled && (
+        <section className="settings-block" aria-labelledby="set-writes">
+          <header className="settings-block__head">
+            <h3 id="set-writes">Phone writes</h3>
+          </header>
+          <div className="settings-row settings-row--toggle">
+            <div className="settings-row__meta">
+              <span className="settings-row__label">Allow phone writes</span>
+              <span className="settings-row__hint">
+                Phones can answer asks, type, and interrupt agents (audit-logged)
+              </span>
+            </div>
+            <label className="switch">
+              <input
+                type="checkbox"
+                checked={allowWritesOn}
+                disabled={allowWritesBusy}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  setAllowWritesBusy(true);
+                  setWritesErr(null);
+                  void client
+                    .setAllowWritesEnabled?.(on)
+                    .then(() => setAllowWritesOn(on))
+                    .catch((err) =>
+                      setWritesErr(err instanceof Error ? err.message : String(err)),
+                    )
+                    .finally(() => setAllowWritesBusy(false));
+                }}
+              />
+              <span className="switch__ui" />
+            </label>
+          </div>
+          {writesErr && (
+            <p className="composer__err" role="alert">
+              {writesErr}
+            </p>
+          )}
+          {allowWritesOn && (
+            <p className="settings-copy settings-copy--warn">
+              Paired phones can type into live terminals. Every write is recorded in the host audit log.
             </p>
           )}
         </section>

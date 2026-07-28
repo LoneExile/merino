@@ -191,5 +191,7 @@ export function wailsClient(): Client {
     setPasswordLoginEnabled: (on: boolean) => DesktopSettings.SetPasswordLoginEnabled(on),
     sessionSwitchEnabled: () => DesktopSettings.SessionSwitchEnabled(),
     setSessionSwitchEnabled: (on: boolean) => DesktopSettings.SetSessionSwitchEnabled(on),
+    allowWritesEnabled: () => DesktopSettings.AllowWritesEnabled(),
+    setAllowWritesEnabled: (on: boolean) => DesktopSettings.SetAllowWritesEnabled(on),
   };
 }

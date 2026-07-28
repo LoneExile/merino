@@ -78,6 +78,7 @@ func writeServer(t *testing.T, policy Policy, wr Writer) (*Server, *bytes.Buffer
 		Assets:   fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("<head></head>")}},
 		Logger:   slog.New(slog.DiscardHandler),
 		Writer:   wr,
+		AllowWrites: true,
 		Audit:    audit,
 	})
 	if err != nil {
@@ -94,6 +95,7 @@ func TestWritesRequireAudit(t *testing.T) {
 		Provider: NewPasswordProvider("a", "b", DirectIP, false),
 		Policy:   SingleOperator{},
 		Writer:   &fakeWriter{},
+		AllowWrites: true,
 	})
 	if err == nil {
 		t.Fatal("a Writer without an Audit was accepted")

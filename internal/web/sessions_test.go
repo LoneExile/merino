@@ -235,6 +235,7 @@ func TestSessionEndpointReportsCapabilityFlags(t *testing.T) {
 		Assets:   fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("<head></head>")}},
 		Logger:   slog.New(slog.DiscardHandler),
 		Writer:   &fakeWriter{},
+		AllowWrites: true,
 		Audit:    app.NewAuditTo(nopCloser{&bytes.Buffer{}}),
 		Sessions: &fakeSessions{},
 		Switcher: &fakeSwitcher{}, SessionSwitch: true,

@@ -73,6 +73,13 @@ func (s *Server) authorizeWrite(w http.ResponseWriter, r *http.Request, id Ident
 // applies for the same reason: neither existence nor permission should be
 // distinguishable by probing.
 func (s *Server) authorizeControl(w http.ResponseWriter, r *http.Request, id Identity, action, targetID, notFoundMsg string, pred func(app.Agent) bool) bool {
+	if !s.WritesAllowed() {
+		s.audit(r, id, action, targetID, "", false, "writes disabled")
+		writeJSON(w, http.StatusForbidden, map[string]string{
+			"error": "writes are disabled; enable Allow phone writes in Mac Settings",
+		})
+		return false
+	}
 	var target *app.Agent
 	for _, a := range s.src.List() {
 		if pred(a) {
