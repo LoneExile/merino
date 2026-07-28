@@ -638,11 +638,45 @@ export function SettingsSheet({
                 </dl>
               )}
               {update?.newer && (
-                <p className="settings-copy">
-                  <a href={update.releaseUrl} target="_blank" rel="noreferrer">
-                    Open release {update.latest} ↗
-                  </a>
-                </p>
+                <div className="settings-stack">
+                  {client.installUpdate && update.canInstall && (
+                    <button
+                      type="button"
+                      className="btn btn--primary"
+                      disabled={updateBusy}
+                      onClick={() => {
+                        setUpdateBusy(true);
+                        setUpdateErr(null);
+                        void client
+                          .installUpdate?.()
+                          .then(
+                            (r) => {
+                              // Process should quit + relaunch; surface message if not.
+                              setUpdateErr(null);
+                              setUpdate((u) =>
+                                u
+                                  ? {
+                                      ...u,
+                                      body: r.message || `Installing ${r.version}…`,
+                                    }
+                                  : u,
+                              );
+                            },
+                            (err: unknown) =>
+                              setUpdateErr(err instanceof Error ? err.message : String(err)),
+                          )
+                          .finally(() => setUpdateBusy(false));
+                      }}
+                    >
+                      {updateBusy ? "Installing…" : `Install ${update.latest}`}
+                    </button>
+                  )}
+                  <p className="settings-copy">
+                    <a href={update.releaseUrl} target="_blank" rel="noreferrer">
+                      Open release {update.latest} ↗
+                    </a>
+                  </p>
+                </div>
               )}
               {update && !update.newer && update.latest && (
                 <p className="settings-copy settings-copy--quiet">Up to date.</p>

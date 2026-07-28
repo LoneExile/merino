@@ -28,7 +28,7 @@ export function AccessOrigins(): $CancellablePromise<web$0.AccessOrigin[] | null
 }
 
 /**
- * CheckUpdate looks up the latest GitHub release.
+ * CheckUpdate looks up the latest GitHub release (read-only; does not download).
  */
 export function CheckUpdate(): $CancellablePromise<$models.UpdateInfo> {
     return $Call.ByID(3345746207);
@@ -46,6 +46,15 @@ export function DefaultPairBase(): $CancellablePromise<string> {
  */
 export function FirstRunPending(): $CancellablePromise<boolean> {
     return $Call.ByID(1017264072);
+}
+
+/**
+ * InstallUpdate downloads the latest macOS .app zip via Wails updater, verifies
+ * SHA256SUMS, swaps the bundle, and relaunches. Call only after CheckUpdate
+ * reported canInstall (or it re-checks). Blocks until staged; process then quits.
+ */
+export function InstallUpdate(): $CancellablePromise<$models.InstallResult> {
+    return $Call.ByID(1410411228);
 }
 
 /**

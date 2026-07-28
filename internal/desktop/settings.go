@@ -62,7 +62,7 @@ func (s *Settings) SetLaunchAtLogin(on bool) error {
 	return s.Auto.Set(on)
 }
 
-// CheckUpdate looks up the latest GitHub release.
+// CheckUpdate looks up the latest GitHub release (read-only; does not download).
 func (s *Settings) CheckUpdate() (UpdateInfo, error) {
 	if s.Update == nil {
 		return UpdateInfo{}, fmt.Errorf("updates not configured")
@@ -70,6 +70,18 @@ func (s *Settings) CheckUpdate() (UpdateInfo, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	return s.Update.Check(ctx)
+}
+
+// InstallUpdate downloads the latest macOS .app zip via Wails updater, verifies
+// SHA256SUMS, swaps the bundle, and relaunches. Call only after CheckUpdate
+// reported canInstall (or it re-checks). Blocks until staged; process then quits.
+func (s *Settings) InstallUpdate() (InstallResult, error) {
+	if s.Update == nil {
+		return InstallResult{}, fmt.Errorf("updates not configured")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	return s.Update.Install(ctx)
 }
 
 // MintPairing returns a short-lived QR ticket for phone login.

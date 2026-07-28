@@ -26,6 +26,8 @@ import (
 	"github.com/LoneExile/merino/internal/web"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
+	"github.com/wailsapp/wails/v3/pkg/updater"
+	"github.com/wailsapp/wails/v3/pkg/updater/providers/github"
 )
 
 //go:embed all:frontend/dist
@@ -42,7 +44,7 @@ func init() {
 
 // version is injected at link time: -ldflags "-X main.version=v0.2.0".
 // Falls back for local `go build` / just app so CheckUpdate stays honest.
-var version = "0.1.2-dev"
+var version = "0.1.3-dev"
 
 func main() {
 	behindProxy := flag.Bool("behind-proxy", false,
@@ -168,6 +170,12 @@ func main() {
 		},
 	})
 
+	// In-app updates from GitHub Releases (macOS .app zip + SHA256SUMS).
+	// WindowNone: Settings sheet owns the UX; Check vs Install are separate.
+	if err := initAppUpdater(wailsApp, desk, logger); err != nil {
+		logger.Warn("updater init failed", "err", err)
+	}
+
 	// Autostart needs the live App pointer (SMAppService / LaunchAgent).
 	desk.Auto = desktop.NewAutostart(wailsApp, "dev.apinant.merino")
 
@@ -269,6 +277,12 @@ func main() {
 		showPanel(tray, panel)
 		if wailsApp != nil {
 			wailsApp.Event.Emit("ui:open", "pair")
+		}
+	})
+	menu.Add("Check for Updates…").OnClick(func(*application.Context) {
+		showPanel(tray, panel)
+		if wailsApp != nil {
+			wailsApp.Event.Emit("ui:open", "settings")
 		}
 	})
 	menu.AddSeparator()
@@ -529,4 +543,32 @@ func ipResolver(behindProxy bool) web.IPResolver {
 		return web.ProxiedIP
 	}
 	return web.DirectIP
+}
+
+// initAppUpdater wires Wails app.Updater to GitHub Releases for in-app install.
+// Check stays on DesktopSettings (light API); Install uses Framework DownloadAndInstall+Restart.
+func initAppUpdater(wailsApp *application.App, desk *desktop.Settings, logger *slog.Logger) error {
+	if wailsApp == nil || desk == nil || desk.Update == nil {
+		return fmt.Errorf("updater: missing app or settings")
+	}
+	gh, err := github.New(github.Config{
+		Repository:    desk.Update.Repo,
+		ChecksumAsset: "SHA256SUMS",
+		AssetMatcher:  desktop.MerinoZipAssetMatcher,
+	})
+	if err != nil {
+		return err
+	}
+	ver := desktop.NormalizeVersion(version)
+	if err := wailsApp.Updater.Init(updater.Config{
+		CurrentVersion: ver,
+		Providers:      []updater.Provider{gh},
+		Window:         updater.WindowNone,
+	}); err != nil {
+		return err
+	}
+	desk.Update.Framework = wailsApp.Updater
+	desk.Update.Current = ver
+	logger.Info("updater ready", "version", ver, "repo", desk.Update.Repo)
+	return nil
 }

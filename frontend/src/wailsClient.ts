@@ -135,10 +135,16 @@ export function wailsClient(): Client {
         latest: u.latest,
         newer: u.newer,
         releaseUrl: u.releaseUrl,
+        assetName: u.assetName,
+        canInstall: u.canInstall,
         body: u.body,
         published: u.published,
         checkedAt: u.checkedAt,
       };
+    },
+    installUpdate: async () => {
+      const r = await DesktopSettings.InstallUpdate();
+      return { version: r.version, message: r.message };
     },
     mintPairing: async () => {
       const t = await DesktopSettings.MintPairing();

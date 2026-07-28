@@ -187,6 +187,7 @@ export interface Client {
   launchAtLogin?(): Promise<boolean>;
   setLaunchAtLogin?(on: boolean): Promise<void>;
   checkUpdate?(): Promise<UpdateInfo>;
+  installUpdate?(): Promise<InstallResult>;
   mintPairing?(): Promise<PairingTicket>;
   setPairingBaseURL?(base: string): Promise<void>;
   listDevices?(): Promise<DeviceList>;
@@ -208,9 +209,16 @@ export interface UpdateInfo {
   latest: string;
   newer: boolean;
   releaseUrl: string;
+  assetName?: string;
+  canInstall?: boolean;
   body: string;
   published: string;
   checkedAt: number;
+}
+
+export interface InstallResult {
+  version: string;
+  message: string;
 }
 
 export interface PairingTicket {

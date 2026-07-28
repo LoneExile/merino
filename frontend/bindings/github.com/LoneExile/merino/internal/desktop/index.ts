@@ -7,5 +7,6 @@ export {
 };
 
 export type {
+    InstallResult,
     UpdateInfo
 } from "./models.js";
