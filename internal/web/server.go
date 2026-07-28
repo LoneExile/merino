@@ -210,7 +210,9 @@ func (s *Server) SetSessionSwitch(on bool) error {
 	s.switchMu.Lock()
 	s.switchOn = on
 	s.switchMu.Unlock()
-	s.log.Info("session switch gate", "enabled", on)
+	if s.log != nil {
+		s.log.Info("session switch gate", "enabled", on)
+	}
 	return nil
 }
 
