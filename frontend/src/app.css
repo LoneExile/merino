@@ -2314,32 +2314,33 @@ code.mono {
 .settings-group {
   display: flex;
   flex-direction: column;
-  gap: var(--space-s);
-  padding-bottom: var(--space-m);
-  margin-bottom: var(--space-xs);
-  border-bottom: 1px solid color-mix(in oklch, var(--color-ink) 10%, transparent);
+  gap: 0;
+  /* Group title sits as a sticky-ish label above its blocks */
+  padding: 0;
+  margin: 0;
+  border-bottom: 0;
 }
-.settings-group:last-of-type {
-  border-bottom: none;
-  margin-bottom: 0;
-  padding-bottom: 0;
+.settings-group + .settings-group {
+  border-top: 1px solid var(--color-rule);
 }
 .settings-group__title {
   margin: 0;
-  font-size: 11px;
-  font-weight: 650;
+  padding: var(--space-sm) var(--space-md) var(--space-2xs);
+  font: 600 var(--text-2xs) / 1 var(--font-mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: color-mix(in oklch, var(--color-ink) 55%, transparent);
+  color: var(--color-ink-3);
+  background: color-mix(in oklab, var(--color-paper-2) 70%, var(--color-paper));
 }
 .settings-group__note {
-  margin: -0.35rem 0 0;
-  font-size: 12px;
-  line-height: 1.35;
-  color: color-mix(in oklch, var(--color-ink) 58%, transparent);
+  display: none; /* titles are enough; notes were noisy double-copy */
 }
 .sheet--settings .settings-group .settings-block {
   margin: 0;
+  border-bottom: 1px solid var(--color-rule);
+}
+.sheet--settings .settings-group .settings-block:last-child {
+  border-bottom: 0;
 }
 
 
@@ -2450,4 +2451,36 @@ code.mono {
 }
 .btn--ghost:hover {
   background: color-mix(in oklch, var(--color-ink) 6%, transparent);
+}
+
+
+/* Menubar panel overlays: fit the fixed webview, not the display 88dvh.
+ * Otherwise the sheet grows past the panel, #root clips it, and the body
+ * never becomes a scroll container until a click forces layout. */
+html.desktop .scrim {
+  position: absolute;
+  inset: 0;
+  align-items: stretch;
+  justify-items: stretch;
+  padding: 8px;
+  padding-bottom: 8px;
+}
+html.desktop .sheet,
+html.desktop .sheet--settings,
+html.desktop .sheet--pair {
+  width: 100%;
+  max-width: none;
+  max-height: none;
+  height: 100%;
+  border-radius: calc(var(--radius-panel) - 4px);
+}
+html.desktop .sheet__body {
+  /* Explicit focus target for trackpad scroll without prior click. */
+  outline: none;
+  -webkit-overflow-scrolling: touch;
+}
+html.desktop .sheet--pair .sheet__body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }

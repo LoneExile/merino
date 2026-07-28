@@ -372,6 +372,7 @@ export default function App() {
         <SettingsSheet
           session={session}
           client={client}
+          onOpenPair={() => setOverlay("pair")}
           pref={pref}
           actual={actual}
           wrap={wrap}

@@ -7,8 +7,8 @@ import type { ThemePref } from "./theme";
 export interface SettingsSheetProps {
   session: Session | null;
   client: Client | null;
-  /** Tray "Pair phone…" / first-run — scroll to QR and mint. */
-  focusPair?: boolean;
+  /** Desktop: open dedicated Pair phone sheet from Settings. */
+  onOpenPair?: () => void;
   pref: ThemePref;
   actual: "light" | "dark";
   onPref: (p: ThemePref) => void;
@@ -94,7 +94,7 @@ function displayDeviceName(name: string): string {
 export function SettingsSheet({
   session,
   client,
-  focusPair = false,
+  onOpenPair,
   pref,
   actual,
   onPref,
@@ -117,13 +117,6 @@ export function SettingsSheet({
   const [updateErr, setUpdateErr] = useState<string | null>(null);
   const [updateBusy, setUpdateBusy] = useState(false);
 
-  const [pair, setPair] = useState<PairingTicket | null>(null);
-  const [pairErr, setPairErr] = useState<string | null>(null);
-  const [pairBusy, setPairBusy] = useState(false);
-  const [pairBase, setPairBase] = useState(
-    () => localStorage.getItem("herdr.pairBase") ?? "",
-  );
-  const [accessOrigins, setAccessOrigins] = useState<AccessOrigin[]>([]);
   const [devices, setDevices] = useState<PairedDevice[]>([]);
   const [devBusy, setDevBusy] = useState(false);
   const [devErr, setDevErr] = useState<string | null>(null);
@@ -162,110 +155,6 @@ export function SettingsSheet({
   }, [refreshDevices]);
 
 
-  useEffect(() => {
-    let alive = true;
-    void (async () => {
-      try {
-        if (client?.passwordLoginEnabled) {
-          const on = await client.passwordLoginEnabled();
-          if (alive) setPasswordLoginOn(on);
-        } else if (typeof session?.passwordLoginEnabled === "boolean") {
-          if (alive) setPasswordLoginOn(session.passwordLoginEnabled);
-        }
-        if (client?.sessionSwitchEnabled) {
-          const on = await client.sessionSwitchEnabled();
-          if (alive) setSessionSwitchOn(on);
-        }
-      } catch {
-        /* ignore */
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [client, session]);
-
-  useEffect(() => {
-    let alive = true;
-    void (async () => {
-      try {
-        let origins: AccessOrigin[] = [];
-        if (client?.accessOrigins) {
-          origins = await client.accessOrigins();
-        } else if (session?.accessOrigins) {
-          origins = session.accessOrigins;
-        }
-        if (!alive) return;
-        setAccessOrigins(origins);
-        // Prefer stored choice only if still non-empty; else LAN/local default.
-        let stored = localStorage.getItem("herdr.pairBase")?.trim() ?? "";
-        // Pre-LAN-default builds seeded Cloudflare; treat that as "unset" so
-        // zero-config users land on Wi‑Fi instead of a dead public host.
-        if (
-          stored === "https://herdr-tunnel.0dl.me" ||
-          stored === "http://herdr-tunnel.0dl.me"
-        ) {
-          localStorage.removeItem("herdr.pairBase");
-          stored = "";
-        }
-        if (stored) {
-          setPairBase(stored);
-          return;
-        }
-        if (client?.defaultPairBase) {
-          const d = await client.defaultPairBase();
-          if (alive && d) setPairBase(d);
-        } else if (session?.defaultPairBase) {
-          setPairBase(session.defaultPairBase);
-        } else {
-          const lan = origins.find((o) => o.kind === "lan") ?? origins[0];
-          if (lan) setPairBase(lan.url);
-        }
-      } catch {
-        /* ignore */
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [client, session]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!window.location.search.includes("pair=1")) return;
-    const mint = client?.mintPairing;
-    if (!mint) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        setPairBusy(true);
-        const base = pairBase.trim();
-        if (base && client?.setPairingBaseURL) await client.setPairingBaseURL(base);
-        const ticket = await mint();
-        if (!cancelled && ticket) {
-          setPair(ticket);
-          void client?.markFirstRunDone?.();
-        }
-      } catch (err) {
-        if (!cancelled) setPairErr(err instanceof Error ? err.message : String(err));
-      } finally {
-        if (!cancelled) setPairBusy(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [client, pairBase]);
-
-  useEffect(() => {
-    let alive = true;
-    void checkPushStatus(client).then((status) => {
-      if (alive) setPushStatus(status);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [client]);
 
   useEffect(() => {
     if (!client?.launchAtLogin) return;
@@ -335,38 +224,6 @@ export function SettingsSheet({
   };
 
 
-  const mintPair = useCallback(() => {
-    if (!client?.mintPairing) return;
-    setPairBusy(true);
-    setPairErr(null);
-    const base = pairBase.trim();
-    localStorage.setItem("herdr.pairBase", base);
-    void (async () => {
-      try {
-        if (client.setPairingBaseURL) await client.setPairingBaseURL(base);
-        const ticket = await client.mintPairing?.();
-        if (ticket) {
-          setPair(ticket);
-          void client.markFirstRunDone?.();
-          refreshDevices();
-        }
-      } catch (err) {
-        setPairErr(err instanceof Error ? err.message : String(err));
-      } finally {
-        setPairBusy(false);
-      }
-    })();
-  }, [client, pairBase, refreshDevices]);
-
-  useEffect(() => {
-    if (!focusPair || !client?.mintPairing) return;
-    const t = window.setTimeout(() => {
-      document.getElementById("pair-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
-      if (!pair) mintPair();
-    }, 50);
-    return () => window.clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- once when tray opens pair
-  }, [focusPair, client]);
 
   return (
     <Sheet
@@ -382,82 +239,21 @@ export function SettingsSheet({
 
       <div className="settings-group">
         <h2 className="settings-group__title">Phone</h2>
-        <p className="settings-group__note">QR pairing and what signed-in phones may do.</p>
-{isDesktop && client?.mintPairing && (
+{isDesktop && (client?.mintPairing || onOpenPair) && (
         <section className="settings-block" aria-labelledby="set-pair" id="pair-section">
           <header className="settings-block__head">
             <h3 id="set-pair">Pair phone</h3>
           </header>
-          <p className="settings-copy">
-            One-shot QR (2 min). Same Wi‑Fi works with no tunnel — pick{" "}
-            <strong>Wi‑Fi / LAN</strong> first. Add a public HTTPS URL later for
-            off-home access (Cloudflare, etc.).
-          </p>
-          {accessOrigins.length > 0 && (
-            <div className="pair-origins" role="group" aria-label="Access origin">
-              {accessOrigins.map((o) => (
-                <button
-                  key={o.kind + o.url}
-                  type="button"
-                  className={`btn pair-origins__chip${pairBase === o.url ? " is-on" : ""}`}
-                  title={o.hint || o.url}
-                  onClick={() => {
-                    setPairBase(o.url);
-                    localStorage.setItem("herdr.pairBase", o.url);
-                  }}
-                >
-                  <span className="pair-origins__label">{o.label}</span>
-                  <span className="pair-origins__url mono">{o.url.replace(/^https?:\/\//, "")}</span>
-                </button>
-              ))}
-            </div>
-          )}
-          <label className="field__label" htmlFor="pair-base">
-            QR base URL
-          </label>
-          <input
-            id="pair-base"
-            className="field__input"
-            value={pairBase}
-            onChange={(e) => setPairBase(e.target.value)}
-            placeholder="http://192.168.x.x:8730 or https://your-tunnel.example"
-            spellCheck={false}
-            autoCapitalize="off"
-            autoCorrect="off"
-          />
           <p className="settings-copy settings-copy--quiet">
-            Localhost = this Mac only. LAN / Tailscale = plain HTTP (paste code; no
-            in-page camera). Public HTTPS tunnel unlocks camera QR scan.
+            One-shot QR for phones on Wi‑Fi, Tailscale, or a public HTTPS URL.
           </p>
           <button
             type="button"
             className="btn btn--solid"
-            disabled={pairBusy}
-            onClick={() => mintPair()}
+            onClick={() => onOpenPair?.()}
           >
-            {pairBusy ? "Minting…" : pair ? "Refresh QR" : "Show QR code"}
+            Show pair QR
           </button>
-          {pair && (
-            <div className="pair">
-              <img
-                className="pair__qr"
-                src={pair.qrPng}
-                alt="Sign-in QR code"
-                width={192}
-                height={192}
-              />
-              <p className="hint mono pair__token">{pair.token}</p>
-              <p className="settings-copy settings-copy--quiet">
-                Expires {new Date(pair.expiresAt * 1000).toLocaleTimeString()}. Paste the code on
-                the login page if you cannot scan.
-              </p>
-            </div>
-          )}
-          {pairErr && (
-            <p className="composer__err" role="alert">
-              {pairErr}
-            </p>
-          )}
         </section>
       )}
 
@@ -470,7 +266,7 @@ export function SettingsSheet({
             <div className="settings-row__meta">
               <span className="settings-row__label">Allow phones to switch session</span>
               <span className="settings-row__hint">
-                Same as --allow-session-switch. Off by default.
+                Same as --allow-session-switch. Off until you enable it.
               </span>
             </div>
             <label className="switch">
@@ -590,7 +386,6 @@ export function SettingsSheet({
       </div>
       <div className="settings-group">
         <h2 className="settings-group__title">Devices</h2>
-        <p className="settings-group__note">Revoke a lost phone without rotating secrets.</p>
 {client?.listDevices && (
         <section className="settings-block" aria-labelledby="set-devices">
           <header className="settings-block__head">

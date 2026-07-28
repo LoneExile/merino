@@ -17,12 +17,11 @@ const FOCUSABLE =
  * Modal surface: a bottom sheet on a phone, a centred dialog on a wide screen.
  *
  * Focus is trapped and restored, Escape closes, and the backdrop is inert to
- * scroll. Written once so every overlay in the app behaves identically —
- * a settings panel that traps focus differently from a rename dialog is a bug
- * a keyboard user finds immediately.
+ * scroll. Written once so every overlay in the app behaves identically.
  */
 export function Sheet({ title, subtitle, panelClass, onClose, children }: SheetProps) {
   const panel = useRef<HTMLDivElement>(null);
+  const body = useRef<HTMLDivElement>(null);
   const restoreTo = useRef<HTMLElement | null>(null);
 
   const focusables = useCallback(
@@ -32,10 +31,12 @@ export function Sheet({ title, subtitle, panelClass, onClose, children }: SheetP
 
   useEffect(() => {
     restoreTo.current = document.activeElement as HTMLElement | null;
-    focusables()[0]?.focus();
 
-    // Lock the page behind the sheet. Without this, scrolling the sheet on iOS
-    // scrolls the list underneath once the sheet hits its end.
+    // Focus the scroll region (not the first button). In the menubar WKWebView,
+    // trackpad scroll only reaches an overflow container after it is focused;
+    // focusing Close left the body unable to scroll until a click.
+    body.current?.focus({ preventScroll: true });
+
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
@@ -43,7 +44,7 @@ export function Sheet({ title, subtitle, panelClass, onClose, children }: SheetP
       document.body.style.overflow = prev;
       restoreTo.current?.focus?.();
     };
-  }, [focusables]);
+  }, []);
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -58,7 +59,8 @@ export function Sheet({ title, subtitle, panelClass, onClose, children }: SheetP
       const first = items[0];
       const last = items[items.length - 1];
       const active = document.activeElement;
-      if (e.shiftKey && active === first) {
+      // Body is tabIndex=-1; treat it as outside the cycle.
+      if (e.shiftKey && (active === first || active === body.current)) {
         e.preventDefault();
         last.focus();
       } else if (!e.shiftKey && active === last) {
@@ -97,7 +99,15 @@ export function Sheet({ title, subtitle, panelClass, onClose, children }: SheetP
             </svg>
           </button>
         </header>
-        <div className="sheet__body">{children}</div>
+        <div
+          className="sheet__body"
+          ref={body}
+          tabIndex={-1}
+          // Keep wheel/trackpad on the body even if a child blurs.
+          onWheel={(e) => e.stopPropagation()}
+        >
+          {children}
+        </div>
       </div>
     </div>
   );
