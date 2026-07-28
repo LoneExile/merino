@@ -1633,12 +1633,16 @@ html.keyboard-open .jump-dock {
   white-space: nowrap;
 }
 
-/* Connection block: single column so long labels never clip Auth/Transport. */
-.facts--connection {
+/* Connection block: single column so long labels never clip Auth/Transport.
+ * Higher specificity than .facts--dense (1fr 1fr) — required at phone widths
+ * where the 22rem media query never fires (iPhone SE is ~23.4rem). */
+.facts.facts--dense.facts--connection {
   grid-template-columns: 1fr;
 }
-.facts--connection dd {
+.facts.facts--dense.facts--connection dd {
   white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
   word-break: break-word;
 }
 
@@ -1813,7 +1817,7 @@ html.keyboard-open .jump-dock {
   border-radius: var(--radius-control);
 }
 
-@media (max-width: 22rem) {
+@media (max-width: 36rem) {
   .settings-row {
     grid-template-columns: 1fr;
     align-items: stretch;
