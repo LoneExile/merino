@@ -75,15 +75,29 @@ web-lan port="8730" user="lex": build
     {{ if sock == "" { "" } else { "HERDR_SOCK=" + sock } }} \
     {{binary}} --listen 0.0.0.0:{{port}} --allow-writes --allow-session-switch
 
-# Serve behind a TLS tunnel (Secure cookies, trust CF-Connecting-IP).
+# Serve behind Cloudflare Tunnel (Secure cookies, trust CF-Connecting-IP).
 #
 #   export HERDR_TUNNEL_PASS='…'
 #   just tunnel
 #
-# Never use --behind-proxy while the port is ALSO reachable directly on the
-# LAN: the login throttle then keys on a header the caller controls.
-# Bind loopback and let the tunnel forward to it.
+# This host's cloudflared runs in Docker and dials the Mac LAN IP
+# (10.0.10.122:8730), so we MUST bind 0.0.0.0 — loopback-only yields CF 502
+# ("dial tcp 10.0.10.122:8730: connection refused").
+#
+# Trade-off: --behind-proxy + LAN bind means a LAN peer could spoof
+# X-Forwarded-For / CF-Connecting-IP and dilute the login throttle. Acceptable
+# on a trusted home LAN; do not expose :8730 past the firewall.
+#
+# For a pure loopback origin (cloudflared on the host, not Docker), use:
+#   just tunnel-loopback
 tunnel port="8730" user="lex": build
+    @test -n "${HERDR_TUNNEL_PASS:-}" || { echo "set HERDR_TUNNEL_PASS in the environment (not argv)"; exit 1; }
+    HERDR_TUNNEL_USER={{user}} \
+    {{ if sock == "" { "" } else { "HERDR_SOCK=" + sock } }} \
+    {{binary}} --listen 0.0.0.0:{{port}} --behind-proxy --allow-writes --allow-session-switch
+
+# Loopback-only origin for host-native cloudflared (not the Docker setup).
+tunnel-loopback port="8730" user="lex": build
     @test -n "${HERDR_TUNNEL_PASS:-}" || { echo "set HERDR_TUNNEL_PASS in the environment (not argv)"; exit 1; }
     HERDR_TUNNEL_USER={{user}} \
     {{ if sock == "" { "" } else { "HERDR_SOCK=" + sock } }} \
