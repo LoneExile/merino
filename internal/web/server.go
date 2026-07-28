@@ -88,6 +88,11 @@ type Config struct {
 	// PublicBaseURL is the origin encoded into pairing QR links when set
 	// (e.g. https://herdr-tunnel.0dl.me). Empty yields a path-only URL.
 	PublicBaseURL string
+	// Devices persists paired phones. Nil disables per-device identity (tests).
+	Devices *DeviceStore
+	// StateDir is where bootstrap/optional-password/first-run stamps live.
+	// Empty falls back to the audit-log directory.
+	StateDir string
 }
 
 // Server is the read-only HTTP dashboard.
@@ -188,6 +193,7 @@ func (s *Server) routes() http.Handler {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 	})
 	s.mountPairing(mux)
+	s.mountDevices(mux)
 
 	mux.HandleFunc("POST /logout", func(w http.ResponseWriter, r *http.Request) {
 		s.sessions.Clear(w)
@@ -254,6 +260,16 @@ func (s *Server) authed(h func(http.ResponseWriter, *http.Request, Identity)) ht
 		if !ok {
 			if strings.HasPrefix(r.URL.Path, "/api/") {
 				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthenticated"})
+				return
+			}
+			http.Redirect(w, r, s.cfg.Provider.LoginPath(), http.StatusSeeOther)
+			return
+		}
+		// Per-device grants can be revoked while a cookie is still valid.
+		if s.cfg.Devices != nil && IsDeviceSubject(id.Subject) && !s.cfg.Devices.Active(id.Subject) {
+			s.sessions.Clear(w)
+			if strings.HasPrefix(r.URL.Path, "/api/") {
+				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "device revoked"})
 				return
 			}
 			http.Redirect(w, r, s.cfg.Provider.LoginPath(), http.StatusSeeOther)
@@ -333,12 +349,17 @@ func (s *Server) handleSession(w http.ResponseWriter, _ *http.Request, id Identi
 	writeJSON(w, http.StatusOK, map[string]any{
 		"user":     id.Name,
 		"provider": id.Provider,
+		"subject":  id.Subject,
 		// A UX hint so the browser can hide affordances it cannot use. The
 		// enforcement is that the routes are absent, not these flags.
 		"readOnly":         s.cfg.Writer == nil,
 		"canRename":        s.cfg.Writer != nil,
 		"canSwitchSession": s.cfg.Switcher != nil,
 		"pushEnabled":      s.push != nil,
+		"devicesEnabled":   s.cfg.Devices != nil,
+		"canManageDevices": !IsDeviceSubject(id.Subject) && s.cfg.Devices != nil,
+		"firstRunPending":  FirstRunPending(s.stateDir()),
+		"oidcEnabled":      OIDCFromEnv().Enabled() && s.cfg.PublicBaseURL != "",
 	})
 }
 

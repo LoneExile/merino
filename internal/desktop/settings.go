@@ -12,22 +12,26 @@ import (
 // Settings is the Wails-bound surface for desktop-only preferences:
 // launch-at-login, GitHub updates, and phone pairing QR tickets.
 type Settings struct {
-	Auto    *Autostart
-	Update  *Updater
-	Pairing *web.Pairing
+	Auto     *Autostart
+	Update   *Updater
+	Pairing  *web.Pairing
+	Devices  *web.DeviceStore
+	StateDir string
 }
 
 // NewSettings wires the three optional backends. Any may be nil; methods then
 // return a clear error the Settings sheet can show.
-func NewSettings(app *application.App, productID, version, repo string, pairing *web.Pairing) *Settings {
+func NewSettings(app *application.App, productID, version, repo string, pairing *web.Pairing, devices *web.DeviceStore, stateDir string) *Settings {
 	var auto *Autostart
 	if app != nil {
 		auto = NewAutostart(app, productID)
 	}
 	return &Settings{
-		Auto:    auto,
-		Update:  &Updater{Repo: repo, Current: version},
-		Pairing: pairing,
+		Auto:     auto,
+		Update:   &Updater{Repo: repo, Current: version},
+		Pairing:  pairing,
+		Devices:  devices,
+		StateDir: stateDir,
 	}
 }
 
@@ -63,7 +67,7 @@ func (s *Settings) CheckUpdate() (UpdateInfo, error) {
 // MintPairing returns a short-lived QR ticket for phone login.
 func (s *Settings) MintPairing() (web.PairingTicket, error) {
 	if s.Pairing == nil {
-		return web.PairingTicket{}, fmt.Errorf("pairing requires the web dashboard (--listen)")
+		return web.PairingTicket{}, fmt.Errorf("pairing requires the web dashboard")
 	}
 	return s.Pairing.Mint()
 }
@@ -72,8 +76,60 @@ func (s *Settings) MintPairing() (web.PairingTicket, error) {
 // (e.g. https://herdr-tunnel.0dl.me).
 func (s *Settings) SetPairingBaseURL(base string) error {
 	if s.Pairing == nil {
-		return fmt.Errorf("pairing requires the web dashboard (--listen)")
+		return fmt.Errorf("pairing requires the web dashboard")
 	}
 	s.Pairing.SetBaseURL(base)
 	return nil
+}
+
+// ListDevices returns paired phones (including revoked).
+func (s *Settings) ListDevices() ([]web.Device, error) {
+	if s.Devices == nil {
+		return nil, fmt.Errorf("device store unavailable")
+	}
+	return s.Devices.List(), nil
+}
+
+// RevokeDevice marks one paired device revoked.
+func (s *Settings) RevokeDevice(id string) error {
+	if s.Devices == nil {
+		return fmt.Errorf("device store unavailable")
+	}
+	ok, err := s.Devices.Revoke(id)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("unknown device")
+	}
+	return nil
+}
+
+// RevokeAllDevices panic-revokes every paired phone session grant.
+func (s *Settings) RevokeAllDevices() (int, error) {
+	if s.Devices == nil {
+		return 0, fmt.Errorf("device store unavailable")
+	}
+	return s.Devices.RevokeAll()
+}
+
+// FirstRunPending reports whether the first-run pairing splash should show.
+func (s *Settings) FirstRunPending() bool {
+	return web.FirstRunPending(s.StateDir)
+}
+
+// MarkFirstRunDone suppresses the first-run pairing splash on later launches.
+func (s *Settings) MarkFirstRunDone() error {
+	return web.MarkFirstRunDone(s.StateDir)
+}
+
+// SetOptionalPassword enables username/password phone login without QR.
+func (s *Settings) SetOptionalPassword(user, pass string) error {
+	return web.SaveOptionalPassword(s.StateDir, user, pass)
+}
+
+// OptionalPasswordEnabled reports whether a user-set phone password exists.
+func (s *Settings) OptionalPasswordEnabled() bool {
+	_, _, ok := web.LoadOptionalPassword(s.StateDir)
+	return ok
 }

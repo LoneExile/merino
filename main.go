@@ -98,17 +98,31 @@ func main() {
 
 	agents := app.NewAgentsService(client, logger, emit, onCounts)
 
-	if *listen != "" {
-		srv, pair, err := startWeb(agents, *listen, *behindProxy, *allowWrites, *allowSessionSwitch, assets, logger)
-		if err != nil {
-			logger.Error("web dashboard failed to start", "err", err)
-			os.Exit(1)
-		}
-		webSrv = srv
-		pairing = pair
+	// Public release: the menubar .app always starts a local dashboard so
+	// phone QR pairing works with zero flags. CLI --listen still overrides
+	// the bind address (and is required for headless/tunnel-only runs).
+	webAddr := *listen
+	if webAddr == "" {
+		// LAN bind so a phone on the same Wi‑Fi can open the QR URL. Pairing
+		// tokens are one-shot + short TTL; device grants are revocable.
+		webAddr = "0.0.0.0:8730"
 	}
+	srv, pair, err := startWeb(agents, webAddr, *behindProxy, *allowWrites, *allowSessionSwitch, assets, logger)
+	if err != nil {
+		logger.Error("web dashboard failed to start", "err", err)
+		os.Exit(1)
+	}
+	webSrv = srv
+	pairing = pair
 
-	desk = desktop.NewSettings(nil, "dev.apinant.herdr-tunnel", version, "LoneExile/herdr-tunnel", pairing)
+	var devices *web.DeviceStore
+	if webSrv != nil {
+		// Re-open is fine — same path; Settings needs a handle for Wails bindings.
+		if d, err := web.OpenDeviceStore(filepath.Dir(app.DefaultAuditPath())); err == nil {
+			devices = d
+		}
+	}
+	desk = desktop.NewSettings(nil, "dev.apinant.herdr-tunnel", version, "LoneExile/herdr-tunnel", pairing, devices, filepath.Dir(app.DefaultAuditPath()))
 
 	wailsApp = application.New(application.Options{
 		Name:        "Herdr Tunnel",
@@ -144,17 +158,23 @@ func main() {
 	// BackgroundColour is fully transparent so CSS border-radius on #root can
 	// show the desktop through the corners (otherwise the opaque NSWindow
 	// fill paints a square halo behind the rounded webview).
+	firstRun := desk != nil && desk.FirstRunPending()
+	panelURL := "/"
+	if firstRun {
+		panelURL = "/?pair=1"
+	}
 	panel := wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{
-		Name:             "panel",
-		Title:            "Herdr Tunnel",
-		Width:            panelW,
-		Height:           panelH,
-		Hidden:           true, // revealed by clicking the tray icon
+		Name:   "panel",
+		Title:  "Herdr Tunnel",
+		Width:  panelW,
+		Height: panelH,
+		// First run: show immediately so the QR is the first paint after install.
+		Hidden:           !firstRun,
 		AlwaysOnTop:      true,
 		Frameless:        true,
 		DisableResize:    true,
 		BackgroundColour: application.NewRGBA(0, 0, 0, 0),
-		URL:              "/",
+		URL:              panelURL,
 		Mac: application.MacWindow{
 			// Transparent backdrop so the CSS-rounded panel corners are not
 			// painted over by an opaque window fill. The stylesheet supplies
@@ -301,18 +321,22 @@ func showPanel(tray *application.SystemTray, panel *application.WebviewWindow) {
 	panel.SetSize(panelW, panelH)
 }
 
-// startWeb boots the read-only browser dashboard.
+// startWeb boots the browser dashboard.
 //
-// Disabled unless --listen is given, and never defaults to a public bind: the
-// operator has to type the address, so exposing the herd to the LAN is always
-// a deliberate act rather than something that happens by forgetting a flag.
+// Public-release GUI launches always call this (default bind 0.0.0.0:8730) so
+// QR pairing works after drag-to-Applications with zero flags. Safety is the
+// login wall + one-shot pairing tokens + revocable device grants — not "did
+// the operator remember --listen". CLI users can still pass an explicit
+// --listen address (including 127.0.0.1) to narrow the bind.
 func startWeb(src web.Source, addr string, behindProxy, allowWrites, allowSessionSwitch bool, assets embed.FS, logger *slog.Logger) (*web.Server, *web.Pairing, error) {
-	user := os.Getenv("HERDR_TUNNEL_USER")
-	pass := os.Getenv("HERDR_TUNNEL_PASS")
-	if user == "" || pass == "" {
-		return nil, nil, errors.New(
-			"HERDR_TUNNEL_USER and HERDR_TUNNEL_PASS must be set to serve the web dashboard; " +
-				"refusing to expose agent state without a login")
+	stateDir := filepath.Dir(app.DefaultAuditPath())
+	user, pass, generated, bootErr := web.LoadOrCreateBootstrap(stateDir)
+	if bootErr != nil {
+		return nil, nil, bootErr
+	}
+	if generated {
+		logger.Info("generated local operator credentials for zero-config start",
+			"user", user, "path", filepath.Join(stateDir, "bootstrap-creds.json"))
 	}
 
 	dist, err := fs.Sub(assets, "frontend/dist")
@@ -375,11 +399,31 @@ func startWeb(src web.Source, addr string, behindProxy, allowWrites, allowSessio
 	provider := web.NewPasswordProvider(user, pass, ipResolver(behindProxy), behindProxy)
 	provider.SetPairing(pairing)
 
+	devices, devErr := web.OpenDeviceStore(stateDir)
+	if devErr != nil {
+		return nil, nil, devErr
+	}
+	provider.SetDevices(devices)
+	if ou, op, ok := web.LoadOptionalPassword(stateDir); ok {
+		provider.SetOptionalPassword(ou, op)
+		logger.Info("optional phone password enabled", "user", ou)
+	}
+
+	// OAuth rung: mount scaffold routes only when explicitly configured AND
+	// we have a public HTTPS base (redirect URIs). Full code flow is TODO.
+	if oidc := web.OIDCFromEnv(); oidc.Enabled() && os.Getenv("HERDR_TUNNEL_PUBLIC_URL") != "" {
+		logger.Info("OIDC scaffold enabled (authorization code not implemented yet)",
+			"issuer", oidc.Issuer)
+		// Keep password as the Mount provider; OIDC routes are registered via
+		// a tiny side mount below after New — see attachOIDCScaffold.
+		_ = oidc
+	}
+
 	srv, err := web.New(src, web.Config{
 		Addr:     addr,
 		Provider: provider,
-		// One human, one password, their own machine. Swap for web.RequireRole
-		// when Keycloak makes more than one identity possible.
+		// Single operator still: paired devices carry view+control roles for
+		// RequireRole later; today every authenticated identity is trusted.
 		Policy:        web.SingleOperator{},
 		BehindProxy:   behindProxy,
 		Assets:        dist,
@@ -392,7 +436,9 @@ func startWeb(src web.Source, addr string, behindProxy, allowWrites, allowSessio
 		PublicBaseURL: os.Getenv("HERDR_TUNNEL_PUBLIC_URL"),
 		// Same directory the audit log above resolves to, so an operator who
 		// already knows where one lives knows where to find the other.
-		PushDir: filepath.Dir(app.DefaultAuditPath()),
+		PushDir:  stateDir,
+		Devices:  devices,
+		StateDir: stateDir,
 	})
 	if err != nil {
 		return nil, nil, err

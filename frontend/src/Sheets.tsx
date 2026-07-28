@@ -1,14 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { Agent } from "../bindings/github.com/LoneExile/herdr-tunnel/internal/app";
-import type {
-  Client,
-  HerdrSession,
-  PairingTicket,
-  RenameKind,
-  Session,
-  SessionList,
-  UpdateInfo,
-} from "./client";
+import type { Client, HerdrSession, PairedDevice, PairingTicket, RenameKind, Session, SessionList, UpdateInfo } from "./client";
 import { Sheet } from "./Sheet";
 import type { ThemePref } from "./theme";
 
@@ -87,6 +79,7 @@ export function SettingsSheet({
   const [pushBusy, setPushBusy] = useState(false);
 
   const isDesktop = client?.kind === "desktop";
+
   const [loginLaunch, setLoginLaunch] = useState<boolean | null>(null);
   const [loginLaunchErr, setLoginLaunchErr] = useState<string | null>(null);
   const [loginLaunchBusy, setLoginLaunchBusy] = useState(false);
@@ -101,6 +94,51 @@ export function SettingsSheet({
   const [pairBase, setPairBase] = useState(
     () => localStorage.getItem("herdr.pairBase") ?? "https://herdr-tunnel.0dl.me",
   );
+  const [devices, setDevices] = useState<PairedDevice[]>([]);
+  const [devBusy, setDevBusy] = useState(false);
+  const [devErr, setDevErr] = useState<string | null>(null);
+  const [phoneUser, setPhoneUser] = useState("phone");
+  const [phonePass, setPhonePass] = useState("");
+  const [passMsg, setPassMsg] = useState<string | null>(null);
+
+  const refreshDevices = useCallback(() => {
+    if (!client?.listDevices) return;
+    void client
+      .listDevices()
+      .then((r) => setDevices(r.devices || []))
+      .catch(() => {});
+  }, [client]);
+
+  useEffect(() => {
+    refreshDevices();
+  }, [refreshDevices]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!window.location.search.includes("pair=1")) return;
+    const mint = client?.mintPairing;
+    if (!mint) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        setPairBusy(true);
+        const base = pairBase.trim();
+        if (base && client?.setPairingBaseURL) await client.setPairingBaseURL(base);
+        const ticket = await mint();
+        if (!cancelled && ticket) {
+          setPair(ticket);
+          void client?.markFirstRunDone?.();
+        }
+      } catch (err) {
+        if (!cancelled) setPairErr(err instanceof Error ? err.message : String(err));
+      } finally {
+        if (!cancelled) setPairBusy(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [client, pairBase]);
 
   useEffect(() => {
     let alive = true;
@@ -428,8 +466,137 @@ export function SettingsSheet({
         </section>
       )}
 
+
+      {client?.listDevices && (
+        <section className="settings-block" aria-labelledby="set-devices">
+          <header className="settings-block__head">
+            <h3 id="set-devices">Paired devices</h3>
+          </header>
+          <p className="settings-copy">
+            Each phone that scans a QR gets its own grant. Revoke a lost phone without rotating the Mac password.
+          </p>
+          {devices.length === 0 && (
+            <p className="settings-copy settings-copy--quiet">No phones paired yet.</p>
+          )}
+          <ul className="list list--plain">
+            {devices.map((d) => (
+              <li key={d.id}>
+                <div className={`row row--session${d.revokedAt ? "" : " is-on"}`}>
+                  <span className="row__main">
+                    <span className="row__title">{d.name || d.id}</span>
+                    <span className="row__sub mono">
+                      {d.provider}
+                      {d.revokedAt ? " · revoked" : " · active"}
+                      {" · "}
+                      {d.id.slice(0, 8)}
+                    </span>
+                  </span>
+                  {!d.revokedAt && client?.revokeDevice && (
+                    <button
+                      type="button"
+                      className="btn btn--icon"
+                      disabled={devBusy}
+                      aria-label={`Revoke ${d.name || d.id}`}
+                      title="Revoke"
+                      onClick={() => {
+                        setDevBusy(true);
+                        setDevErr(null);
+                        void client.revokeDevice?.(d.id)
+                          .then(() => refreshDevices())
+                          .catch((e) => setDevErr(e instanceof Error ? e.message : String(e)))
+                          .finally(() => setDevBusy(false));
+                      }}
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+          {client?.revokeAllDevices && (
+            <button
+              type="button"
+              className="btn"
+              disabled={devBusy || devices.every((d) => d.revokedAt)}
+              onClick={() => {
+                if (!window.confirm("Revoke every paired phone now?")) return;
+                setDevBusy(true);
+                setDevErr(null);
+                void client.revokeAllDevices?.()
+                  .then(() => {
+                    refreshDevices();
+                    void client.markFirstRunDone?.();
+                  })
+                  .catch((e) => setDevErr(e instanceof Error ? e.message : String(e)))
+                  .finally(() => setDevBusy(false));
+              }}
+            >
+              Panic revoke all phones
+            </button>
+          )}
+          {devErr && (
+            <p className="composer__err" role="alert">
+              {devErr}
+            </p>
+          )}
+        </section>
+      )}
+
+      {client?.setOptionalPassword && (
+        <section className="settings-block" aria-labelledby="set-phone-pass">
+          <header className="settings-block__head">
+            <h3 id="set-phone-pass">Phone password</h3>
+          </header>
+          <p className="settings-copy">
+            Optional. Lets a browser sign in with user/pass when you are off the home Wi‑Fi (with a public URL). Leave blank and save to clear.
+          </p>
+          <label className="field__label" htmlFor="phone-user">
+            Username
+          </label>
+          <input
+            id="phone-user"
+            className="field__input"
+            value={phoneUser}
+            onChange={(e) => setPhoneUser(e.target.value)}
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+          />
+          <label className="field__label" htmlFor="phone-pass">
+            Password
+          </label>
+          <input
+            id="phone-pass"
+            className="field__input"
+            type="password"
+            value={phonePass}
+            onChange={(e) => setPhonePass(e.target.value)}
+            autoComplete="new-password"
+          />
+          <button
+            type="button"
+            className="btn btn--solid"
+            onClick={() => {
+              setPassMsg(null);
+              void client.setOptionalPassword?.(phoneUser.trim() || "phone", phonePass)
+                .then(() => setPassMsg(phonePass ? "Phone password saved." : "Phone password cleared."))
+                .catch((e) => setPassMsg(e instanceof Error ? e.message : String(e)));
+            }}
+          >
+            Save phone password
+          </button>
+          {session?.oidcEnabled && (
+            <p className="settings-copy settings-copy--quiet">
+              OAuth is configured on the server (scaffold). Full provider login lands in a follow-up.
+            </p>
+          )}
+          {passMsg && <p className="settings-copy">{passMsg}</p>}
+        </section>
+      )}
+
       {isDesktop && client?.mintPairing && (
-        <section className="settings-block" aria-labelledby="set-pair">
+        <section className="settings-block" aria-labelledby="set-pair" id="pair-section">
           <header className="settings-block__head">
             <h3 id="set-pair">Phone sign-in</h3>
           </header>
@@ -462,7 +629,11 @@ export function SettingsSheet({
                 try {
                   if (client.setPairingBaseURL) await client.setPairingBaseURL(base);
                   const ticket = await client.mintPairing?.();
-                  if (ticket) setPair(ticket);
+                  if (ticket) {
+                    setPair(ticket);
+                    void client.markFirstRunDone?.();
+                    refreshDevices();
+                  }
                 } catch (err) {
                   setPairErr(err instanceof Error ? err.message : String(err));
                 } finally {

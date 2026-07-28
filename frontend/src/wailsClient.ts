@@ -150,5 +150,26 @@ export function wailsClient(): Client {
       };
     },
     setPairingBaseURL: (base: string) => DesktopSettings.SetPairingBaseURL(base),
+    listDevices: async () => {
+      const devices = await DesktopSettings.ListDevices();
+      return {
+        devices: (devices || []).map((d) => ({
+          id: d.id,
+          name: d.name,
+          provider: d.provider,
+          roles: d.roles,
+          createdAt: String(d.createdAt),
+          lastSeen: String(d.lastSeen),
+          revokedAt: d.revokedAt ? String(d.revokedAt) : null,
+        })),
+        activeCount: (devices || []).filter((d) => !d.revokedAt).length,
+        firstRunPending: await DesktopSettings.FirstRunPending(),
+      };
+    },
+    revokeDevice: (id: string) => DesktopSettings.RevokeDevice(id),
+    revokeAllDevices: () => DesktopSettings.RevokeAllDevices(),
+    setOptionalPassword: (user: string, pass: string) => DesktopSettings.SetOptionalPassword(user, pass),
+    markFirstRunDone: () => DesktopSettings.MarkFirstRunDone(),
+    optionalPasswordEnabled: () => DesktopSettings.OptionalPasswordEnabled(),
   };
 }

@@ -54,6 +54,7 @@ function markAuthDead(): void {
 export interface Session {
   user: string;
   provider: string;
+  subject?: string;
   /** True when the host exposes no write operations. */
   readOnly: boolean;
   /** True when the operator allowed the dashboard to change herdr session. */
@@ -64,6 +65,26 @@ export interface Session {
    * subscriptions. Absence of this — not a false value the UI must branch
    * on — is what makes the push methods below absent from Client. */
   pushEnabled?: boolean;
+  devicesEnabled?: boolean;
+  canManageDevices?: boolean;
+  firstRunPending?: boolean;
+  oidcEnabled?: boolean;
+}
+
+export interface PairedDevice {
+  id: string;
+  name: string;
+  provider: string;
+  roles?: string[];
+  createdAt: string;
+  lastSeen: string;
+  revokedAt?: string | null;
+}
+
+export interface DeviceList {
+  devices: PairedDevice[];
+  activeCount: number;
+  firstRunPending: boolean;
 }
 
 export interface HerdrSession {
@@ -157,6 +178,12 @@ export interface Client {
   checkUpdate?(): Promise<UpdateInfo>;
   mintPairing?(): Promise<PairingTicket>;
   setPairingBaseURL?(base: string): Promise<void>;
+  listDevices?(): Promise<DeviceList>;
+  revokeDevice?(id: string): Promise<void>;
+  revokeAllDevices?(): Promise<number>;
+  setOptionalPassword?(user: string, pass: string): Promise<void>;
+  markFirstRunDone?(): Promise<void>;
+  optionalPasswordEnabled?(): Promise<boolean>;
 }
 
 export interface UpdateInfo {
@@ -207,7 +234,7 @@ async function getJSON<T>(url: string): Promise<T> {
 }
 
 
-async function postJSON(url: string, body?: unknown): Promise<void> {
+async function postJSON<T = void>(url: string, body?: unknown): Promise<T> {
   const res = await fetch(url, {
     method: "POST",
     credentials: "same-origin",
@@ -219,10 +246,15 @@ async function postJSON(url: string, body?: unknown): Promise<void> {
     throw new Error("unauthenticated");
   }
   if (!res.ok) {
-    // The server's refusal text is the useful part — it names the rule that
-    // refused, which is exactly what the person needs to see.
     const detail = (await res.text()).trim();
     throw new Error(detail || `${res.status} ${res.statusText}`);
+  }
+  const text = await res.text();
+  if (!text) return undefined as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return undefined as T;
   }
 }
 
@@ -319,6 +351,20 @@ async function httpClient(): Promise<Client> {
     },
 
     sessions: () => getJSON<SessionList>("/api/sessions"),
+
+    ...(session.canManageDevices
+      ? {
+          listDevices: () => getJSON<DeviceList>("/api/devices"),
+          revokeDevice: (id: string) => postJSON("/api/devices/revoke", { id }),
+          revokeAllDevices: async () => {
+            const r = await postJSON<{ revoked: number }>("/api/devices/revoke-all", {});
+            return r.revoked;
+          },
+          setOptionalPassword: (user: string, pass: string) =>
+            postJSON("/api/auth/password", { user, pass }),
+          markFirstRunDone: () => postJSON("/api/first-run/done", {}),
+        }
+      : {}),
   };
 
   // Independent of read/write mode: a read-only dashboard should still be

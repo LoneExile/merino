@@ -46,6 +46,14 @@ export default function App() {
   const [overlay, setOverlay] = useState<Overlay>(null);
   const [renaming, setRenaming] = useState<Agent | null>(null);
 
+  // First-run pairing: open Settings so the QR block is visible.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.location.search.includes("pair=1")) {
+      setOverlay("settings");
+    }
+  }, []);
+
   const current = useMemo(
     () => agents.find((a) => a.paneId === openPane) ?? null,
     [agents, openPane],

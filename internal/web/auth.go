@@ -52,6 +52,13 @@ type PasswordProvider struct {
 	ip IPResolver
 	// pairing, when set, accepts short-lived one-shot tokens (QR login).
 	pairing *Pairing
+	// devices, when set, mints a per-device identity on QR redeem instead of
+	// impersonating the master password user.
+	devices *DeviceStore
+	// altUser/altPass are an optional user-set phone password (Settings).
+	altUser string
+	altPass [32]byte
+	hasAlt  bool
 
 	mu       sync.Mutex
 	failures map[string]*attemptRecord
@@ -96,6 +103,26 @@ func (p *PasswordProvider) LoginPath() string { return "/login" }
 // SetPairing attaches the short-lived QR/token store. Nil disables token login.
 func (p *PasswordProvider) SetPairing(pair *Pairing) { p.pairing = pair }
 
+// SetDevices attaches the paired-device store used on QR redeem.
+func (p *PasswordProvider) SetDevices(d *DeviceStore) { p.devices = d }
+
+// SetOptionalPassword enables a second username/password for phone login
+// without QR. Empty pass clears it.
+func (p *PasswordProvider) SetOptionalPassword(user, pass string) {
+	if pass == "" {
+		p.hasAlt = false
+		p.altUser = ""
+		p.altPass = [32]byte{}
+		return
+	}
+	if user == "" {
+		user = "phone"
+	}
+	p.altUser = user
+	p.altPass = sha256.Sum256([]byte(pass))
+	p.hasAlt = true
+}
+
 // throttled reports whether this client should be refused outright, and
 // records the attempt.
 func (p *PasswordProvider) throttled(client string) bool {
@@ -130,14 +157,26 @@ func (p *PasswordProvider) clearFailures(client string) {
 	delete(p.failures, client)
 }
 
-// verify checks credentials in constant time.
+// verify checks credentials in constant time against the bootstrap/master
+// account and, when set, the optional phone password.
 func (p *PasswordProvider) verify(user, password string) bool {
 	got := sha256.Sum256([]byte(password))
 	// Compare both fields unconditionally so a wrong username and a wrong
 	// password take the same time.
 	userOK := subtle.ConstantTimeCompare([]byte(user), []byte(p.user))
 	passOK := subtle.ConstantTimeCompare(got[:], p.passHash[:])
-	return userOK&passOK == 1
+	if userOK&passOK == 1 {
+		return true
+	}
+	if !p.hasAlt {
+		// Still touch alt fields to keep timing flatter when unset.
+		_ = subtle.ConstantTimeCompare([]byte(user), []byte(p.altUser))
+		_ = subtle.ConstantTimeCompare(got[:], p.altPass[:])
+		return false
+	}
+	altUserOK := subtle.ConstantTimeCompare([]byte(user), []byte(p.altUser))
+	altPassOK := subtle.ConstantTimeCompare(got[:], p.altPass[:])
+	return altUserOK&altPassOK == 1
 }
 
 // insecureTransport reports whether a Secure cookie set on this request would
@@ -238,13 +277,21 @@ func (p *PasswordProvider) Mount(mux *http.ServeMux, success func(http.ResponseW
 			return
 		}
 		p.clearFailures(client)
-		success(w, r, Identity{Subject: p.user, Name: p.user, Provider: p.Name()})
+		// Prefer the name the user typed when it matched the optional phone
+		// account so the UI does not always show the bootstrap "local" user.
+		name := p.user
+		subject := p.user
+		if p.hasAlt && subtle.ConstantTimeCompare([]byte(user), []byte(p.altUser)) == 1 {
+			name = p.altUser
+			subject = "password:" + p.altUser
+		}
+		success(w, r, Identity{Subject: subject, Name: name, Provider: p.Name(), Roles: []string{"view", "control"}})
 	})
 }
 
-// redeemToken burns a one-shot pairing token and, on success, issues a session
-// as the single configured user. Returns true when the request was handled
-// (success or hard failure already written).
+// redeemToken burns a one-shot pairing token and, on success, issues a session.
+// Prefer a per-device grant when a DeviceStore is wired; fall back to the
+// master user only when devices are unavailable (tests / legacy).
 func (p *PasswordProvider) redeemToken(w http.ResponseWriter, r *http.Request, tok string, success func(http.ResponseWriter, *http.Request, Identity)) bool {
 	if p.pairing == nil {
 		return false
@@ -252,7 +299,24 @@ func (p *PasswordProvider) redeemToken(w http.ResponseWriter, r *http.Request, t
 	if !p.pairing.Consume(tok) {
 		return false
 	}
-	success(w, r, Identity{Subject: p.user, Name: p.user, Provider: "pairing"})
+	if p.devices != nil {
+		label := r.UserAgent()
+		if len(label) > 48 {
+			label = label[:48]
+		}
+		if label == "" {
+			label = "Phone"
+		}
+		_, id, err := p.devices.Mint(label, "pairing", nil)
+		if err != nil {
+			// Do not leave the user with a burned token and no session.
+			writeLoginPage(w, r, "Paired, but saving this device failed. Try minting a new QR.")
+			return true
+		}
+		success(w, r, id)
+		return true
+	}
+	success(w, r, Identity{Subject: p.user, Name: p.user, Provider: "pairing", Roles: []string{"view", "control"}})
 	return true
 }
 

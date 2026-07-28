@@ -54,3 +54,52 @@ export function SetLaunchAtLogin(on: boolean): $CancellablePromise<void> {
 export function SetPairingBaseURL(base: string): $CancellablePromise<void> {
     return $Call.ByID(224920250, base);
 }
+
+/**
+ * ListDevices returns paired phones (including revoked).
+ */
+export function ListDevices(): $CancellablePromise<web$0.Device[]> {
+    return $Call.ByID(3218586955);
+}
+
+/**
+ * RevokeDevice marks one paired device revoked.
+ */
+export function RevokeDevice(id: string): $CancellablePromise<void> {
+    return $Call.ByID(2930031968, id);
+}
+
+/**
+ * RevokeAllDevices panic-revokes every paired phone session grant.
+ */
+export function RevokeAllDevices(): $CancellablePromise<number> {
+    return $Call.ByID(3398594536);
+}
+
+/**
+ * FirstRunPending reports whether the first-run pairing splash should show.
+ */
+export function FirstRunPending(): $CancellablePromise<boolean> {
+    return $Call.ByID(2333329006);
+}
+
+/**
+ * MarkFirstRunDone suppresses the first-run pairing splash on later launches.
+ */
+export function MarkFirstRunDone(): $CancellablePromise<void> {
+    return $Call.ByID(1665771882);
+}
+
+/**
+ * SetOptionalPassword enables username/password phone login without QR.
+ */
+export function SetOptionalPassword(user: string, pass: string): $CancellablePromise<void> {
+    return $Call.ByID(1017037253, user, pass);
+}
+
+/**
+ * OptionalPasswordEnabled reports whether a user-set phone password exists.
+ */
+export function OptionalPasswordEnabled(): $CancellablePromise<boolean> {
+    return $Call.ByID(3872930110);
+}

@@ -26,3 +26,17 @@ export interface PairingTicket {
      */
     "expiresAt": number;
 }
+
+
+export class Device {
+    id: string = "";
+    name: string = "";
+    provider: string = "";
+    roles: string[] = [];
+    createdAt: string = "";
+    lastSeen: string = "";
+    revokedAt?: string | null;
+    constructor(source: Partial<Device> = {}) {
+        Object.assign(this, source);
+    }
+}
