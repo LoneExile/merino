@@ -108,8 +108,7 @@ function renderTermBody(
 
   pieces.forEach((piece, pi) => {
     if (piece.kind === "img") {
-      // Path characters count in plain text too.
-      plainCursor += stripAnsi(piece.path).length;
+      plainCursor += piece.plainLen > 0 ? piece.plainLen : stripAnsi(piece.path).length;
       const src = piece.src;
       nodes.push(
         <button
