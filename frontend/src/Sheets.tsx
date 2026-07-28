@@ -358,13 +358,14 @@ export function SettingsSheet({
     })();
   }, [client, pairBase, refreshDevices]);
 
-  // Tray "Pair phone…" / first-run: jump to QR and mint once.
   useEffect(() => {
     if (!focusPair || !client?.mintPairing) return;
-    const el = document.getElementById("pair-section");
-    el?.scrollIntoView({ behavior: "smooth", block: "start" });
-    if (!pair && !pairBusy) mintPair();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- mint once when focusPair turns on
+    const t = window.setTimeout(() => {
+      document.getElementById("pair-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (!pair) mintPair();
+    }, 50);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once when tray opens pair
   }, [focusPair, client]);
 
   return (
@@ -378,7 +379,7 @@ export function SettingsSheet({
       panelClass="sheet--settings"
       onClose={onClose}
     >
-      
+
       <div className="settings-group">
         <h2 className="settings-group__title">Phone</h2>
         <p className="settings-group__note">QR pairing and what signed-in phones may do.</p>
@@ -459,6 +460,7 @@ export function SettingsSheet({
           )}
         </section>
       )}
+
 {isDesktop && client?.setSessionSwitchEnabled && (
         <section className="settings-block" aria-labelledby="set-session-switch">
           <header className="settings-block__head">
@@ -499,6 +501,7 @@ export function SettingsSheet({
           )}
         </section>
       )}
+
 {(client?.setPasswordLoginEnabled || client?.passwordLoginEnabled) && (
         <section className="settings-block" aria-labelledby="set-pw-login">
           <header className="settings-block__head">
@@ -532,6 +535,7 @@ export function SettingsSheet({
           </div>
         </section>
       )}
+
 {client?.setOptionalPassword && passwordLoginOn && (
         <section className="settings-block" aria-labelledby="set-phone-pass">
           <header className="settings-block__head">
@@ -584,7 +588,6 @@ export function SettingsSheet({
         </section>
       )}
       </div>
-
       <div className="settings-group">
         <h2 className="settings-group__title">Devices</h2>
         <p className="settings-group__note">Revoke a lost phone without rotating secrets.</p>
@@ -698,7 +701,6 @@ export function SettingsSheet({
         </section>
       )}
       </div>
-
       <div className="settings-group">
         <h2 className="settings-group__title">Appearance</h2>
 <section className="settings-block" aria-labelledby="set-appear">
@@ -776,10 +778,7 @@ export function SettingsSheet({
           </div>
         </div>
       </section>
-
-      
       </div>
-
       <div className="settings-group">
         <h2 className="settings-group__title">This Mac</h2>
 {isDesktop && (client?.setLaunchAtLogin || client?.checkUpdate) && (
@@ -875,7 +874,6 @@ export function SettingsSheet({
         </section>
       )}
       </div>
-
       <div className="settings-group">
         <h2 className="settings-group__title">Alerts</h2>
 {client?.pushSubscribe && (
@@ -947,7 +945,6 @@ export function SettingsSheet({
         </section>
       )}
       </div>
-
       <div className="settings-group">
         <h2 className="settings-group__title">Connection</h2>
 <section className="settings-block" aria-labelledby="set-conn">
@@ -980,12 +977,7 @@ export function SettingsSheet({
           </p>
         )}
       </section>
-
-
-
-      
       </div>
-
       <div className="settings-group">
         <h2 className="settings-group__title">Shortcuts</h2>
 <section className="settings-block" aria-labelledby="set-keys">
@@ -1037,8 +1029,6 @@ export function SettingsSheet({
           </li>
         </ul>
       </section>
-
-      
       </div>
 
       {!isDesktop && (
@@ -1049,10 +1039,10 @@ export function SettingsSheet({
           </button>
         </form>
       )}
-
     </Sheet>
   );
 }
+
 
 export interface SessionSheetProps {
   client: Client;
