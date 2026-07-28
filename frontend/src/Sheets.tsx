@@ -867,7 +867,9 @@ export function SessionSheet({ client, onClose }: SessionSheetProps) {
     try {
       await client.switchSession(s.id);
       // Full reload: agent list + streams belong to the old session.
-      window.location.reload();
+      // Keep path only — never re-apply ?pair=1 from a first-run cold start.
+      const next = `${window.location.pathname}${window.location.hash}`;
+      window.location.replace(next || "/");
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
       setBusy(null);
@@ -1099,8 +1101,15 @@ export function PairPhoneSheet({ client, onClose, onOpenSettings }: PairPhoneShe
 
   const hostLabel = pairBase.replace(/^https?:\/\//, "").replace(/\/$/, "") || "—";
 
+  const dismiss = () => {
+    // Closing without scanning still counts as "saw first-run" so the next
+    // panel open is not forced back to /?pair=1.
+    void client.markFirstRunDone?.();
+    onClose();
+  };
+
   return (
-    <Sheet title="Pair phone" subtitle="Scan to sign in · 2 min" panelClass="sheet--pair" onClose={onClose}>
+    <Sheet title="Pair phone" subtitle="Scan to sign in · 2 min" panelClass="sheet--pair" onClose={dismiss}>
       <div className="pair-hero" aria-live="polite">
         {pair ? (
           <img className="pair-hero__qr" src={pair.qrPng} alt="Sign-in QR code" width={220} height={220} />

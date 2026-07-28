@@ -45,13 +45,32 @@ export default function App() {
   const [openPane, setOpenPane] = useState<string | null>(null);
   const [overlay, setOverlay] = useState<Overlay>(null);
   const [renaming, setRenaming] = useState<Agent | null>(null);
-  // First-run pairing: open Settings so the QR block is visible.
+  // First-run pairing: open Pair phone once. Drop ?pair=1 from the URL so a
+  // later full reload (e.g. session switch) does not re-open this sheet.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (window.location.search.includes("pair=1")) {
-      setOverlay("pair");
+    if (!window.location.search.includes("pair=1")) return;
+    setOverlay("pair");
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("pair");
+      const qs = url.searchParams.toString();
+      window.history.replaceState(
+        null,
+        "",
+        url.pathname + (qs ? `?${qs}` : "") + url.hash,
+      );
+    } catch {
+      /* ignore */
     }
   }, []);
+
+  // Once the first-run pair sheet has been shown, stamp it so the next cold
+  // start does not force /?pair=1 again (session switch reloads the panel).
+  useEffect(() => {
+    if (overlay !== "pair") return;
+    void client?.markFirstRunDone?.();
+  }, [overlay, client]);
 
   // Tray context menu → open Settings / Pair phone (desktop only).
   useEffect(() => {
