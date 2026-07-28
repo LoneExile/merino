@@ -73,8 +73,7 @@ State and logs live under `~/Library/Logs/merino/` (macOS).
 ## Brand
 
 **Merino** is the product name. The mark is a sheep (same family as herdr).
-The Go module and GitHub repo may still be path-named `herdr-tunnel` until a
-repo rename; binaries and UI say Merino.
+Repo and module: `github.com/LoneExile/merino`.
 
 ## License
 

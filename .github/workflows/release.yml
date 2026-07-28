@@ -41,10 +41,17 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Test
-        run: |
-          go test ./... -race -count=1
-          cd frontend && npm run typecheck
+      - name: Frontend typecheck
+        working-directory: frontend
+        run: npm run typecheck
+
+      # Must build frontend before any Go step: main.go embeds frontend/dist.
+      - name: Frontend build
+        working-directory: frontend
+        run: npm run build
+
+      - name: Go test
+        run: go test ./... -race -count=1
 
       - name: Install Wails
         run: |
@@ -52,12 +59,9 @@ jobs:
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Package .app
-        # just package = frontend build + wails3 package. CI already ran npm ci;
-        # wails3 package embeds frontend/dist into the macOS bundle.
         env:
           VERSION: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
-          cd frontend && npm run build && cd ..
           # Inject version so desktop CheckUpdate matches the release tag.
           go build -ldflags "-X main.version=${VERSION#v}" -o bin/merino .
           wails3 package
