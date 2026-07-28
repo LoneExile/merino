@@ -93,7 +93,9 @@ func (s *Settings) ListDevices() ([]web.Device, error) {
 	if s.Devices == nil {
 		return nil, fmt.Errorf("device store unavailable")
 	}
-	return s.Devices.List(), nil
+	// Active only — revoked grants are pruned or hidden so the list does not
+	// accumulate dead UA rows from re-pairs.
+	return s.Devices.ListActive(), nil
 }
 
 // RevokeDevice marks one paired device revoked.
@@ -108,6 +110,8 @@ func (s *Settings) RevokeDevice(id string) error {
 	if !ok {
 		return fmt.Errorf("unknown device")
 	}
+	// Drop the row so the list does not keep "revoked" forever.
+	_, _ = s.Devices.PruneRevoked()
 	return nil
 }
 
@@ -116,7 +120,9 @@ func (s *Settings) RevokeAllDevices() (int, error) {
 	if s.Devices == nil {
 		return 0, fmt.Errorf("device store unavailable")
 	}
-	return s.Devices.RevokeAll()
+	// Panic: drop every grant immediately so Settings stays empty and phones
+	// must re-pair. Session cookies die on next API call (device missing).
+	return s.Devices.RemoveAll()
 }
 
 // FirstRunPending reports whether the first-run pairing splash should show.

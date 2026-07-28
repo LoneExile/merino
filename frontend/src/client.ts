@@ -46,7 +46,8 @@ function markAuthDead(): void {
     }
   }
   if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
-    window.location.href = "/login";
+    // Full navigation so a stuck React tree / open SSE cannot keep the PWA frozen.
+    window.location.replace("/login");
   }
 }
 
@@ -335,6 +336,15 @@ async function httpClient(): Promise<Client> {
       es.onerror = (err) => {
         sawError = true;
         onError?.(err);
+        // EventSource hides HTTP status; probe session so a revoked device
+        // (401) immediately jumps to /login instead of freezing on reconnect.
+        if (!isAuthDead()) {
+          void getJSON("/api/session").catch(() => {
+            /* markAuthDead already ran on 401 */
+          });
+        } else {
+          es.close();
+        }
       };
       // First paint: stream may be quiet until something changes.
       pull();
@@ -360,6 +370,9 @@ async function httpClient(): Promise<Client> {
           return;
         }
         onError?.(err);
+        void getJSON("/api/session").catch(() => {
+          es.close();
+        });
       };
       return () => es.close();
     },

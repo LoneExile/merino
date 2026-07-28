@@ -33,7 +33,7 @@ func (s *Server) handleDevicesList(w http.ResponseWriter, r *http.Request, id Id
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "only the desktop operator can list devices"})
 		return
 	}
-	list := s.cfg.Devices.List()
+	list := s.cfg.Devices.ListActive()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"devices":         list,
 		"activeCount":     s.cfg.Devices.CountActive(),
@@ -63,6 +63,7 @@ func (s *Server) handleDeviceRevoke(w http.ResponseWriter, r *http.Request, id I
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown device"})
 		return
 	}
+	_, _ = s.cfg.Devices.PruneRevoked()
 	s.audit(r, id, "device_revoke", "", "id="+body.ID, true, "")
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
@@ -72,7 +73,7 @@ func (s *Server) handleDeviceRevokeAll(w http.ResponseWriter, r *http.Request, i
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "only the desktop operator can revoke devices"})
 		return
 	}
-	n, err := s.cfg.Devices.RevokeAll()
+	n, err := s.cfg.Devices.RemoveAll()
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return

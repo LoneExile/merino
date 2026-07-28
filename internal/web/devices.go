@@ -235,3 +235,57 @@ func (s *DeviceStore) CountActive() int {
 	}
 	return n
 }
+
+// ListActive returns only non-revoked devices (Settings default view).
+func (s *DeviceStore) ListActive() []Device {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]Device, 0, len(s.byID))
+	for _, d := range s.byID {
+		if d.RevokedAt == nil {
+			out = append(out, *d)
+		}
+	}
+	return out
+}
+
+// PruneRevoked deletes revoked rows from disk. Returns how many were removed.
+func (s *DeviceStore) PruneRevoked() (int, error) {
+	if s == nil {
+		return 0, fmt.Errorf("devices: nil store")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := 0
+	for id, d := range s.byID {
+		if d.RevokedAt != nil {
+			delete(s.byID, id)
+			n++
+		}
+	}
+	if n == 0 {
+		return 0, nil
+	}
+	if err := s.persistLocked(); err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
+// RemoveAll deletes every device grant (active and revoked). Panic path.
+func (s *DeviceStore) RemoveAll() (int, error) {
+	if s == nil {
+		return 0, fmt.Errorf("devices: nil store")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := len(s.byID)
+	s.byID = make(map[string]*Device)
+	if err := s.persistLocked(); err != nil {
+		return 0, err
+	}
+	return n, nil
+}
