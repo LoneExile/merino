@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/LoneExile/herdr-tunnel/internal/app"
+	"github.com/LoneExile/merino/internal/app"
 )
 
 // SessionSource lists the herdr sessions this server can see.

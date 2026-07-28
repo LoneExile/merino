@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LoneExile/herdr-tunnel/internal/app"
+	"github.com/LoneExile/merino/internal/app"
 )
 
 // fastIvl is the tick interval used by tests: short enough for the suite to

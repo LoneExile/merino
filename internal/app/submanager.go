@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/LoneExile/herdr-tunnel/internal/herdr"
+	"github.com/LoneExile/merino/internal/herdr"
 )
 
 // SubManager owns the per-pane agent-status subscription.

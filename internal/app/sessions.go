@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/LoneExile/herdr-tunnel/internal/herdr"
+	"github.com/LoneExile/merino/internal/herdr"
 )
 
 // SessionInfo describes one herdr session this machine can reach: the

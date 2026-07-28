@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LoneExile/herdr-tunnel/internal/herdr"
+	"github.com/LoneExile/merino/internal/herdr"
 )
 
 // scriptedPane is a herdr socket that answers pane.read with a scripted

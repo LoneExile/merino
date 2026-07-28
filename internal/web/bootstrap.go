@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/LoneExile/herdr-tunnel/internal/app"
+	"github.com/LoneExile/merino/internal/app"
 )
 
 // StateDir is the conventional on-disk home for dashboard secrets that are not

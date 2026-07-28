@@ -1,4 +1,4 @@
-module github.com/LoneExile/herdr-tunnel
+module github.com/LoneExile/merino
 
 go 1.25.0
 

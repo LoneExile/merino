@@ -19,11 +19,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/LoneExile/herdr-tunnel/internal/app"
-	"github.com/LoneExile/herdr-tunnel/internal/desktop"
-	"github.com/LoneExile/herdr-tunnel/internal/herdr"
-	"github.com/LoneExile/herdr-tunnel/internal/trayicon"
-	"github.com/LoneExile/herdr-tunnel/internal/web"
+	"github.com/LoneExile/merino/internal/app"
+	"github.com/LoneExile/merino/internal/desktop"
+	"github.com/LoneExile/merino/internal/herdr"
+	"github.com/LoneExile/merino/internal/trayicon"
+	"github.com/LoneExile/merino/internal/web"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
@@ -138,7 +138,7 @@ func main() {
 	passProvider = passProv
 	devices = devStore
 
-	desk = desktop.NewSettings(nil, "dev.apinant.merino", version, "LoneExile/herdr-tunnel", pairing, devices, filepath.Dir(app.DefaultAuditPath()), webAddr, passProvider)
+	desk = desktop.NewSettings(nil, "dev.apinant.merino", version, "LoneExile/merino", pairing, devices, filepath.Dir(app.DefaultAuditPath()), webAddr, passProvider)
 	desk.SetWebServer(srv)
 	// Re-apply gate after the server exists so disk toggle and CLI flag cannot
 	// drift from the live switchOn bit (phone canSwitch reads this).

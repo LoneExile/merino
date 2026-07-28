@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LoneExile/herdr-tunnel/internal/herdr"
+	"github.com/LoneExile/merino/internal/herdr"
 )
 
 // The write path (send_text / send_keys) is the riskiest surface in the app:

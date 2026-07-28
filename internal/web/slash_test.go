@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/LoneExile/herdr-tunnel/internal/app"
+	"github.com/LoneExile/merino/internal/app"
 )
 
 func TestSlashEndpointReturnsCatalog(t *testing.T) {

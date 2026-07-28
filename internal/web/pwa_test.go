@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/LoneExile/herdr-tunnel/internal/app"
+	"github.com/LoneExile/merino/internal/app"
 	"testing/fstest"
 )
 

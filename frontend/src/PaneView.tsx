@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { Agent } from "../bindings/github.com/LoneExile/herdr-tunnel/internal/app";
+import type { Agent } from "../bindings/github.com/LoneExile/merino/internal/app";
 import type { Client, SlashCommand } from "./client";
 import { usePaneStream } from "./usePaneStream";
 import { StatusDot } from "./StatusDot";

@@ -20,56 +20,56 @@ import * as $models from "./models.js";
  * The caller is expected to send that path into the agent (SendText / prompt).
  */
 export function AttachImage(paneID: string, declaredMIME: string, data: string | null): $CancellablePromise<string> {
-    return $Call.ByID(1154461307, paneID, declaredMIME, data);
+    return $Call.ByID(3999166657, paneID, declaredMIME, data);
 }
 
 /**
  * AttachImageB64 is the Wails-friendly form: base64-encoded image bytes.
  */
 export function AttachImageB64(paneID: string, mime: string, b64: string): $CancellablePromise<string> {
-    return $Call.ByID(2892862713, paneID, mime, b64);
+    return $Call.ByID(2107673867, paneID, mime, b64);
 }
 
 /**
  * Connection reports herdr connectivity.
  */
 export function Connection(): $CancellablePromise<$models.Conn> {
-    return $Call.ByID(2291788203);
+    return $Call.ByID(1012542057);
 }
 
 /**
  * Counts returns a summary of the herd.
  */
 export function Counts(): $CancellablePromise<$models.Counts> {
-    return $Call.ByID(3973762459);
+    return $Call.ByID(2920819413);
 }
 
 /**
  * Focus brings a pane to the foreground in herdr.
  */
 export function Focus(paneID: string): $CancellablePromise<void> {
-    return $Call.ByID(2403718717, paneID);
+    return $Call.ByID(1388507619, paneID);
 }
 
 /**
  * Interrupt sends Ctrl+c to a pane.
  */
 export function Interrupt(paneID: string): $CancellablePromise<void> {
-    return $Call.ByID(1096132326, paneID);
+    return $Call.ByID(1361927328, paneID);
 }
 
 /**
  * List returns the current agents, most urgent first.
  */
 export function List(): $CancellablePromise<$models.Agent[] | null> {
-    return $Call.ByID(2878599779);
+    return $Call.ByID(1694561137);
 }
 
 /**
  * Read returns recent plain-text output for a pane.
  */
 export function Read(paneID: string, lines: number): $CancellablePromise<string> {
-    return $Call.ByID(3652161007, paneID, lines);
+    return $Call.ByID(1963257493, paneID, lines);
 }
 
 /**
@@ -78,14 +78,14 @@ export function Read(paneID: string, lines: number): $CancellablePromise<string>
  * web dashboard's terminal view; the desktop panel calls Read.
  */
 export function ReadANSI(paneID: string, lines: number): $CancellablePromise<string> {
-    return $Call.ByID(958820652, paneID, lines);
+    return $Call.ByID(3177936194, paneID, lines);
 }
 
 /**
  * RenamePane sets a pane's display name via herdr.
  */
 export function RenamePane(paneID: string, name: string): $CancellablePromise<void> {
-    return $Call.ByID(4042646775, paneID, name);
+    return $Call.ByID(3501485573, paneID, name);
 }
 
 /**
@@ -99,7 +99,7 @@ export function RenamePane(paneID: string, name: string): $CancellablePromise<vo
  * exist".
  */
 export function RenameTab(tabID: string, name: string): $CancellablePromise<void> {
-    return $Call.ByID(2509532040, tabID, name);
+    return $Call.ByID(484518810, tabID, name);
 }
 
 /**
@@ -107,21 +107,21 @@ export function RenameTab(tabID: string, name: string): $CancellablePromise<void
  * for why there is no store-backed existence check here.
  */
 export function RenameWorkspace(workspaceID: string, name: string): $CancellablePromise<void> {
-    return $Call.ByID(2695363026, workspaceID, name);
+    return $Call.ByID(1179562728, workspaceID, name);
 }
 
 /**
  * Respond answers an agent's approval prompt with a canned reply.
  */
 export function Respond(paneID: string, text: string): $CancellablePromise<void> {
-    return $Call.ByID(212324936, paneID, text);
+    return $Call.ByID(789622870, paneID, text);
 }
 
 /**
  * SendKeys presses allowlisted keys in a pane.
  */
 export function SendKeys(paneID: string, keys: string[] | null): $CancellablePromise<void> {
-    return $Call.ByID(2624467717, paneID, keys);
+    return $Call.ByID(2484043855, paneID, keys);
 }
 
 /**
@@ -136,7 +136,7 @@ export function SendKeys(paneID: string, keys: string[] | null): $CancellablePro
  *   - Plain shell pane → SubmitText (send_text + Enter).
  */
 export function SendText(paneID: string, text: string): $CancellablePromise<void> {
-    return $Call.ByID(1262299878, paneID, text);
+    return $Call.ByID(4058322216, paneID, text);
 }
 
 /**
@@ -144,7 +144,7 @@ export function SendText(paneID: string, text: string): $CancellablePromise<void
  * best-effort probed for reachability and pane/agent counts.
  */
 export function Sessions(): $CancellablePromise<$models.SessionInfo[] | null> {
-    return $Call.ByID(482238306);
+    return $Call.ByID(2577011260);
 }
 
 /**
@@ -155,7 +155,7 @@ export function Sessions(): $CancellablePromise<$models.SessionInfo[] | null> {
  * to the store projection for the pane.
  */
 export function SlashCommands(paneID: string, agent: string, query: string): $CancellablePromise<$models.SlashCommand[] | null> {
-    return $Call.ByID(2459391730, paneID, agent, query);
+    return $Call.ByID(1176936456, paneID, agent, query);
 }
 
 /**
@@ -168,7 +168,7 @@ export function SlashCommands(paneID: string, agent: string, query: string): $Ca
  * away, not when the app itself shuts down.
  */
 export function StreamOutput(paneID: string, lines: number, onText: any): $CancellablePromise<void> {
-    return $Call.ByID(24953646, paneID, lines, onText);
+    return $Call.ByID(1824822516, paneID, lines, onText);
 }
 
 /**
@@ -176,7 +176,7 @@ export function StreamOutput(paneID: string, lines: number, onText: any): $Cance
  * escapes instead of stripping them. See ReadANSI.
  */
 export function StreamOutputANSI(paneID: string, lines: number, onText: any): $CancellablePromise<void> {
-    return $Call.ByID(2565354021, paneID, lines, onText);
+    return $Call.ByID(78234507, paneID, lines, onText);
 }
 
 /**
@@ -188,5 +188,5 @@ export function StreamOutputANSI(paneID: string, lines: number, onText: any): $C
  * path, so a caller can never point the server at an arbitrary socket.
  */
 export function SwitchSession(id: string): $CancellablePromise<void> {
-    return $Call.ByID(3209187573, id);
+    return $Call.ByID(769073955, id);
 }

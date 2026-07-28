@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LoneExile/herdr-tunnel/internal/app"
+	"github.com/LoneExile/merino/internal/app"
 )
 
 // readSSEEvent reads one Server-Sent Events frame ("event: ...\ndata:

@@ -1,6 +1,6 @@
 package web
 
-import "github.com/LoneExile/herdr-tunnel/internal/app"
+import "github.com/LoneExile/merino/internal/app"
 
 // Policy decides what an authenticated identity may do with a given pane.
 //

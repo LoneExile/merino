@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LoneExile/herdr-tunnel/internal/herdr"
+	"github.com/LoneExile/merino/internal/herdr"
 )
 
 // SwitchSession must resolve id against the real session list before ever

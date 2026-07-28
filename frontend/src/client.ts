@@ -17,7 +17,7 @@
 // not have is an absent method, so `if (client.streamPane)` is a real check the
 // type system enforces — rather than a flag the UI can forget to honour.
 
-import type { Agent } from "../bindings/github.com/LoneExile/herdr-tunnel/internal/app";
+import type { Agent } from "../bindings/github.com/LoneExile/merino/internal/app";
 
 /** Once a 401 is seen, stop SSE reconnect storms and boot retries. */
 let authDead = false;

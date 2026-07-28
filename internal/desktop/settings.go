@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/LoneExile/herdr-tunnel/internal/web"
+	"github.com/LoneExile/merino/internal/web"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 

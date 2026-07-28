@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Agent } from "../bindings/github.com/LoneExile/herdr-tunnel/internal/app";
+import type { Agent } from "../bindings/github.com/LoneExile/merino/internal/app";
 import { isAuthDead, makeClient, onAuthDead, type Client, type Session } from "./client";
 
 /**

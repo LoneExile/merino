@@ -3,7 +3,7 @@ package web
 import (
 	"net/http"
 
-	"github.com/LoneExile/herdr-tunnel/internal/app"
+	"github.com/LoneExile/merino/internal/app"
 )
 
 // OIDCConfig enables the optional OAuth rung of the identity ladder.

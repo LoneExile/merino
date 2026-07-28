@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LoneExile/herdr-tunnel/internal/herdr"
+	"github.com/LoneExile/merino/internal/herdr"
 )
 
 // Live proof that SendText on an agent pane goes through agent.prompt and that

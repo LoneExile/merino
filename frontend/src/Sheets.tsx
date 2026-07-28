@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Agent } from "../bindings/github.com/LoneExile/herdr-tunnel/internal/app";
+import type { Agent } from "../bindings/github.com/LoneExile/merino/internal/app";
 import type { Client, HerdrSession, AccessOrigin, PairedDevice, PairingTicket, RenameKind, Session, SessionList, UpdateInfo } from "./client";
 import { Sheet } from "./Sheet";
 import type { ThemePref } from "./theme";

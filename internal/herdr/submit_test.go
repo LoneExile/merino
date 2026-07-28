@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/LoneExile/herdr-tunnel/internal/herdr"
+	"github.com/LoneExile/merino/internal/herdr"
 )
 
 // call is one request the client made to the socket.

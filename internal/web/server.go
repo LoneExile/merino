@@ -19,7 +19,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/LoneExile/herdr-tunnel/internal/app"
+	"github.com/LoneExile/merino/internal/app"
 )
 
 // Source supplies the data the web UI renders. Implemented by app.AgentsService.

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/LoneExile/herdr-tunnel/internal/app"
+	"github.com/LoneExile/merino/internal/app"
 )
 
 // mountPaste serves staged paste images so the dashboard can render them

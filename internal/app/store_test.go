@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/LoneExile/herdr-tunnel/internal/herdr"
+	"github.com/LoneExile/merino/internal/herdr"
 )
 
 func pane(id, agent string, status herdr.AgentStatus) herdr.PaneInfo {

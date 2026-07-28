@@ -12,7 +12,7 @@ priority: "extra"
 maintainer: ${GIT_COMMITTER_NAME} <${GIT_COMMITTER_EMAIL}>
 description: "Merino — herdr from the menu bar"
 vendor: "LoneExile"
-homepage: "https://github.com/LoneExile/herdr-tunnel"
+homepage: "https://github.com/LoneExile/merino"
 license: "Apache-2.0"
 release: "1"
 

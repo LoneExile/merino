@@ -17,7 +17,7 @@ import (
 // menubar tool needs. The Settings sheet surfaces the result; installing is
 // still a one-click open of the release page (no silent binary replace).
 type Updater struct {
-	// Owner/repo, e.g. "LoneExile/herdr-tunnel".
+	// Owner/repo, e.g. "LoneExile/merino".
 	Repo string
 	// Current is the running version string (build/config.yml info.version).
 	Current string

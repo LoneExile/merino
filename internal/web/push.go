@@ -27,7 +27,7 @@ import (
 
 	webpush "github.com/SherClockHolmes/webpush-go"
 
-	"github.com/LoneExile/herdr-tunnel/internal/app"
+	"github.com/LoneExile/merino/internal/app"
 
 	"net"
 	"net/url"
@@ -55,7 +55,7 @@ const (
 	// project's own repository is the stable, always-valid https: URI to
 	// use instead of shipping a claim known to fail against a real push
 	// service.
-	pushVAPIDSubject = "https://github.com/LoneExile/herdr-tunnel"
+	pushVAPIDSubject = "https://github.com/LoneExile/merino"
 )
 
 // pushKeys are the two subscription secrets a browser hands back from

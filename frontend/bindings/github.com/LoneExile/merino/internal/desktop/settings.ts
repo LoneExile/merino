@@ -24,113 +24,113 @@ import * as $models from "./models.js";
  * The Settings sheet uses these as one-tap QR bases before any tunnel setup.
  */
 export function AccessOrigins(): $CancellablePromise<web$0.AccessOrigin[] | null> {
-    return $Call.ByID(2231323965);
+    return $Call.ByID(3263902163);
 }
 
 /**
  * CheckUpdate looks up the latest GitHub release.
  */
 export function CheckUpdate(): $CancellablePromise<$models.UpdateInfo> {
-    return $Call.ByID(544266481);
+    return $Call.ByID(3345746207);
 }
 
 /**
  * DefaultPairBase is the best LAN/local origin for a first QR.
  */
 export function DefaultPairBase(): $CancellablePromise<string> {
-    return $Call.ByID(3168493468);
+    return $Call.ByID(682371734);
 }
 
 /**
  * FirstRunPending reports whether the first-run pairing splash should show.
  */
 export function FirstRunPending(): $CancellablePromise<boolean> {
-    return $Call.ByID(2333329006);
+    return $Call.ByID(1017264072);
 }
 
 /**
  * LaunchAtLogin reports whether the app opens at login.
  */
 export function LaunchAtLogin(): $CancellablePromise<boolean> {
-    return $Call.ByID(4163321067);
+    return $Call.ByID(3253433921);
 }
 
 /**
  * ListDevices returns paired phones (including revoked).
  */
 export function ListDevices(): $CancellablePromise<web$0.Device[] | null> {
-    return $Call.ByID(3218586955);
+    return $Call.ByID(2060505397);
 }
 
 /**
  * MarkFirstRunDone suppresses the first-run pairing splash on later launches.
  */
 export function MarkFirstRunDone(): $CancellablePromise<void> {
-    return $Call.ByID(1665771882);
+    return $Call.ByID(2793653572);
 }
 
 /**
  * MintPairing returns a short-lived QR ticket for phone login.
  */
 export function MintPairing(): $CancellablePromise<web$0.PairingTicket> {
-    return $Call.ByID(62924868);
+    return $Call.ByID(4038686222);
 }
 
 /**
  * OptionalPasswordEnabled reports whether a user-set phone password exists.
  */
 export function OptionalPasswordEnabled(): $CancellablePromise<boolean> {
-    return $Call.ByID(3872930110);
+    return $Call.ByID(2544313696);
 }
 
 /**
  * PasswordLoginEnabled reports whether HTTP username/password sign-in is on.
  */
 export function PasswordLoginEnabled(): $CancellablePromise<boolean> {
-    return $Call.ByID(723565347);
+    return $Call.ByID(3476260345);
 }
 
 /**
  * RevokeAllDevices panic-revokes every paired phone session grant.
  */
 export function RevokeAllDevices(): $CancellablePromise<number> {
-    return $Call.ByID(3398594536);
+    return $Call.ByID(359353362);
 }
 
 /**
  * RevokeDevice marks one paired device revoked.
  */
 export function RevokeDevice(id: string): $CancellablePromise<void> {
-    return $Call.ByID(2930031968, id);
+    return $Call.ByID(1098761902, id);
 }
 
 /**
  * SessionSwitchEnabled reports whether phone/web may switch herdr sessions.
  */
 export function SessionSwitchEnabled(): $CancellablePromise<boolean> {
-    return $Call.ByID(2814779745);
+    return $Call.ByID(2060384351);
 }
 
 /**
  * SetLaunchAtLogin enables or disables open-at-login.
  */
 export function SetLaunchAtLogin(on: boolean): $CancellablePromise<void> {
-    return $Call.ByID(768195563, on);
+    return $Call.ByID(1033293945, on);
 }
 
 /**
  * SetOptionalPassword enables username/password phone login without QR.
  */
 export function SetOptionalPassword(user: string, pass: string): $CancellablePromise<void> {
-    return $Call.ByID(1017037253, user, pass);
+    return $Call.ByID(400382803, user, pass);
 }
 
 /**
  * SetPairingBaseURL sets the public origin encoded into QR links
- * (e.g. https://herdr-tunnel.0dl.me).
+ * (e.g. https://merino.example).
  */
 export function SetPairingBaseURL(base: string): $CancellablePromise<void> {
-    return $Call.ByID(224920250, base);
+    return $Call.ByID(2392527176, base);
 }
 
 /**
@@ -138,7 +138,7 @@ export function SetPairingBaseURL(base: string): $CancellablePromise<void> {
  * QR pairing is unaffected. Re-enable anytime from this desktop Settings UI.
  */
 export function SetPasswordLoginEnabled(on: boolean): $CancellablePromise<void> {
-    return $Call.ByID(1377255459, on);
+    return $Call.ByID(4138468289, on);
 }
 
 /**
@@ -146,12 +146,12 @@ export function SetPasswordLoginEnabled(on: boolean): $CancellablePromise<void> 
  * Persists to disk and updates the live gate immediately.
  */
 export function SetSessionSwitchEnabled(on: boolean): $CancellablePromise<void> {
-    return $Call.ByID(3468469857, on);
+    return $Call.ByID(983522247, on);
 }
 
 /**
  * SetWebServer wires the live web server for runtime Settings toggles.
  */
 export function SetWebServer(srv: web$0.Server | null): $CancellablePromise<void> {
-    return $Call.ByID(2389942825, srv);
+    return $Call.ByID(2770529491, srv);
 }

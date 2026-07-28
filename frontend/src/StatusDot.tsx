@@ -1,4 +1,4 @@
-import type { AgentStatus } from "../bindings/github.com/LoneExile/herdr-tunnel/internal/herdr";
+import type { AgentStatus } from "../bindings/github.com/LoneExile/merino/internal/herdr";
 
 const LABEL: Record<string, string> = {
   blocked: "Needs you",

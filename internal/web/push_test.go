@@ -18,7 +18,7 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/LoneExile/herdr-tunnel/internal/app"
+	"github.com/LoneExile/merino/internal/app"
 )
 
 // pushTestServer builds a push-enabled Server the same way writeServer builds

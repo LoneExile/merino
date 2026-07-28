@@ -11,8 +11,8 @@ import { Events } from "@wailsio/runtime";
 import {
   AgentsService,
   type Agent,
-} from "../bindings/github.com/LoneExile/herdr-tunnel/internal/app";
-import * as DesktopSettings from "../bindings/github.com/LoneExile/herdr-tunnel/internal/desktop/settings";
+} from "../bindings/github.com/LoneExile/merino/internal/app";
+import * as DesktopSettings from "../bindings/github.com/LoneExile/merino/internal/desktop/settings";
 import type { Client, Session, SessionList, SlashCommand } from "./client";
 
 const EVENT_AGENTS_CHANGED = "agents:changed";
