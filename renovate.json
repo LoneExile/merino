@@ -1,0 +1,45 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":semanticCommits",
+    ":dependencyDashboard",
+    ":prConcurrentLimit10"
+  ],
+  "labels": ["dependencies"],
+  "rangeStrategy": "bump",
+  "prHourlyLimit": 4,
+  "timezone": "Asia/Bangkok",
+  "schedule": ["after 2am and before 6am every weekday"],
+  "packageRules": [
+    {
+      "description": "Automerge safe npm patch/minor when CI is green",
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["patch", "minor"],
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": false
+    },
+    {
+      "description": "Automerge Go module patches",
+      "matchManagers": ["gomod"],
+      "matchUpdateTypes": ["patch"],
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": false
+    },
+    {
+      "description": "GitHub Actions — group and automerge patches",
+      "matchManagers": ["github-actions"],
+      "groupName": "github-actions",
+      "automerge": true,
+      "matchUpdateTypes": ["patch", "minor"]
+    },
+    {
+      "description": "Major bumps need a human",
+      "matchUpdateTypes": ["major"],
+      "automerge": false
+    }
+  ],
+  "postUpdateOptions": ["gomodTidy"]
+}

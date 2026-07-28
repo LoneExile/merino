@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to release (e.g. v0.2.0)"
+        description: "Tag to release (e.g. v0.1.0)"
         required: true
 
 permissions:
@@ -19,12 +19,22 @@ concurrency:
 
 jobs:
   macos:
+    name: macOS package
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
         with:
-          # workflow_dispatch must build the tag being published, not main HEAD.
           ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Resolve version
+        id: ver
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          TAG="${TAG#refs/tags/}"
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Building Merino $TAG ($VERSION)"
 
       - uses: actions/setup-go@v6
         with:
@@ -60,38 +70,147 @@ jobs:
 
       - name: Package .app
         env:
-          VERSION: ${{ github.event.inputs.tag || github.ref_name }}
+          VERSION: ${{ steps.ver.outputs.version }}
         run: |
-          # Inject version so desktop CheckUpdate matches the release tag.
-          go build -ldflags "-X main.version=${VERSION#v}" -o bin/merino .
+          set -euo pipefail
+          go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o bin/merino .
           wails3 package
+          # Canonical on-disk name for Homebrew cask + Finder.
+          if [ -d bin/merino.app ]; then
+            rm -rf bin/Merino.app
+            mv bin/merino.app bin/Merino.app
+          elif [ -d build/bin/merino.app ]; then
+            rm -rf bin/Merino.app
+            mv build/bin/merino.app bin/Merino.app
+          else
+            echo "Merino.app not found after package"
+            find bin build -maxdepth 3 -name '*.app' -print || true
+            exit 1
+          fi
+          # Keep a stable binary path for the bare CLI artefact.
+          cp "bin/Merino.app/Contents/MacOS/merino" bin/merino
+          chmod +x bin/merino
 
       - name: Stage artefacts
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
         run: |
+          set -euo pipefail
           mkdir -p dist
-          if [ -d bin/merino.app ]; then
-            ditto -c -k --sequesterRsrc --keepParent bin/merino.app dist/merino-macos.zip
-          elif [ -d build/bin/merino.app ]; then
-            ditto -c -k --sequesterRsrc --keepParent build/bin/merino.app dist/merino-macos.zip
-          fi
-          # Also ship the bare binary if the package step left one.
-          for f in bin/merino build/bin/merino; do
-            if [ -f "$f" ]; then
-              cp "$f" dist/merino-darwin-arm64
-              chmod +x dist/merino-darwin-arm64
-              break
-            fi
-          done
-          ls -la dist
-          test -n "$(ls -A dist)" || { echo "no artefacts staged"; exit 1; }
+          ARCH="$(uname -m)"
+          case "$ARCH" in
+            arm64) ARCH_LABEL=arm64 ;;
+            x86_64) ARCH_LABEL=amd64 ;;
+            *) ARCH_LABEL="$ARCH" ;;
+          esac
+
+          ditto -c -k --sequesterRsrc --keepParent bin/Merino.app \
+            "dist/Merino-${VERSION}-macos-${ARCH_LABEL}.zip"
+
+          cp bin/merino "dist/merino-${VERSION}-darwin-${ARCH_LABEL}"
+          chmod +x "dist/merino-${VERSION}-darwin-${ARCH_LABEL}"
+
+          # Stable names (latest-friendly) for docs / brew livecheck helpers.
+          cp "dist/Merino-${VERSION}-macos-${ARCH_LABEL}.zip" \
+            "dist/merino-macos-${ARCH_LABEL}.zip"
+          cp "dist/merino-${VERSION}-darwin-${ARCH_LABEL}" \
+            "dist/merino-darwin-${ARCH_LABEL}"
+
           (cd dist && shasum -a 256 * > SHA256SUMS)
+          ls -la dist
+          cat dist/SHA256SUMS
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: Merino ${{ steps.ver.outputs.tag }}
           generate_release_notes: true
           files: |
             dist/*
+          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Optional auto-bump of LoneExile/homebrew-merino.
+  # Create a classic PAT with `repo` on the tap, add it as secret HOMEBREW_TAP_TOKEN.
+  bump-homebrew:
+    name: Bump Homebrew cask
+    needs: macos
+    runs-on: ubuntu-latest
+    steps:
+      - name: Skip without token
+        id: gate
+        env:
+          TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [ -z "${TOKEN}" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "HOMEBREW_TAP_TOKEN not set — bump the cask manually after release"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Resolve version
+        if: steps.gate.outputs.skip == 'false'
+        id: ver
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          TAG="${TAG#refs/tags/}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v5
+        if: steps.gate.outputs.skip == 'false'
+        with:
+          repository: LoneExile/homebrew-merino
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+
+      - name: Patch cask from release assets
+        if: steps.gate.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.ver.outputs.version }}
+          TAG: ${{ steps.ver.outputs.tag }}
+        run: |
+          set -euo pipefail
+          API="repos/LoneExile/merino/releases/tags/${TAG}"
+          # gh downloads over HTTPS without dumping bodies into the log.
+          ARM_NAME=$(gh api "$API" --jq '.assets[].name' | grep -E 'macos-arm64\.zip$' | head -1)
+          test -n "$ARM_NAME"
+          gh release download "$TAG" -R LoneExile/merino -p "$ARM_NAME" -D /tmp/assets
+          ARM_SHA=$(sha256sum "/tmp/assets/$ARM_NAME" | awk '{print $1}')
+          INTEL_NAME=$(gh api "$API" --jq '.assets[].name' | grep -E 'macos-amd64\.zip$' | head -1 || true)
+          if [ -n "${INTEL_NAME:-}" ]; then
+            gh release download "$TAG" -R LoneExile/merino -p "$INTEL_NAME" -D /tmp/assets
+            INTEL_SHA=$(sha256sum "/tmp/assets/$INTEL_NAME" | awk '{print $1}')
+          else
+            INTEL_SHA=$ARM_SHA
+          fi
+          CASK=tap/Casks/merino.rb
+          python3 - "$VERSION" "$ARM_SHA" "$INTEL_SHA" "$CASK" <<'PY'
+          import pathlib, re, sys
+          ver, arm, intel, path = sys.argv[1:5]
+          p = pathlib.Path(path)
+          t = p.read_text()
+          t = re.sub(r'version "[^"]+"', f'version "{ver}"', t)
+          t = re.sub(
+              r'sha256 arm:\s*"[0-9a-fA-F]+",\s*\n\s*intel:\s*"[0-9a-fA-F]+"',
+              f'sha256 arm:   "{arm}",\n         intel: "{intel}"',
+              t,
+          )
+          p.write_text(t)
+          print(p.read_text())
+          PY
+
+      - name: Commit and push
+        if: steps.gate.outputs.skip == 'false'
+        working-directory: tap
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/merino.rb
+          git diff --cached --quiet && echo "no cask changes" && exit 0
+          git commit -m "chore: merino ${{ steps.ver.outputs.version }}"
+          git push
