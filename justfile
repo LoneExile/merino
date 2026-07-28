@@ -50,8 +50,20 @@ app: package
     # Rebuilds every time on purpose: a stale bundle that silently predates
     # your changes is the most confusing state this project has.
     -pkill -f 'merino.app/Contents/MacOS' 2>/dev/null || true
-    open {{app_bundle}}
-    @echo "running — look at the top-right of your menu bar"
+    -pkill -f 'herdr-tunnel.app/Contents/MacOS' 2>/dev/null || true
+    # `open` talks to Launch Services. After a bundle-id rename (herdr-tunnel →
+    # merino) LS can return -600 even though the binary is fine. Fall back to
+    # a direct exec so `just app` still lands a menu-bar icon.
+    -open "{{app_bundle}}" 2>/dev/null || open -n "{{app_bundle}}" 2>/dev/null || true
+    if ! pgrep -f 'merino.app/Contents/MacOS/merino' >/dev/null 2>&1; then \
+      nohup "{{app_bundle}}/Contents/MacOS/merino" >/tmp/merino-app.log 2>&1 & \
+      sleep 0.3; \
+    fi
+    @if pgrep -f 'merino.app/Contents/MacOS/merino' >/dev/null 2>&1; then \
+      echo "running — look at the top-right of your menu bar"; \
+    else \
+      echo "failed to start Merino — see /tmp/merino-app.log"; exit 1; \
+    fi
 
 # Phone dashboard (loopback by default — safer).
 #
