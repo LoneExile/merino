@@ -2350,7 +2350,7 @@ code.mono {
 
 /* Pair phone sheet — QR-first */
 .sheet--pair {
-  gap: var(--space-s);
+  gap: var(--space-sm);
 }
 .pair-hero {
   display: grid;
@@ -2380,8 +2380,6 @@ code.mono {
   color: var(--color-ink-3);
   background: var(--color-paper-2);
   border: 1px solid var(--color-rule);
-}
-  100% { background-position: -100% 0; }
 }
 .pair-hero__token {
   margin: 0;
