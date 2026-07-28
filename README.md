@@ -38,6 +38,7 @@ No CLI polling. No `herdr` subprocess. One persistent socket, push events only.
 
 ```bash
 brew tap LoneExile/merino
+brew trust LoneExile/merino   # Homebrew third-party tap
 brew install --cask merino
 ```
 
