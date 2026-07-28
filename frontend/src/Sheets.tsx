@@ -1054,14 +1054,16 @@ export function SessionSheet({ client, onClose }: SessionSheetProps) {
   }, [client]);
 
   const pick = async (s: HerdrSession) => {
-    if (!client.switchSession || s.current) return;
+    if (s.current || busy !== null) return;
+    if (!client.switchSession) {
+      setErr("This build cannot switch herdr sessions.");
+      return;
+    }
     setBusy(s.id);
     setErr(null);
     try {
       await client.switchSession(s.id);
-      // The agent list, every open stream and the pane view all belong to the
-      // old session. Reload rather than trying to reconcile them — a stale
-      // pane id pointed at a new session is worse than a blink.
+      // Full reload: agent list + streams belong to the old session.
       window.location.reload();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -1082,8 +1084,9 @@ export function SessionSheet({ client, onClose }: SessionSheetProps) {
         {data?.sessions.map((s) => (
           <li key={s.id}>
             <button
+              type="button"
               className={`row row--session${s.current ? " is-on" : ""}`}
-              disabled={!data.canSwitch || s.current || busy !== null}
+              disabled={s.current || !s.reachable || busy !== null}
               onClick={() => void pick(s)}
             >
               <span className="row__main">

@@ -109,8 +109,21 @@ func main() {
 		// tokens are one-shot + short TTL; device grants are revocable.
 		webAddr = "0.0.0.0:8730"
 	}
-	// Runtime gate: CLI flag OR Settings-persisted toggle (default off).
-	switchOK := *allowSessionSwitch || web.SessionSwitchEnabled(filepath.Dir(app.DefaultAuditPath()))
+	// Session-switch gate:
+	//   CLI --allow-session-switch → on
+	//   else session-switch.json from Mac Settings (default off when missing)
+	//   menubar GUI also treats missing file as on so phone switch works
+	//   zero-config (matches pre-toggle behaviour); toggle still forces off.
+	stateDirForSwitch := filepath.Dir(app.DefaultAuditPath())
+	switchOK := *allowSessionSwitch
+	if !*allowSessionSwitch {
+		if web.SessionSwitchExplicit(stateDirForSwitch) {
+			switchOK = web.SessionSwitchEnabled(stateDirForSwitch)
+		} else if *listen == "" {
+			// Menubar double-click path, no explicit preference yet.
+			switchOK = true
+		}
+	}
 	var startErr error
 	srv, pair, passProv, devStore, startErr := startWeb(agents, webAddr, *behindProxy, *allowWrites, switchOK, assets, logger)
 	if startErr != nil {
@@ -124,6 +137,13 @@ func main() {
 
 	desk = desktop.NewSettings(nil, "dev.apinant.herdr-tunnel", version, "LoneExile/herdr-tunnel", pairing, devices, filepath.Dir(app.DefaultAuditPath()), webAddr, passProvider)
 	desk.SetWebServer(srv)
+	// Re-apply gate after the server exists so disk toggle and CLI flag cannot
+	// drift from the live switchOn bit (phone canSwitch reads this).
+	if err := srv.SetSessionSwitch(switchOK); err != nil {
+		logger.Debug("session switch gate not applied", "err", err)
+	} else {
+		logger.Info("session switch gate", "enabled", switchOK)
+	}
 
 	wailsApp = application.New(application.Options{
 		Name:        "Herdr Tunnel",

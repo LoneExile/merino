@@ -181,8 +181,14 @@ type sessionSwitchFile struct {
 	Enabled bool `json:"enabled"`
 }
 
+// SessionSwitchExplicit is true when the operator has saved a preference.
+func SessionSwitchExplicit(dir string) bool {
+	_, err := os.ReadFile(sessionSwitchPath(dir))
+	return err == nil
+}
+
 // SessionSwitchEnabled reports whether phone/web may switch herdr sessions.
-// Missing file ⇒ disabled (safe default; same as --allow-session-switch off).
+// Missing file ⇒ false (caller may choose a GUI default).
 func SessionSwitchEnabled(dir string) bool {
 	raw, err := os.ReadFile(sessionSwitchPath(dir))
 	if err != nil {
