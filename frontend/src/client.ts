@@ -467,9 +467,10 @@ async function httpClient(): Promise<Client> {
       postJSON(`/api/${kind === "workspace" ? "workspaces" : kind + "s"}/${pane(id)}/rename`, {
         name,
       }),
-    ...(session.canSwitchSession
-      ? { switchSession: (id: string) => postJSON("/api/sessions/switch", { id }) }
-      : {}),
+    // Always wire the method; the server enforces the Mac toggle at request
+    // time. Gating on boot-time canSwitchSession left phones unable to switch
+    // after the operator flipped the setting without a full PWA reload.
+    switchSession: (id: string) => postJSON("/api/sessions/switch", { id }),
   };
 }
 
