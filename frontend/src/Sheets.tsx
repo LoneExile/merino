@@ -820,8 +820,8 @@ export function SettingsSheet({
             autoCorrect="off"
           />
           <p className="settings-copy settings-copy--quiet">
-            Localhost only works on this Mac. LAN needs the phone on the same
-            network. Public tunnel is optional.
+            Localhost = this Mac only. LAN / Tailscale = plain HTTP (paste code; no
+            in-page camera). Public HTTPS tunnel unlocks camera QR scan.
           </p>
           <button
             type="button"
