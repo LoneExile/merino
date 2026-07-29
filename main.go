@@ -67,6 +67,10 @@ func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
 		Level: logLevel(),
 	}))
+	// Helpers outside main (showPanel, showPanelWhenReady) log through the
+	// package-level slog functions; without this they would write to Go's
+	// default INFO handler and their debug lines would vanish.
+	slog.SetDefault(logger)
 
 	client := herdr.New(os.Getenv("HERDR_SOCK"))
 
@@ -208,6 +212,7 @@ func main() {
 	// show the desktop through the corners (otherwise the opaque NSWindow
 	// fill paints a square halo behind the rounded webview).
 	firstRun := desk != nil && desk.FirstRunPending()
+	logger.Debug("first run check", "pending", firstRun, "stateDir", desk.StateDir)
 	panelURL := "/"
 	if firstRun {
 		panelURL = "/?pair=1"
@@ -217,8 +222,10 @@ func main() {
 		Title:  "Merino",
 		Width:  panelW,
 		Height: panelH,
-		// First run: show immediately so the QR is the first paint after install.
-		Hidden:           !firstRun,
+		// Always born hidden. A non-Hidden window is placed by macOS before the
+		// tray exists to position it, which is what put the first-run panel in
+		// the middle of the screen; showPanelWhenReady reveals it instead.
+		Hidden:           true,
 		AlwaysOnTop:      true,
 		Frameless:        true,
 		DisableResize:    true,
@@ -309,7 +316,7 @@ func main() {
 	// AttachWindow gives us positioning under the icon. Its automatic
 	// click-toggle is deliberately replaced below: setting OnClick suppresses
 	// the smart default, which cannot know about the blur race above.
-	tray.AttachWindow(panel).WindowOffset(6)
+	tray.AttachWindow(panel).WindowOffset(trayWindowOffset)
 	tray.OnClick(func() {
 		if since := time.Since(time.Unix(0, blurHiddenAt.Load())); since < blurDismissWindow {
 			return // this click is what caused the blur; treat it as dismissal
@@ -320,6 +327,13 @@ func main() {
 		}
 		showPanel(tray, panel)
 	})
+
+	// First run: greet with the QR pairing panel, but only once the tray can
+	// place it under its own icon. Run() below blocks, so this must be a
+	// goroutine started before it.
+	if firstRun {
+		go showPanelWhenReady(tray, panel)
+	}
 
 	// Wails runs configured trays itself once the app is running, so no
 	// explicit tray.Run() is needed here.
@@ -364,6 +378,55 @@ const panelW, panelH = 420, 560
 // second click still reopens the panel.
 const blurDismissWindow = 300 * time.Millisecond
 
+// trayWindowOffset is the gap in points between the menubar and the panel's
+// top edge. Used for both the attached-window offset and every explicit
+// PositionWindow call, so the panel lands in the same place either way.
+const trayWindowOffset = 6
+
+// trayReadyTries and trayReadyPoll bound the wait for the system tray to come
+// up before a programmatic first show.
+const (
+	trayReadyTries = 60
+	trayReadyPoll  = 50 * time.Millisecond
+)
+
+// showPanelWhenReady reveals the panel under the tray icon once the tray can
+// actually place it there.
+//
+// Two separate races have to clear first:
+//
+//   - App.Run starts pending runnables — the system tray among them — in
+//     goroutines, so at the end of main() the tray impl does not exist yet and
+//     PositionWindow fails with "system tray not running".
+//   - The impl appears a beat before its NSStatusItem button has a laid-out
+//     frame. Positioning against that zero frame puts the panel's centre at
+//     x = -panelW/2, which the native code clamps to the left screen edge
+//     (systemtray_darwin.m). PositionWindow still reports success, so err ==
+//     nil is not proof of placement — the resulting frame is.
+//
+// Creating the window non-Hidden loses both races at once, which is what
+// parked the first-run panel in the middle of the screen. The tray icon lives
+// at the right of the menubar, so a real placement is never flush left: treat
+// x <= 0 as "not laid out yet" and keep polling.
+func showPanelWhenReady(tray *application.SystemTray, panel *application.WebviewWindow) {
+	for i := range trayReadyTries {
+		if err := tray.PositionWindow(panel, trayWindowOffset); err == nil {
+			if x, y := panel.Position(); x > 0 {
+				showPanel(tray, panel)
+				// The frame is the only evidence that the first show landed
+				// under the icon; no screenshot is reachable from a headless
+				// session.
+				slog.Debug("first-run panel shown", "x", x, "y", y,
+					"waited", time.Duration(i)*trayReadyPoll)
+				return
+			}
+		}
+		time.Sleep(trayReadyPoll)
+	}
+	slog.Warn("tray icon never reported a frame; showing panel unpositioned")
+	showPanel(tray, panel)
+}
+
 // showPanel positions the panel under the tray icon and reveals it.
 func showPanel(tray *application.SystemTray, panel *application.WebviewWindow) {
 	// Re-assert the size on every show. macOS restores a window's previous
@@ -371,7 +434,7 @@ func showPanel(tray *application.SystemTray, panel *application.WebviewWindow) {
 	// keep coming back at the wrong size.
 	panel.SetSize(panelW, panelH)
 
-	if err := tray.PositionWindow(panel, 6); err != nil {
+	if err := tray.PositionWindow(panel, trayWindowOffset); err != nil {
 		// Positioning fails only before the tray is running; showing the panel
 		// at its default location still beats doing nothing.
 		slog.Debug("position panel", "err", err)
