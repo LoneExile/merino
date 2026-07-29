@@ -136,21 +136,26 @@ Enable them in **Settings → System** to be told the moment an agent needs you,
 
 On iPhone this requires installing the dashboard to your Home Screen first (**Share → Add to Home Screen**). Safari tabs do not receive push.
 
-## Reaching it from outside your network
+## Reaching it from your phone
 
-Merino serves the dashboard on port **8730**. Over anything other than your own LAN, put it behind TLS — a Cloudflare tunnel or Tailscale, not a forwarded port.
+Merino serves the dashboard on port **8730** and listens on your whole network
+by default, so nothing needs configuring for the two common cases:
 
-If you run Merino behind a TLS terminator, start it with `--behind-proxy` so session cookies are marked secure and the login throttle counts the real client rather than the proxy.
+- **Same Wi‑Fi** — pair with the QR and you are done.
+- **Tailscale** — the pairing sheet lists your Tailscale address alongside the
+  LAN one. Pick that and the phone works from anywhere on your tailnet.
 
-| Setting | Purpose |
-| --- | --- |
-| `--listen ADDR` | Dashboard bind address (default `0.0.0.0:8730`) |
-| `--behind-proxy` | Secure cookies, trust proxy client-IP headers |
-| `--allow-writes` | Force phone writes on at startup |
-| `--allow-session-switch` | Let the dashboard change which herdr session it drives |
-| `MERINO_PUBLIC_URL` | Public origin baked into pairing QR links |
-| `MERINO_DEBUG=1` | Verbose logging |
-| `HERDR_SOCK` | herdr socket path, if not the default |
+Both are in **Pair phone…**, which shows every address your Mac can be reached
+at and mints a one-shot code for the one you choose.
+
+> **Going further than that needs the command line.** Serving Merino through a
+> public HTTPS tunnel needs `--behind-proxy` and a public origin for the QR
+> links, and neither can be set from the app — a bundle launched from Finder
+> takes no flags and inherits no shell environment. Run the binary from a
+> terminal instead; see [CONTRIBUTING.md](CONTRIBUTING.md#the-loop).
+
+Do not simply forward port 8730 from your router. It is plain HTTP, and the
+dashboard can type into live terminals.
 
 Your data — audit log, device grants, keys — stays under `~/Library/Logs/merino/`.
 

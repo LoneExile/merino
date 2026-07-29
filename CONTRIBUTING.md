@@ -53,6 +53,28 @@ so it binds `0.0.0.0:8730` but without `--behind-proxy`. Over a public tunnel
 that means cookies are not marked secure and the login throttle counts the
 proxy's IP. Use `just tunnel` for that.
 
+### Flags and environment
+
+These reach the **binary**, not the bundle. A `.app` launched from Finder,
+Homebrew or login items is given no arguments and inherits no shell
+environment, so none of this is reachable by someone running the installed
+app — which is why the README does not list it.
+
+| Flag / env | Purpose |
+| --- | --- |
+| `--listen ADDR` | Dashboard bind. Empty means `0.0.0.0:8730`, which is what the bundle uses. |
+| `--behind-proxy` | Secure cookies, and trust the proxy's client-IP headers for the login throttle. Required behind a TLS terminator. |
+| `--allow-writes` | Force phone writes on, overriding the persisted toggle. |
+| `--allow-session-switch` | Let the dashboard repoint at a different herdr session. |
+| `MERINO_USER` / `MERINO_PASS` | Operator credentials. Password via env, never argv. |
+| `MERINO_PUBLIC_URL` | Public origin baked into pairing QR links. |
+| `MERINO_DEBUG=1` | Verbose logging, including per-frame tray animation. |
+| `HERDR_SOCK` | herdr socket path, if not the default. |
+
+Anything a user should be able to change has to be a **persisted setting** the
+panel can write, not a flag: see `session-switch.json`, `allow-writes.json` and
+`password-login.json` under `~/Library/Logs/merino/` for the pattern.
+
 ## Before you push
 
 ```bash
