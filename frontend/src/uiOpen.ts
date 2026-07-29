@@ -52,3 +52,33 @@ export function parseUiOpen(payload: unknown): UiOpen {
   }
   return { target: null, tab: null };
 }
+
+/**
+ * A request to move Settings to a tab.
+ *
+ * `seq` exists because this is a COMMAND, not a value. Held as plain state,
+ * asking for the same tab twice is a no-op — React sees an unchanged value,
+ * nothing re-renders, and the tab stays wherever the user last dragged it.
+ * That is not hypothetical: open Settings from "Check for Updates…", switch
+ * to Pairing, dismiss the panel by clicking away (which hides the window but
+ * does NOT unmount the app), then use the menu item again. Without a
+ * distinct identity per request the second invocation does nothing.
+ */
+export interface TabRequest {
+  tab: SettingsTabId;
+  /** Monotonic per request. Two requests are never equal, even for one tab. */
+  seq: number;
+}
+
+/**
+ * Folds a parsed deep link into the previous request. A link that names no
+ * tab (bare `settings`) clears the request, so the plain menu item keeps
+ * restoring whichever tab the user was last in.
+ */
+export function nextTabRequest(
+  prev: TabRequest | null,
+  tab: SettingsTabId | null,
+): TabRequest | null {
+  if (!tab) return null;
+  return { tab, seq: (prev?.seq ?? 0) + 1 };
+}

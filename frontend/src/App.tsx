@@ -8,7 +8,7 @@ import { PaneView } from "./PaneView";
 import { StatusDot, statusLabel } from "./StatusDot";
 import { Palette, type Command } from "./Palette";
 import { PairPhoneSheet, RenameSheet, SessionSheet, SettingsSheet } from "./Sheets";
-import { parseUiOpen, type SettingsTabId } from "./uiOpen";
+import { nextTabRequest, parseUiOpen, type TabRequest } from "./uiOpen";
 
 type Overlay = "settings" | "sessions" | "palette" | "pair" | null;
 
@@ -45,10 +45,10 @@ export default function App() {
 
   const [openPane, setOpenPane] = useState<string | null>(null);
   const [overlay, setOverlay] = useState<Overlay>(null);
-  // Which Settings tab a deep link asked for. Null means "whichever the user
-  // was last in". The tray menu sets it so "Check for Updates…" cannot land
-  // on Display.
-  const [settingsTab, setSettingsTab] = useState<SettingsTabId | null>(null);
+  // The Settings tab a deep link asked for, as a command rather than a value:
+  // asking twice for the same tab must move the sheet twice. Null means
+  // "whichever tab the user was last in".
+  const [tabRequest, setTabRequest] = useState<TabRequest | null>(null);
   const [renaming, setRenaming] = useState<Agent | null>(null);
   // First-run pairing: open Pair phone once. Drop ?pair=1 from the URL so a
   // later full reload (e.g. session switch) does not re-open this sheet.
@@ -95,7 +95,7 @@ export default function App() {
               : undefined;
           const { target, tab } = parseUiOpen(data);
           if (target === "settings") {
-            setSettingsTab(tab);
+            setTabRequest((prev) => nextTabRequest(prev, tab));
             setOverlay("settings");
           } else if (target === "pair") {
             setOverlay("pair");
@@ -189,7 +189,7 @@ export default function App() {
     setOverlay(null);
     // Drop the deep link, or the next plain Settings open would be dragged
     // back to the tray menu's tab instead of the user's last one.
-    setSettingsTab(null);
+    setTabRequest(null);
   }, []);
 
   const counts = useMemo(() => {
@@ -411,7 +411,7 @@ export default function App() {
           onWrap={setWrap}
           onPref={setPref}
           termFont={termFont}
-          initialTab={settingsTab}
+          tabRequest={tabRequest}
           onClose={closeOverlay}
         />
       )}

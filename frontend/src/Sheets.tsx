@@ -3,7 +3,7 @@ import type { Agent } from "../bindings/github.com/LoneExile/merino/internal/app
 import type { Client, HerdrSession, AccessOrigin, PairedDevice, PairingTicket, RenameKind, Session, SessionList, UpdateInfo } from "./client";
 import { Sheet } from "./Sheet";
 import type { ThemePref } from "./theme";
-import { SETTINGS_TAB_IDS, type SettingsTabId } from "./uiOpen";
+import { SETTINGS_TAB_IDS, type SettingsTabId, type TabRequest } from "./uiOpen";
 
 export interface SettingsSheetProps {
   session: Session | null;
@@ -24,8 +24,8 @@ export interface SettingsSheetProps {
     canZoomIn: boolean;
     canZoomOut: boolean;
   };
-  /** Deep link from the tray menu: force this tab instead of the last one. */
-  initialTab?: SettingsTabId | null;
+  /** Deep-link command from the tray menu; see TabRequest. */
+  tabRequest?: TabRequest | null;
   onClose: () => void;
 }
 
@@ -133,7 +133,7 @@ export function SettingsSheet({
   wrap,
   onWrap,
   termFont,
-  initialTab,
+  tabRequest,
   onClose,
 }: SettingsSheetProps) {
   const [pushStatus, setPushStatus] = useState<PushStatus>("checking");
@@ -166,7 +166,7 @@ export function SettingsSheet({
   const [panicArmed, setPanicArmed] = useState(false);
   const [sessionErr, setSessionErr] = useState<string | null>(null);
 
-  const [tab, setTab] = useState<TabId>(() => initialTab ?? readTab());
+  const [tab, setTab] = useState<TabId>(() => tabRequest?.tab ?? readTab());
   const selectTab = useCallback((id: TabId) => {
     setTab(id);
     try {
@@ -179,8 +179,10 @@ export function SettingsSheet({
   // The sheet stays mounted while open, so a second deep link (tray menu →
   // Check for Updates… while Settings is already up) has to move the tab too.
   useEffect(() => {
-    if (initialTab) selectTab(initialTab);
-  }, [initialTab, selectTab]);
+    if (tabRequest) selectTab(tabRequest.tab);
+    // Keyed on the whole request: a repeat of the same tab is a new object
+    // with a new seq, so the menu item works every time, not just the first.
+  }, [tabRequest, selectTab]);
 
   const refreshDevices = useCallback(() => {
     if (!client?.listDevices) return;

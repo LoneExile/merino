@@ -12,7 +12,13 @@
  * not the tray, and uiOpen.ts is that seam — the Go side emits these exact
  * strings (see the tray menu in main.go).
  */
-import { parseUiOpen, isSettingsTabId, SETTINGS_TAB_IDS } from "../uiOpen.ts";
+import {
+  parseUiOpen,
+  isSettingsTabId,
+  nextTabRequest,
+  SETTINGS_TAB_IDS,
+  type TabRequest,
+} from "../uiOpen.ts";
 
 let failures = 0;
 
@@ -63,8 +69,46 @@ check("isSettingsTabId accepts a real id", isSettingsTabId("about"));
 check("isSettingsTabId rejects a near miss", !isSettingsTabId("abouts"));
 check("isSettingsTabId rejects a non-string", !isSettingsTabId(3));
 
+// Regression: the deep link is a command, not a value.
+//
+// Reported sequence — "Check for Updates…" lands on System, switch to
+// Pairing, dismiss, then "Check for Updates…" again and it shows Pairing.
+// Dismissing by clicking away hides the window without unmounting the app,
+// so the request survives; asking for "system" a second time has to produce
+// a DISTINCT request or nothing downstream re-runs.
+const first = nextTabRequest(null, "system");
+check("first request names the tab", first?.tab === "system");
+
+const repeat = nextTabRequest(first, "system");
+check("repeat names the same tab", repeat?.tab === "system");
+check(
+  "repeat is a distinct request",
+  repeat !== first && repeat?.seq !== first?.seq,
+  `seq ${first?.seq} -> ${repeat?.seq}`,
+);
+
+// Ten presses of one menu item are ten distinct requests, never a plateau.
+let cur: TabRequest | null = null;
+const seqs = new Set<number>();
+for (let i = 0; i < 10; i++) {
+  cur = nextTabRequest(cur, "system");
+  seqs.add(cur!.seq);
+}
+check("ten repeats are ten distinct requests", seqs.size === 10, `${seqs.size} distinct`);
+
+// Bare "settings" clears the request so the plain menu item still restores
+// the tab the user was last in.
+check("no tab clears the request", nextTabRequest(first, null) === null);
+
+// Switching target tabs keeps advancing rather than restarting.
+const moved = nextTabRequest(repeat, "pairing");
+check(
+  "a different tab still advances",
+  moved?.tab === "pairing" && moved!.seq > repeat!.seq,
+);
+
 if (failures > 0) {
   console.error(`${failures} check(s) failed`);
   process.exit(1);
 }
-console.log(`uiOpen: ${Object.keys(TRAY_MENU).length} tray routes + guards ok`);
+console.log(`uiOpen: ${Object.keys(TRAY_MENU).length} tray routes + request/guard checks ok`);
