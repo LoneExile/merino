@@ -170,14 +170,28 @@ cliff := "git-cliff@2.13.1"
 
 # Regenerate CHANGELOG.md for every tag, plus the release being prepared.
 #
-#   just changelog v0.2.0
+#   just changelog v0.2.1
 #
-# Hand-written upgrade notes already in a section survive: git-cliff rewrites
-# the file from commits, so re-add them if a regeneration drops one. Check the
-# diff before committing — that is the point of committing this file.
+# git-cliff rebuilds the whole file from commit messages, so any hand-written
+# upgrade note is silently dropped. That prose exists nowhere else — it is not
+# in the history to recover from — so this counts the notes before and after
+# and says so loudly rather than leaving it to whoever reads the diff. It has
+# already caught one real loss.
 changelog tag:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    marker='^> \*\*Upgrade note'
+    before=$(grep -c "$marker" CHANGELOG.md 2>/dev/null || true)
     npx --yes {{cliff}} --tag {{tag}} -o CHANGELOG.md
-    @echo "review the diff, then commit CHANGELOG.md before tagging"
+    after=$(grep -c "$marker" CHANGELOG.md 2>/dev/null || true)
+    if [ "${after:-0}" -lt "${before:-0}" ]; then
+      echo >&2
+      echo "WARNING: regeneration dropped $(( before - after )) upgrade note(s)." >&2
+      echo "They are not recoverable from commit messages. Restore them with:" >&2
+      echo "    git diff CHANGELOG.md" >&2
+      echo >&2
+    fi
+    echo "review the diff, then commit CHANGELOG.md before tagging"
 
 # What the NEXT release would say, without writing anything.
 changelog-preview:
