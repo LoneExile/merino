@@ -112,6 +112,50 @@ On a phone that is the difference between usable and not.
 Heights use `dvh`, never `vh`; the composer carries
 `env(safe-area-inset-bottom)`.
 
+### Tabbed sheets
+
+One scrolling region is the rule; it does not say the region may be six screens
+deep. Settings reached eleven blocks in a 420 x 560 menubar popover — measured
+at 3.9 screens of scroll on the web client and worse on the desktop panel,
+where four Mac-only blocks are added. A scroll that long is a hunt, and
+Settings is never browsed: someone opens it to do exactly one thing.
+
+So a sheet carrying more than two sections gets a **tab strip**, and the strip
+is a `toolbar` slot on `Sheet` — a fixed row between the header and the body,
+outside the scroll container. Navigation that scrolls away is not navigation.
+
+```
+┌─ Head ─────────────────────────────┐   Fixed.
+│  Settings                       ×  │
+├────────────────────────────────────┤
+│ PAIRING ACCESS DISPLAY SYSTEM ABOUT│   Fixed. The router.
+├────────────────────────────────────┤
+│                                    │
+│  one intent's blocks               │   The single scrolling region.
+│                                    │
+└────────────────────────────────────┘
+```
+
+Rules:
+
+- Tabs are named by **intent**, not by implementation. *Pairing* (who is
+  connected), *Access* (what they may do, and how they sign in), *Display*,
+  *System* (this machine), *About* (read-only reference).
+- A tab whose blocks all fail their client checks is **not rendered**. A phone
+  has no Mac settings; a tab that opens empty is worse than no tab.
+- Labels are mono UPPERCASE `0.08em`, the same voice as every other label.
+  Selection is a 2 px accent underline — the accent marks position, it never
+  fills a control.
+- Roving tabindex, arrow keys move selection and focus together, Home/End jump
+  to the ends, selection wraps.
+- Selection persists across opens (`localStorage`). Returning to the tab you
+  were last in beats a fixed landing every time.
+- When a tab renders exactly one block, its `<h3>` is visually hidden — the tab
+  already named it. It stays in the DOM for `aria-labelledby`.
+
+Target: **no tab exceeds one screen** on the 420 x 560 panel. Reference content
+(shortcut tables) may exceed it; controls may not.
+
 ## Typography
 
 Self-hosted via `@fontsource` — no external font CDN. The app is served behind

@@ -1308,6 +1308,14 @@ html.keyboard-open .jump-dock {
   min-height: 0;
 }
 
+/* A sheet that passes a toolbar gains a third fixed row between head and
+ * body. Scoped to the modifier: without it a two-child sheet would put its
+ * body in an `auto` row and lose its scroll container. */
+.sheet--tabbed {
+  grid-template-rows: auto auto minmax(0, 1fr);
+  min-height: 0;
+}
+
 @media (min-width: 40rem) {
   .scrim {
     align-items: center;
@@ -1368,12 +1376,72 @@ html.keyboard-open .jump-dock {
 
 .sheet--settings {
   width: min(26rem, 100%);
-  /* Head sticky; body scrolls. minmax(0,1fr) is required so the grid child
-   * can shrink below content height on mobile. */
+  /* Head and tabs sticky; body scrolls. minmax(0,1fr) is required so the grid
+   * child can shrink below content height on mobile. */
   max-height: min(88dvh, 100%);
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   min-height: 0;
+}
+
+/* Section nav. Eleven blocks in a 420px popover is a scroll hunt; the tabs
+ * turn Settings into a router — one screen per intent. The strip sits outside
+ * .sheet__body so it never scrolls away from the pane it controls. */
+.settings-tabs {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  border-bottom: 1px solid var(--color-rule);
+  background: color-mix(in oklab, var(--color-paper-2) 70%, var(--color-paper));
+}
+
+.settings-tabs__tab {
+  appearance: none;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  padding: var(--space-xs) var(--space-2xs) calc(var(--space-xs) - 1px);
+  min-height: 34px;
+  font: 600 var(--text-2xs) / 1 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ink-3);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
+
+.settings-tabs__tab:hover {
+  color: var(--color-ink-2);
+}
+
+.settings-tabs__tab.is-on {
+  color: var(--color-ink);
+  /* Underline, not a filled pill: the accent marks position, it does not
+   * decorate a control. */
+  border-bottom-color: var(--color-accent);
+}
+
+.settings-tabs__tab:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+
+/* When a tab owns exactly one block, the tab name already titles it. Keep the
+ * heading for assistive tech (aria-labelledby still resolves) but drop the
+ * visible duplicate. */
+.settings-pane--single .settings-block__head h3 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.settings-pane--single .settings-block__head:not(:has(> :nth-child(2))) {
+  display: none;
 }
 
 .sheet--settings .sheet__body {
@@ -1483,7 +1551,9 @@ html.keyboard-open .jump-dock {
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: 1fr;
+  /* Two columns wherever the sheet is wide enough. Six single-file rows push
+   * About past a screen; paired rows keep the whole reference visible. */
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
   gap: 1px;
   background: var(--color-rule);
   border: 1px solid var(--color-rule);

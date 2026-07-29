@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { Agent } from "../bindings/github.com/LoneExile/merino/internal/app";
 import type { Client, HerdrSession, AccessOrigin, PairedDevice, PairingTicket, RenameKind, Session, SessionList, UpdateInfo } from "./client";
 import { Sheet } from "./Sheet";
@@ -38,6 +38,32 @@ const WRAP_OPTS: { value: boolean; label: string }[] = [
 ];
 
 type PushStatus = "checking" | "unsupported" | "denied" | "off" | "subscribed";
+
+type TabId = "pairing" | "access" | "display" | "system" | "about";
+
+interface SettingsTab {
+  id: TabId;
+  label: string;
+  /** Blocks this tab would actually render. Zero means the tab is hidden. */
+  blocks: number;
+  body: ReactNode;
+}
+
+const count = (...flags: boolean[]) => flags.filter(Boolean).length;
+
+const TAB_KEY = "merino.settings.tab";
+
+const TAB_IDS: TabId[] = ["pairing", "access", "display", "system", "about"];
+
+function readTab(): TabId {
+  try {
+    const raw = localStorage.getItem(TAB_KEY) as TabId | null;
+    if (raw && TAB_IDS.includes(raw)) return raw;
+  } catch {
+    /* private mode / storage disabled */
+  }
+  return "pairing";
+}
 
 // Feature-detects rather than trusting client.pushSubscribe alone: a server
 // with push enabled says nothing about whether THIS browser can act on it.
@@ -135,6 +161,16 @@ export function SettingsSheet({
   const [pwLoginBusy, setPwLoginBusy] = useState(false);
   const [panicArmed, setPanicArmed] = useState(false);
   const [sessionErr, setSessionErr] = useState<string | null>(null);
+
+  const [tab, setTab] = useState<TabId>(readTab);
+  const selectTab = useCallback((id: TabId) => {
+    setTab(id);
+    try {
+      localStorage.setItem(TAB_KEY, id);
+    } catch {
+      /* private mode / storage disabled */
+    }
+  }, []);
 
   const refreshDevices = useCallback(() => {
     if (!client?.listDevices) return;
@@ -264,6 +300,725 @@ export function SettingsSheet({
 
 
 
+  // Which blocks exist at all on this client. Computed once so the tab strip
+  // can hide a section that would open empty — a phone has no Mac settings,
+  // and a tab that leads nowhere is worse than no tab.
+  const showPair = isDesktop && Boolean(client?.mintPairing || onOpenPair);
+  const showDevices = Boolean(client?.listDevices);
+  const showWrites = isDesktop && Boolean(client?.setAllowWritesEnabled);
+  const showSwitch = isDesktop && Boolean(client?.setSessionSwitchEnabled);
+  const showPwLogin = Boolean(client?.setPasswordLoginEnabled || client?.passwordLoginEnabled);
+  const showPhonePass = Boolean(client?.setOptionalPassword) && passwordLoginOn;
+  const showMac = isDesktop && Boolean(client?.setLaunchAtLogin || client?.checkUpdate);
+  const showPush = Boolean(client?.pushSubscribe);
+
+  const tabs: SettingsTab[] = [
+    {
+      id: "pairing",
+      label: "Pairing",
+      blocks: count(showPair, showDevices),
+      body: (
+        <>
+          {showPair && (
+            <section className="settings-block" aria-labelledby="set-pair">
+              <header className="settings-block__head">
+                <h3 id="set-pair">Pair phone</h3>
+              </header>
+              <p className="settings-copy settings-copy--quiet">
+                Mint a one-shot QR for a phone on this network.
+              </p>
+              <button type="button" className="btn btn--solid" onClick={() => onOpenPair?.()}>
+                Show pair QR
+              </button>
+            </section>
+          )}
+
+          {showDevices && (
+            <section className="settings-block" aria-labelledby="set-devices">
+              <header className="settings-block__head">
+                <h3 id="set-devices">Paired devices</h3>
+              </header>
+              <p className="settings-copy">
+                Each phone that scans a QR gets its own grant. Revoke a lost phone without rotating the Mac password.
+              </p>
+              {devices.length === 0 && (
+                <p className="settings-copy settings-copy--quiet">No phones paired yet.</p>
+              )}
+              <ul className="list list--plain">
+                {devices.map((d) => (
+                  <li key={d.id}>
+                    <div className={`row row--session${d.revokedAt ? "" : " is-on"}`}>
+                      <span className="row__main">
+                        <span className="row__title">{displayDeviceName(d.name || "")}</span>
+                        <span className="row__sub mono">
+                          {d.provider}
+                          {d.revokedAt ? " · revoked" : " · active"}
+                          {" · "}
+                          {d.id.slice(0, 8)}
+                        </span>
+                      </span>
+                      {!d.revokedAt && client?.revokeDevice && (
+                        <button
+                          type="button"
+                          className="btn btn--icon"
+                          disabled={devBusy}
+                          aria-label={`Revoke ${d.name || d.id}`}
+                          title="Revoke"
+                          onClick={() => {
+                            setDevBusy(true);
+                            setDevErr(null);
+                            void client.revokeDevice?.(d.id)
+                              .then(() => refreshDevices())
+                              .catch((e) => setDevErr(e instanceof Error ? e.message : String(e)))
+                              .finally(() => setDevBusy(false));
+                          }}
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              {client?.revokeAllDevices && devices.some((d) => !d.revokedAt) && (
+                <div className="panic-row">
+                  {!panicArmed ? (
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={devBusy}
+                      onClick={() => setPanicArmed(true)}
+                    >
+                      Panic revoke all phones
+                    </button>
+                  ) : (
+                    <>
+                      <p className="settings-copy settings-copy--warn">
+                        Revoke every active phone grant? They must scan a new QR.
+                      </p>
+                      <div className="panic-row__actions">
+                        <button
+                          type="button"
+                          className="btn"
+                          disabled={devBusy}
+                          onClick={() => setPanicArmed(false)}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn--signout"
+                          disabled={devBusy}
+                          onClick={() => {
+                            setDevBusy(true);
+                            setDevErr(null);
+                            void client
+                              .revokeAllDevices?.()
+                              .then((n) => {
+                                setPanicArmed(false);
+                                refreshDevices();
+                                void client.markFirstRunDone?.();
+                                if (typeof n === "number" && n === 0) {
+                                  setDevErr("No devices were revoked (store may be out of sync).");
+                                }
+                              })
+                              .catch((e) => setDevErr(e instanceof Error ? e.message : String(e)))
+                              .finally(() => setDevBusy(false));
+                          }}
+                        >
+                          {devBusy ? "Revoking…" : "Confirm revoke all"}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+              {devErr && (
+                <p className="composer__err" role="alert">
+                  {devErr}
+                </p>
+              )}
+            </section>
+          )}
+        </>
+      ),
+    },
+    {
+      id: "access",
+      label: "Access",
+      blocks: count(showWrites, showSwitch, showPwLogin, showPhonePass),
+      body: (
+        <>
+          {showWrites && (
+            <section className="settings-block" aria-labelledby="set-writes">
+              <header className="settings-block__head">
+                <h3 id="set-writes">Phone writes</h3>
+              </header>
+              <div className="settings-row settings-row--toggle">
+                <div className="settings-row__meta">
+                  <span className="settings-row__label">Allow phone writes</span>
+                  <span className="settings-row__hint">
+                    Phones can answer asks, type, and interrupt agents (audit-logged)
+                  </span>
+                </div>
+                <label className="switch">
+                  <input
+                    type="checkbox"
+                    checked={allowWritesOn}
+                    disabled={allowWritesBusy}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      setAllowWritesBusy(true);
+                      setWritesErr(null);
+                      void client
+                        ?.setAllowWritesEnabled?.(on)
+                        .then(() => setAllowWritesOn(on))
+                        .catch((err) =>
+                          setWritesErr(err instanceof Error ? err.message : String(err)),
+                        )
+                        .finally(() => setAllowWritesBusy(false));
+                    }}
+                  />
+                  <span className="switch__ui" />
+                </label>
+              </div>
+              {writesErr && (
+                <p className="composer__err" role="alert">
+                  {writesErr}
+                </p>
+              )}
+              {allowWritesOn && (
+                <p className="settings-copy settings-copy--warn">
+                  Paired phones can type into live terminals. Every write is recorded in the host audit log.
+                </p>
+              )}
+            </section>
+          )}
+
+          {showSwitch && (
+            <section className="settings-block" aria-labelledby="set-session-switch">
+              <header className="settings-block__head">
+                <h3 id="set-session-switch">Session switch</h3>
+              </header>
+              <div className="settings-row settings-row--toggle">
+                <div className="settings-row__meta">
+                  <span className="settings-row__label">Allow session switch</span>
+                  <span className="settings-row__hint">
+                    Phones can change which herdr session this drives
+                  </span>
+                </div>
+                <label className="switch">
+                  <input
+                    type="checkbox"
+                    checked={sessionSwitchOn}
+                    disabled={sessionSwitchBusy}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      setSessionSwitchBusy(true);
+                      setSessionErr(null);
+                      void client
+                        ?.setSessionSwitchEnabled?.(on)
+                        .then(() => setSessionSwitchOn(on))
+                        .catch((err) =>
+                          setSessionErr(err instanceof Error ? err.message : String(err)),
+                        )
+                        .finally(() => setSessionSwitchBusy(false));
+                    }}
+                  />
+                  <span className="switch__ui" />
+                </label>
+              </div>
+              {sessionErr && (
+                <p className="composer__err" role="alert">
+                  {sessionErr}
+                </p>
+              )}
+            </section>
+          )}
+
+          {showPwLogin && (
+            <section className="settings-block" aria-labelledby="set-pw-login">
+              <header className="settings-block__head">
+                <h3 id="set-pw-login">Password sign-in</h3>
+              </header>
+              <div className="settings-row settings-row--toggle">
+                <div className="settings-row__meta">
+                  <span className="settings-row__label">Allow username / password</span>
+                  <span className="settings-row__hint">Off by default: phones pair with QR only</span>
+                </div>
+                <label className="switch">
+                  <input
+                    type="checkbox"
+                    checked={passwordLoginOn}
+                    disabled={pwLoginBusy || !client?.setPasswordLoginEnabled}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      setPwLoginBusy(true);
+                      void client
+                        ?.setPasswordLoginEnabled?.(on)
+                        .then(() => setPasswordLoginOn(on))
+                        .catch(() => {})
+                        .finally(() => setPwLoginBusy(false));
+                    }}
+                  />
+                  <span className="switch__ui" />
+                </label>
+              </div>
+            </section>
+          )}
+
+          {showPhonePass && (
+            <section className="settings-block" aria-labelledby="set-phone-pass">
+              <header className="settings-block__head">
+                <h3 id="set-phone-pass">Phone password</h3>
+              </header>
+              <p className="settings-copy">
+                Lets a browser sign in with user/pass when you are off the home Wi‑Fi (with a public URL). Leave blank and save to clear.
+              </p>
+              <label className="field__label" htmlFor="phone-user">
+                Username
+              </label>
+              <input
+                id="phone-user"
+                className="field__input"
+                value={phoneUser}
+                onChange={(e) => setPhoneUser(e.target.value)}
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
+              />
+              <label className="field__label" htmlFor="phone-pass">
+                Password
+              </label>
+              <input
+                id="phone-pass"
+                className="field__input"
+                type="password"
+                value={phonePass}
+                onChange={(e) => setPhonePass(e.target.value)}
+                autoComplete="new-password"
+              />
+              <button
+                type="button"
+                className="btn btn--solid"
+                onClick={() => {
+                  setPassMsg(null);
+                  void client?.setOptionalPassword?.(phoneUser.trim() || "phone", phonePass)
+                    .then(() => setPassMsg(phonePass ? "Phone password saved." : "Phone password cleared."))
+                    .catch((e) => setPassMsg(e instanceof Error ? e.message : String(e)));
+                }}
+              >
+                Save phone password
+              </button>
+              {session?.oidcEnabled && (
+                <p className="settings-copy settings-copy--quiet">
+                  OAuth is configured on the server (scaffold). Full provider login lands in a follow-up.
+                </p>
+              )}
+              {passMsg && <p className="settings-copy">{passMsg}</p>}
+            </section>
+          )}
+        </>
+      ),
+    },
+    {
+      id: "display",
+      label: "Display",
+      blocks: 1,
+      body: (
+        <section className="settings-block" aria-labelledby="set-appear">
+          <header className="settings-block__head">
+            <h3 id="set-appear">Appearance</h3>
+          </header>
+          <div className="settings-row">
+            <div className="settings-row__meta">
+              <span className="settings-row__label">Theme</span>
+              <span className="settings-row__hint">
+                {pref === "system" ? `Follows device · ${actual}` : `Locked · ${pref}`}
+              </span>
+            </div>
+            <div className="seg seg--compact" role="radiogroup" aria-label="Theme">
+              {THEMES.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={pref === t.id}
+                  className={`seg__opt${pref === t.id ? " is-on" : ""}`}
+                  onClick={() => onPref(t.id)}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="settings-row">
+            <div className="settings-row__meta">
+              <span className="settings-row__label">Line wrap</span>
+              <span className="settings-row__hint">
+                {wrap ? "Long lines fold to the pane width" : "Scroll sideways for long lines"}
+              </span>
+            </div>
+            <div className="seg seg--compact" role="radiogroup" aria-label="Wrap long lines">
+              {WRAP_OPTS.map((o) => (
+                <button
+                  key={String(o.value)}
+                  type="button"
+                  role="radio"
+                  aria-checked={wrap === o.value}
+                  className={`seg__opt${wrap === o.value ? " is-on" : ""}`}
+                  onClick={() => onWrap(o.value)}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="settings-row">
+            <div className="settings-row__meta">
+              <span className="settings-row__label">Terminal size</span>
+              <span className="settings-row__hint">{termFont.px}px monospaced</span>
+            </div>
+            <div className="seg seg--compact" role="group" aria-label="Terminal font size">
+              <button
+                type="button"
+                className="seg__opt"
+                disabled={!termFont.canZoomOut}
+                onClick={() => termFont.zoomOut()}
+                aria-label="Decrease font size"
+              >
+                A−
+              </button>
+              <button
+                type="button"
+                className="seg__opt"
+                disabled={!termFont.canZoomIn}
+                onClick={() => termFont.zoomIn()}
+                aria-label="Increase font size"
+              >
+                A+
+              </button>
+            </div>
+          </div>
+        </section>
+      ),
+    },
+    {
+      id: "system",
+      label: "System",
+      blocks: count(showMac, showPush),
+      body: (
+        <>
+          {showMac && (
+            <section className="settings-block" aria-labelledby="set-machine">
+              <header className="settings-block__head">
+                <h3 id="set-machine">This Mac</h3>
+              </header>
+              {client?.setLaunchAtLogin && (
+                <div className="settings-row settings-row--toggle">
+                  <div className="settings-row__meta">
+                    <span className="settings-row__label">Launch at login</span>
+                    <span className="settings-row__hint">Open with your user session</span>
+                  </div>
+                  <label className="switch">
+                    <input
+                      type="checkbox"
+                      checked={loginLaunch === true}
+                      disabled={loginLaunchBusy || loginLaunch === null}
+                      onChange={(e) => {
+                        const on = e.target.checked;
+                        setLoginLaunchBusy(true);
+                        setLoginLaunchErr(null);
+                        void client
+                          .setLaunchAtLogin?.(on)
+                          .then(
+                            () => setLoginLaunch(on),
+                            (err: unknown) =>
+                              setLoginLaunchErr(err instanceof Error ? err.message : String(err)),
+                          )
+                          .finally(() => setLoginLaunchBusy(false));
+                      }}
+                    />
+                    <span className="switch__ui" aria-hidden="true" />
+                    <span className="sr-only">Launch at login</span>
+                  </label>
+                </div>
+              )}
+              {loginLaunchErr && (
+                <p className="composer__err" role="alert">
+                  {loginLaunchErr}
+                </p>
+              )}
+              {client?.checkUpdate && (
+                <div className="settings-stack">
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={updateBusy}
+                    onClick={() => {
+                      setUpdateBusy(true);
+                      setUpdateErr(null);
+                      void client
+                        .checkUpdate?.()
+                        .then(
+                          (info) => setUpdate(info),
+                          (err: unknown) =>
+                            setUpdateErr(err instanceof Error ? err.message : String(err)),
+                        )
+                        .finally(() => setUpdateBusy(false));
+                    }}
+                  >
+                    {updateBusy ? "Checking…" : "Check for updates"}
+                  </button>
+                  {update && (
+                    <dl className="facts facts--dense">
+                      <div>
+                        <dt>Installed</dt>
+                        <dd className="mono">{update.current || "—"}</dd>
+                      </div>
+                      <div>
+                        <dt>Latest</dt>
+                        <dd className="mono">{update.latest || "—"}</dd>
+                      </div>
+                    </dl>
+                  )}
+                  {update?.newer && (
+                    <div className="settings-stack">
+                      {client.installUpdate && update.canInstall && (
+                        <button
+                          type="button"
+                          className="btn btn--primary"
+                          disabled={updateBusy}
+                          onClick={() => {
+                            setUpdateBusy(true);
+                            setUpdateErr(null);
+                            void client
+                              .installUpdate?.()
+                              .then(
+                                (r) => {
+                                  // Process should quit + relaunch; surface message if not.
+                                  setUpdateErr(null);
+                                  setUpdate((u) =>
+                                    u
+                                      ? {
+                                          ...u,
+                                          body: r.message || `Installing ${r.version}…`,
+                                        }
+                                      : u,
+                                  );
+                                },
+                                (err: unknown) =>
+                                  setUpdateErr(err instanceof Error ? err.message : String(err)),
+                              )
+                              .finally(() => setUpdateBusy(false));
+                          }}
+                        >
+                          {updateBusy ? "Installing…" : `Install ${update.latest}`}
+                        </button>
+                      )}
+                      <p className="settings-copy">
+                        <a href={update.releaseUrl} target="_blank" rel="noreferrer">
+                          Open release {update.latest} ↗
+                        </a>
+                      </p>
+                    </div>
+                  )}
+                  {update && !update.newer && update.latest && (
+                    <p className="settings-copy settings-copy--quiet">Up to date.</p>
+                  )}
+                  {updateErr && (
+                    <p className="composer__err" role="alert">
+                      {updateErr}
+                    </p>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
+
+          {showPush && (
+            <section className="settings-block" aria-labelledby="set-push">
+              <header className="settings-block__head">
+                <h3 id="set-push">Alerts</h3>
+                <span
+                  className={`settings-pill${
+                    pushStatus === "subscribed"
+                      ? " settings-pill--ok"
+                      : pushStatus === "denied"
+                        ? " settings-pill--warn"
+                        : ""
+                  }`}
+                >
+                  {pushStatus === "checking"
+                    ? "…"
+                    : pushStatus === "subscribed"
+                      ? "On"
+                      : pushStatus === "denied"
+                        ? "Blocked"
+                        : pushStatus === "unsupported"
+                          ? "N/A"
+                          : "Off"}
+                </span>
+              </header>
+              {pushStatus === "unsupported" && (
+                <p className="settings-copy">Push is not available in this browser.</p>
+              )}
+              {pushStatus === "denied" && (
+                <p className="settings-copy settings-copy--warn">
+                  Notifications are blocked. Allow them for this site in system settings, then reopen.
+                </p>
+              )}
+              {(pushStatus === "off" || pushStatus === "checking") && (
+                <button
+                  type="button"
+                  className="btn btn--solid"
+                  disabled={pushBusy || pushStatus === "checking"}
+                  onClick={() => void enableNotifications()}
+                >
+                  {pushBusy ? "Enabling…" : "Enable notifications"}
+                </button>
+              )}
+              {pushStatus === "subscribed" && (
+                <>
+                  <p className="settings-copy">
+                    Notified the moment an agent needs you — even with the app closed.
+                  </p>
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={pushBusy}
+                    onClick={() => void disableNotifications()}
+                  >
+                    Turn off
+                  </button>
+                </>
+              )}
+              {pushErr && (
+                <p className="composer__err" role="alert">
+                  {pushErr}
+                </p>
+              )}
+              <p className="settings-copy settings-copy--quiet">
+                iPhone: Home Screen install required (Share → Add to Home Screen). Safari tabs do not
+                receive push.
+              </p>
+            </section>
+          )}
+        </>
+      ),
+    },
+    {
+      id: "about",
+      label: "About",
+      blocks: 2,
+      body: (
+        <>
+          <section className="settings-block" aria-labelledby="set-conn">
+            <header className="settings-block__head">
+              <h3 id="set-conn">Connection</h3>
+              {!session?.readOnly && (
+                <span className="settings-pill settings-pill--warn">Writes on</span>
+              )}
+              {session?.readOnly && <span className="settings-pill">Read-only</span>}
+            </header>
+            <dl className="facts facts--dense facts--connection">
+              <div>
+                <dt>Signed in as</dt>
+                <dd title={session?.user}>{displaySessionName(session)}</dd>
+              </div>
+              <div>
+                <dt>Auth</dt>
+                <dd className="mono">{session?.provider ?? "—"}</dd>
+              </div>
+              <div>
+                <dt>Transport</dt>
+                <dd className="mono">{client?.kind ?? "—"}</dd>
+              </div>
+              <div>
+                <dt>Live output</dt>
+                <dd className="mono">{client?.streamPane ? "stream" : "poll"}</dd>
+              </div>
+            </dl>
+            {!session?.readOnly && (
+              <p className="settings-copy settings-copy--warn">
+                This dashboard can type into terminals. Writes are recorded in the host audit log.
+              </p>
+            )}
+          </section>
+
+          <section className="settings-block" aria-labelledby="set-keys">
+            <header className="settings-block__head">
+              <h3 id="set-keys">Shortcuts</h3>
+            </header>
+            <ul className="settings-keys">
+              <li>
+                <span className="settings-keys__combo">
+                  <kbd>⌘</kbd>
+                  <kbd>K</kbd>
+                </span>
+                <span className="settings-keys__label">Jump to agent</span>
+              </li>
+              <li>
+                <span className="settings-keys__combo">
+                  <kbd>Enter</kbd>
+                </span>
+                <span className="settings-keys__label">Send reply</span>
+              </li>
+              <li>
+                <span className="settings-keys__combo">
+                  <kbd>⇧</kbd>
+                  <kbd>Enter</kbd>
+                </span>
+                <span className="settings-keys__label">Newline</span>
+              </li>
+              <li>
+                <span className="settings-keys__combo">
+                  <kbd>Esc</kbd>
+                </span>
+                <span className="settings-keys__label">Close / back</span>
+              </li>
+              <li>
+                <span className="settings-keys__combo">
+                  <kbd>⌘</kbd>
+                  <kbd>F</kbd>
+                </span>
+                <span className="settings-keys__label">Find in pane</span>
+              </li>
+              <li>
+                <span className="settings-keys__combo">
+                  <kbd>⌘</kbd>
+                  <kbd>+</kbd>
+                  <span className="settings-keys__sep">/</span>
+                  <kbd>−</kbd>
+                </span>
+                <span className="settings-keys__label">Terminal font size</span>
+              </li>
+            </ul>
+          </section>
+
+          {!isDesktop && (
+            <div className="sheet__foot">
+              {client?.sessions && onOpenSessions && (
+                <button type="button" className="btn btn--primary" onClick={onOpenSessions}>
+                  Change session
+                </button>
+              )}
+              <form method="post" action="/logout">
+                {/* POST so a stray GET cannot CSRF-logout. */}
+                <button type="submit" className="btn btn--signout">
+                  Sign out
+                </button>
+              </form>
+            </div>
+          )}
+        </>
+      ),
+    },
+  ];
+
+  const available = tabs.filter((t) => t.blocks > 0);
+  const active = available.find((t) => t.id === tab) ?? available[0];
+
   return (
     <Sheet
       title="Settings"
@@ -274,667 +1029,56 @@ export function SettingsSheet({
       }
       panelClass="sheet--settings"
       onClose={onClose}
+      toolbar={
+        <div
+          className="settings-tabs"
+          role="tablist"
+          aria-label="Settings sections"
+          onKeyDown={(e) => {
+            const step =
+              e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+            if (!step && e.key !== "Home" && e.key !== "End") return;
+            e.preventDefault();
+            const i = available.findIndex((t) => t.id === active.id);
+            const next =
+              e.key === "Home"
+                ? 0
+                : e.key === "End"
+                  ? available.length - 1
+                  : (i + step + available.length) % available.length;
+            selectTab(available[next].id);
+            // Follow-focus: an arrow key moves the tab AND the focus ring, so
+            // the next arrow keeps working without a Tab press.
+            document.getElementById(`settings-tab-${available[next].id}`)?.focus();
+          }}
+        >
+          {available.map((t) => (
+            <button
+              key={t.id}
+              id={`settings-tab-${t.id}`}
+              type="button"
+              role="tab"
+              aria-selected={t.id === active.id}
+              aria-controls={`settings-pane-${t.id}`}
+              tabIndex={t.id === active.id ? 0 : -1}
+              className={`settings-tabs__tab${t.id === active.id ? " is-on" : ""}`}
+              onClick={() => selectTab(t.id)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      }
     >
-{isDesktop && (client?.mintPairing || onOpenPair) && (
-        <section className="settings-block" aria-labelledby="set-pair" id="pair-section">
-          <header className="settings-block__head">
-            <h3 id="set-pair">Pair phone</h3>
-          </header>
-          <p className="settings-copy settings-copy--quiet">
-            Mint a one-shot QR for a phone on this network.
-          </p>
-          <button
-            type="button"
-            className="btn btn--solid"
-            onClick={() => onOpenPair?.()}
-          >
-            Show pair QR
-          </button>
-        </section>
-      )}
-
-{isDesktop && client?.setSessionSwitchEnabled && (
-        <section className="settings-block" aria-labelledby="set-session-switch">
-          <header className="settings-block__head">
-            <h3 id="set-session-switch">Session switch</h3>
-          </header>
-          <div className="settings-row settings-row--toggle">
-            <div className="settings-row__meta">
-              <span className="settings-row__label">Allow session switch</span>
-              <span className="settings-row__hint">
-                Phones can change which herdr session this drives
-              </span>
-            </div>
-            <label className="switch">
-              <input
-                type="checkbox"
-                checked={sessionSwitchOn}
-                disabled={sessionSwitchBusy}
-                onChange={(e) => {
-                  const on = e.target.checked;
-                  setSessionSwitchBusy(true);
-                  setSessionErr(null);
-                  void client
-                    .setSessionSwitchEnabled?.(on)
-                    .then(() => setSessionSwitchOn(on))
-                    .catch((err) =>
-                      setSessionErr(err instanceof Error ? err.message : String(err)),
-                    )
-                    .finally(() => setSessionSwitchBusy(false));
-                }}
-              />
-              <span className="switch__ui" />
-            </label>
-          </div>
-          {sessionErr && (
-            <p className="composer__err" role="alert">
-              {sessionErr}
-            </p>
-          )}
-        </section>
-      )}
-
-{isDesktop && client?.setAllowWritesEnabled && (
-        <section className="settings-block" aria-labelledby="set-writes">
-          <header className="settings-block__head">
-            <h3 id="set-writes">Phone writes</h3>
-          </header>
-          <div className="settings-row settings-row--toggle">
-            <div className="settings-row__meta">
-              <span className="settings-row__label">Allow phone writes</span>
-              <span className="settings-row__hint">
-                Phones can answer asks, type, and interrupt agents (audit-logged)
-              </span>
-            </div>
-            <label className="switch">
-              <input
-                type="checkbox"
-                checked={allowWritesOn}
-                disabled={allowWritesBusy}
-                onChange={(e) => {
-                  const on = e.target.checked;
-                  setAllowWritesBusy(true);
-                  setWritesErr(null);
-                  void client
-                    .setAllowWritesEnabled?.(on)
-                    .then(() => setAllowWritesOn(on))
-                    .catch((err) =>
-                      setWritesErr(err instanceof Error ? err.message : String(err)),
-                    )
-                    .finally(() => setAllowWritesBusy(false));
-                }}
-              />
-              <span className="switch__ui" />
-            </label>
-          </div>
-          {writesErr && (
-            <p className="composer__err" role="alert">
-              {writesErr}
-            </p>
-          )}
-          {allowWritesOn && (
-            <p className="settings-copy settings-copy--warn">
-              Paired phones can type into live terminals. Every write is recorded in the host audit log.
-            </p>
-          )}
-        </section>
-      )}
-
-{(client?.setPasswordLoginEnabled || client?.passwordLoginEnabled) && (
-        <section className="settings-block" aria-labelledby="set-pw-login">
-          <header className="settings-block__head">
-            <h3 id="set-pw-login">Password sign-in</h3>
-          </header>
-          <div className="settings-row settings-row--toggle">
-            <div className="settings-row__meta">
-              <span className="settings-row__label">Allow username / password</span>
-              <span className="settings-row__hint">When off, phones pair with QR only</span>
-            </div>
-            <label className="switch">
-              <input
-                type="checkbox"
-                checked={passwordLoginOn}
-                disabled={pwLoginBusy || !client?.setPasswordLoginEnabled}
-                onChange={(e) => {
-                  const on = e.target.checked;
-                  setPwLoginBusy(true);
-                  void client
-                    ?.setPasswordLoginEnabled?.(on)
-                    .then(() => setPasswordLoginOn(on))
-                    .catch(() => {})
-                    .finally(() => setPwLoginBusy(false));
-                }}
-              />
-              <span className="switch__ui" />
-            </label>
-          </div>
-        </section>
-      )}
-
-{client?.setOptionalPassword && passwordLoginOn && (
-        <section className="settings-block" aria-labelledby="set-phone-pass">
-          <header className="settings-block__head">
-            <h3 id="set-phone-pass">Phone password</h3>
-          </header>
-          <p className="settings-copy">
-            Optional. Lets a browser sign in with user/pass when you are off the home Wi‑Fi (with a public URL). Leave blank and save to clear.
-          </p>
-          <label className="field__label" htmlFor="phone-user">
-            Username
-          </label>
-          <input
-            id="phone-user"
-            className="field__input"
-            value={phoneUser}
-            onChange={(e) => setPhoneUser(e.target.value)}
-            autoCapitalize="off"
-            autoCorrect="off"
-            spellCheck={false}
-          />
-          <label className="field__label" htmlFor="phone-pass">
-            Password
-          </label>
-          <input
-            id="phone-pass"
-            className="field__input"
-            type="password"
-            value={phonePass}
-            onChange={(e) => setPhonePass(e.target.value)}
-            autoComplete="new-password"
-          />
-          <button
-            type="button"
-            className="btn btn--solid"
-            onClick={() => {
-              setPassMsg(null);
-              void client.setOptionalPassword?.(phoneUser.trim() || "phone", phonePass)
-                .then(() => setPassMsg(phonePass ? "Phone password saved." : "Phone password cleared."))
-                .catch((e) => setPassMsg(e instanceof Error ? e.message : String(e)));
-            }}
-          >
-            Save phone password
-          </button>
-          {session?.oidcEnabled && (
-            <p className="settings-copy settings-copy--quiet">
-              OAuth is configured on the server (scaffold). Full provider login lands in a follow-up.
-            </p>
-          )}
-          {passMsg && <p className="settings-copy">{passMsg}</p>}
-        </section>
-      )}
-{client?.listDevices && (
-        <section className="settings-block" aria-labelledby="set-devices">
-          <header className="settings-block__head">
-            <h3 id="set-devices">Paired devices</h3>
-          </header>
-          <p className="settings-copy">
-            Each phone that scans a QR gets its own grant. Revoke a lost phone without rotating the Mac password.
-          </p>
-          {devices.length === 0 && (
-            <p className="settings-copy settings-copy--quiet">No phones paired yet.</p>
-          )}
-          <ul className="list list--plain">
-            {devices.map((d) => (
-              <li key={d.id}>
-                <div className={`row row--session${d.revokedAt ? "" : " is-on"}`}>
-                  <span className="row__main">
-                    <span className="row__title">{displayDeviceName(d.name || "")}</span>
-                    <span className="row__sub mono">
-                      {d.provider}
-                      {d.revokedAt ? " · revoked" : " · active"}
-                      {" · "}
-                      {d.id.slice(0, 8)}
-                    </span>
-                  </span>
-                  {!d.revokedAt && client?.revokeDevice && (
-                    <button
-                      type="button"
-                      className="btn btn--icon"
-                      disabled={devBusy}
-                      aria-label={`Revoke ${d.name || d.id}`}
-                      title="Revoke"
-                      onClick={() => {
-                        setDevBusy(true);
-                        setDevErr(null);
-                        void client.revokeDevice?.(d.id)
-                          .then(() => refreshDevices())
-                          .catch((e) => setDevErr(e instanceof Error ? e.message : String(e)))
-                          .finally(() => setDevBusy(false));
-                      }}
-                    >
-                      ×
-                    </button>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
-          {client?.revokeAllDevices && devices.some((d) => !d.revokedAt) && (
-            <div className="panic-row">
-              {!panicArmed ? (
-                <button
-                  type="button"
-                  className="btn"
-                  disabled={devBusy}
-                  onClick={() => setPanicArmed(true)}
-                >
-                  Panic revoke all phones
-                </button>
-              ) : (
-                <>
-                  <p className="settings-copy settings-copy--warn">
-                    Revoke every active phone grant? They must scan a new QR.
-                  </p>
-                  <div className="panic-row__actions">
-                    <button
-                      type="button"
-                      className="btn"
-                      disabled={devBusy}
-                      onClick={() => setPanicArmed(false)}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn--signout"
-                      disabled={devBusy}
-                      onClick={() => {
-                        setDevBusy(true);
-                        setDevErr(null);
-                        void client
-                          .revokeAllDevices?.()
-                          .then((n) => {
-                            setPanicArmed(false);
-                            refreshDevices();
-                            void client.markFirstRunDone?.();
-                            if (typeof n === "number" && n === 0) {
-                              setDevErr("No devices were revoked (store may be out of sync).");
-                            }
-                          })
-                          .catch((e) =>
-                            setDevErr(e instanceof Error ? e.message : String(e)),
-                          )
-                          .finally(() => setDevBusy(false));
-                      }}
-                    >
-                      {devBusy ? "Revoking…" : "Confirm revoke all"}
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-          {devErr && (
-            <p className="composer__err" role="alert">
-              {devErr}
-            </p>
-          )}
-        </section>
-      )}
-<section className="settings-block" aria-labelledby="set-appear">
-        <header className="settings-block__head">
-          <h3 id="set-appear">Appearance</h3>
-        </header>
-        <div className="settings-row">
-          <div className="settings-row__meta">
-            <span className="settings-row__label">Theme</span>
-            <span className="settings-row__hint">
-              {pref === "system" ? `Follows device · ${actual}` : `Locked · ${pref}`}
-            </span>
-          </div>
-          <div className="seg seg--compact" role="radiogroup" aria-label="Theme">
-            {THEMES.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                role="radio"
-                aria-checked={pref === t.id}
-                className={`seg__opt${pref === t.id ? " is-on" : ""}`}
-                onClick={() => onPref(t.id)}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="settings-row">
-          <div className="settings-row__meta">
-            <span className="settings-row__label">Line wrap</span>
-            <span className="settings-row__hint">
-              {wrap ? "Long lines fold to the pane width" : "Scroll sideways for long lines"}
-            </span>
-          </div>
-          <div className="seg seg--compact" role="radiogroup" aria-label="Wrap long lines">
-            {WRAP_OPTS.map((o) => (
-              <button
-                key={String(o.value)}
-                type="button"
-                role="radio"
-                aria-checked={wrap === o.value}
-                className={`seg__opt${wrap === o.value ? " is-on" : ""}`}
-                onClick={() => onWrap(o.value)}
-              >
-                {o.label}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="settings-row">
-          <div className="settings-row__meta">
-            <span className="settings-row__label">Terminal size</span>
-            <span className="settings-row__hint">{termFont.px}px monospaced</span>
-          </div>
-          <div className="seg seg--compact" role="group" aria-label="Terminal font size">
-            <button
-              type="button"
-              className="seg__opt"
-              disabled={!termFont.canZoomOut}
-              onClick={() => termFont.zoomOut()}
-              aria-label="Decrease font size"
-            >
-              A−
-            </button>
-            <button
-              type="button"
-              className="seg__opt"
-              disabled={!termFont.canZoomIn}
-              onClick={() => termFont.zoomIn()}
-              aria-label="Increase font size"
-            >
-              A+
-            </button>
-          </div>
-        </div>
-      </section>
-{isDesktop && (client?.setLaunchAtLogin || client?.checkUpdate) && (
-        <section className="settings-block" aria-labelledby="set-machine">
-          <header className="settings-block__head">
-            <h3 id="set-machine">This Mac</h3>
-          </header>
-          {client?.setLaunchAtLogin && (
-            <div className="settings-row settings-row--toggle">
-              <div className="settings-row__meta">
-                <span className="settings-row__label">Launch at login</span>
-                <span className="settings-row__hint">Open with your user session</span>
-              </div>
-              <label className="switch">
-                <input
-                  type="checkbox"
-                  checked={loginLaunch === true}
-                  disabled={loginLaunchBusy || loginLaunch === null}
-                  onChange={(e) => {
-                    const on = e.target.checked;
-                    setLoginLaunchBusy(true);
-                    setLoginLaunchErr(null);
-                    void client
-                      .setLaunchAtLogin?.(on)
-                      .then(
-                        () => setLoginLaunch(on),
-                        (err: unknown) =>
-                          setLoginLaunchErr(err instanceof Error ? err.message : String(err)),
-                      )
-                      .finally(() => setLoginLaunchBusy(false));
-                  }}
-                />
-                <span className="switch__ui" aria-hidden="true" />
-                <span className="sr-only">Launch at login</span>
-              </label>
-            </div>
-          )}
-          {loginLaunchErr && (
-            <p className="composer__err" role="alert">
-              {loginLaunchErr}
-            </p>
-          )}
-          {client?.checkUpdate && (
-            <div className="settings-stack">
-              <button
-                type="button"
-                className="btn"
-                disabled={updateBusy}
-                onClick={() => {
-                  setUpdateBusy(true);
-                  setUpdateErr(null);
-                  void client
-                    .checkUpdate?.()
-                    .then(
-                      (info) => setUpdate(info),
-                      (err: unknown) =>
-                        setUpdateErr(err instanceof Error ? err.message : String(err)),
-                    )
-                    .finally(() => setUpdateBusy(false));
-                }}
-              >
-                {updateBusy ? "Checking…" : "Check for updates"}
-              </button>
-              {update && (
-                <dl className="facts facts--dense">
-                  <div>
-                    <dt>Installed</dt>
-                    <dd className="mono">{update.current || "—"}</dd>
-                  </div>
-                  <div>
-                    <dt>Latest</dt>
-                    <dd className="mono">{update.latest || "—"}</dd>
-                  </div>
-                </dl>
-              )}
-              {update?.newer && (
-                <div className="settings-stack">
-                  {client.installUpdate && update.canInstall && (
-                    <button
-                      type="button"
-                      className="btn btn--primary"
-                      disabled={updateBusy}
-                      onClick={() => {
-                        setUpdateBusy(true);
-                        setUpdateErr(null);
-                        void client
-                          .installUpdate?.()
-                          .then(
-                            (r) => {
-                              // Process should quit + relaunch; surface message if not.
-                              setUpdateErr(null);
-                              setUpdate((u) =>
-                                u
-                                  ? {
-                                      ...u,
-                                      body: r.message || `Installing ${r.version}…`,
-                                    }
-                                  : u,
-                              );
-                            },
-                            (err: unknown) =>
-                              setUpdateErr(err instanceof Error ? err.message : String(err)),
-                          )
-                          .finally(() => setUpdateBusy(false));
-                      }}
-                    >
-                      {updateBusy ? "Installing…" : `Install ${update.latest}`}
-                    </button>
-                  )}
-                  <p className="settings-copy">
-                    <a href={update.releaseUrl} target="_blank" rel="noreferrer">
-                      Open release {update.latest} ↗
-                    </a>
-                  </p>
-                </div>
-              )}
-              {update && !update.newer && update.latest && (
-                <p className="settings-copy settings-copy--quiet">Up to date.</p>
-              )}
-              {updateErr && (
-                <p className="composer__err" role="alert">
-                  {updateErr}
-                </p>
-              )}
-            </div>
-          )}
-        </section>
-      )}
-{client?.pushSubscribe && (
-        <section className="settings-block" aria-labelledby="set-push">
-          <header className="settings-block__head">
-            <h3 id="set-push">Alerts</h3>
-            <span
-              className={`settings-pill${
-                pushStatus === "subscribed"
-                  ? " settings-pill--ok"
-                  : pushStatus === "denied"
-                    ? " settings-pill--warn"
-                    : ""
-              }`}
-            >
-              {pushStatus === "checking"
-                ? "…"
-                : pushStatus === "subscribed"
-                  ? "On"
-                  : pushStatus === "denied"
-                    ? "Blocked"
-                    : pushStatus === "unsupported"
-                      ? "N/A"
-                      : "Off"}
-            </span>
-          </header>
-          {pushStatus === "unsupported" && (
-            <p className="settings-copy">Push is not available in this browser.</p>
-          )}
-          {pushStatus === "denied" && (
-            <p className="settings-copy settings-copy--warn">
-              Notifications are blocked. Allow them for this site in system settings, then reopen.
-            </p>
-          )}
-          {(pushStatus === "off" || pushStatus === "checking") && (
-            <button
-              type="button"
-              className="btn btn--solid"
-              disabled={pushBusy || pushStatus === "checking"}
-              onClick={() => void enableNotifications()}
-            >
-              {pushBusy ? "Enabling…" : "Enable notifications"}
-            </button>
-          )}
-          {pushStatus === "subscribed" && (
-            <>
-              <p className="settings-copy">
-                Notified the moment an agent needs you — even with the app closed.
-              </p>
-              <button
-                type="button"
-                className="btn"
-                disabled={pushBusy}
-                onClick={() => void disableNotifications()}
-              >
-                Turn off
-              </button>
-            </>
-          )}
-          {pushErr && (
-            <p className="composer__err" role="alert">
-              {pushErr}
-            </p>
-          )}
-          <p className="settings-copy settings-copy--quiet">
-            iPhone: Home Screen install required (Share → Add to Home Screen). Safari tabs do not
-            receive push.
-          </p>
-        </section>
-      )}
-<section className="settings-block" aria-labelledby="set-conn">
-        <header className="settings-block__head">
-          <h3 id="set-conn">Connection</h3>
-          {!session?.readOnly && <span className="settings-pill settings-pill--warn">Writes on</span>}
-          {session?.readOnly && <span className="settings-pill">Read-only</span>}
-        </header>
-        <dl className="facts facts--dense facts--connection">
-          <div>
-            <dt>Signed in as</dt>
-            <dd title={session?.user}>{displaySessionName(session)}</dd>
-          </div>
-          <div>
-            <dt>Auth</dt>
-            <dd className="mono">{session?.provider ?? "—"}</dd>
-          </div>
-          <div>
-            <dt>Transport</dt>
-            <dd className="mono">{client?.kind ?? "—"}</dd>
-          </div>
-          <div>
-            <dt>Live output</dt>
-            <dd className="mono">{client?.streamPane ? "stream" : "poll"}</dd>
-          </div>
-        </dl>
-        {!session?.readOnly && (
-          <p className="settings-copy settings-copy--warn">
-            This dashboard can type into terminals. Writes are recorded in the host audit log.
-          </p>
-        )}
-      </section>
-<section className="settings-block" aria-labelledby="set-keys">
-        <header className="settings-block__head">
-          <h3 id="set-keys">Shortcuts</h3>
-        </header>
-        <ul className="settings-keys">
-          <li>
-            <span className="settings-keys__combo">
-              <kbd>⌘</kbd>
-              <kbd>K</kbd>
-            </span>
-            <span className="settings-keys__label">Jump to agent</span>
-          </li>
-          <li>
-            <span className="settings-keys__combo">
-              <kbd>Enter</kbd>
-            </span>
-            <span className="settings-keys__label">Send reply</span>
-          </li>
-          <li>
-            <span className="settings-keys__combo">
-              <kbd>⇧</kbd>
-              <kbd>Enter</kbd>
-            </span>
-            <span className="settings-keys__label">Newline</span>
-          </li>
-          <li>
-            <span className="settings-keys__combo">
-              <kbd>Esc</kbd>
-            </span>
-            <span className="settings-keys__label">Close / back</span>
-          </li>
-          <li>
-            <span className="settings-keys__combo">
-              <kbd>⌘</kbd>
-              <kbd>F</kbd>
-            </span>
-            <span className="settings-keys__label">Find in pane</span>
-          </li>
-          <li>
-            <span className="settings-keys__combo">
-              <kbd>⌘</kbd>
-              <kbd>+</kbd>
-              <span className="settings-keys__sep">/</span>
-              <kbd>−</kbd>
-            </span>
-            <span className="settings-keys__label">Terminal font size</span>
-          </li>
-        </ul>
-      </section>
-
-      {!isDesktop && (
-        <div className="sheet__foot">
-          {client?.sessions && onOpenSessions && (
-            <button type="button" className="btn btn--primary" onClick={onOpenSessions}>
-              Change session
-            </button>
-          )}
-          <form method="post" action="/logout">
-            {/* POST so a stray GET cannot CSRF-logout. */}
-            <button type="submit" className="btn btn--signout">
-              Sign out
-            </button>
-          </form>
-        </div>
-      )}
+      <div
+        key={active.id}
+        id={`settings-pane-${active.id}`}
+        role="tabpanel"
+        aria-labelledby={`settings-tab-${active.id}`}
+        className={`settings-pane${active.blocks === 1 ? " settings-pane--single" : ""}`}
+      >
+        {active.body}
+      </div>
     </Sheet>
   );
 }

@@ -6,6 +6,12 @@ export interface SheetProps {
   subtitle?: string;
   /** Extra class on the panel (e.g. sheet--settings). */
   panelClass?: string;
+  /**
+   * Fixed strip between the header and the scrolling body — a tab list, a
+   * filter. Lives outside the scroll region on purpose: navigation that
+   * scrolls away is not navigation.
+   */
+  toolbar?: ReactNode;
   onClose: () => void;
   children: ReactNode;
 }
@@ -19,7 +25,7 @@ const FOCUSABLE =
  * Focus is trapped and restored, Escape closes, and the backdrop is inert to
  * scroll. Written once so every overlay in the app behaves identically.
  */
-export function Sheet({ title, subtitle, panelClass, onClose, children }: SheetProps) {
+export function Sheet({ title, subtitle, panelClass, toolbar, onClose, children }: SheetProps) {
   const panel = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
   const restoreTo = useRef<HTMLElement | null>(null);
@@ -74,7 +80,9 @@ export function Sheet({ title, subtitle, panelClass, onClose, children }: SheetP
   return (
     <div className="scrim" onMouseDown={onClose}>
       <div
-        className={["sheet", panelClass].filter(Boolean).join(" ")}
+        className={["sheet", toolbar ? "sheet--tabbed" : null, panelClass]
+          .filter(Boolean)
+          .join(" ")}
         role="dialog"
         aria-modal="true"
         aria-label={title}
@@ -99,6 +107,7 @@ export function Sheet({ title, subtitle, panelClass, onClose, children }: SheetP
             </svg>
           </button>
         </header>
+        {toolbar}
         <div
           className="sheet__body"
           ref={body}
