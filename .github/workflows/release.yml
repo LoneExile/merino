@@ -10,8 +10,11 @@ on:
         description: "Tag to release (e.g. v0.1.0)"
         required: true
 
+# Least privilege per job, not one blanket grant: only the release job writes
+# anything here. bump-homebrew reads this repo (release assets) and writes to
+# the tap using its own PAT, so it has no business holding write on this one.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -21,15 +24,26 @@ jobs:
   macos:
     name: macOS package
     runs-on: macos-latest
+    permissions:
+      contents: write # creates the GitHub Release and uploads assets
     steps:
       - uses: actions/checkout@v5
         with:
+          # An action input, not a shell word: safe to interpolate.
           ref: ${{ github.event.inputs.tag || github.ref }}
 
       - name: Resolve version
         id: ver
+        # Through env, never interpolated into the script. A ${{ }} expression
+        # is pasted in as raw text before the shell parses the line, so a
+        # dispatch input containing a quote executes the rest as commands — in
+        # a job that holds a write token. GITHUB_REF_NAME is the built-in
+        # equivalent of github.ref_name.
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
         run: |
-          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          set -euo pipefail
+          TAG="${INPUT_TAG:-$GITHUB_REF_NAME}"
           TAG="${TAG#refs/tags/}"
           VERSION="${TAG#v}"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
@@ -149,7 +163,11 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        # Pinned to a commit, not a tag. This is the only third-party action
+        # here and it receives a token that can write to this repository; a
+        # mutable tag lets whoever controls it point that token at new code.
+        # Renovate still bumps SHA pins and keeps the comment in step.
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           tag_name: ${{ steps.ver.outputs.tag }}
           name: Merino ${{ steps.ver.outputs.tag }}
@@ -161,7 +179,16 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # Optional auto-bump of LoneExile/homebrew-merino.
-  # Create a classic PAT with `repo` on the tap, add it as secret HOMEBREW_TAP_TOKEN.
+  #
+  # Needs a fine-grained PAT as secret HOMEBREW_TAP_TOKEN:
+  #   Resource owner:     LoneExile
+  #   Repository access:  only LoneExile/homebrew-merino
+  #   Permissions:        Contents: Read and write   (Metadata read is forced)
+  #
+  # Not a classic PAT with `repo`, which this comment used to recommend: that
+  # grants write to every repository the owner has, to edit one file in one
+  # tap. Nothing here needs Actions — the asset download below uses the
+  # automatic GITHUB_TOKEN, not this one.
   bump-homebrew:
     name: Bump Homebrew cask
     needs: macos
@@ -174,7 +201,12 @@ jobs:
         run: |
           if [ -z "${TOKEN}" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "HOMEBREW_TAP_TOKEN not set — bump the cask manually after release"
+            # An annotation, not just a log line. Every step below is gated on
+            # skip=false, so without this the job reports a green tick having
+            # done nothing — indistinguishable from a successful bump on the
+            # run summary. The cask sat five releases stale behind that tick
+            # before anyone looked at the tap.
+            echo "::warning title=Homebrew cask NOT bumped::HOMEBREW_TAP_TOKEN is not set. The cask still points at the previous version — bump it manually."
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
@@ -182,8 +214,13 @@ jobs:
       - name: Resolve version
         if: steps.gate.outputs.skip == 'false'
         id: ver
+        # Same reasoning as the macOS job: through env, never pasted into the
+        # script. This job holds the tap PAT, so the stakes are higher here.
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
         run: |
-          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          set -euo pipefail
+          TAG="${INPUT_TAG:-$GITHUB_REF_NAME}"
           TAG="${TAG#refs/tags/}"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
@@ -215,8 +252,14 @@ jobs:
           ver, arm, path = sys.argv[1:4]
           p = pathlib.Path(path)
           t = p.read_text()
-          t = re.sub(r'version "[^"]+"', f'version "{ver}"', t)
-          t = re.sub(r'sha256 "[0-9a-fA-F]+"', f'sha256 "{arm}"', t)
+          t, nver = re.subn(r'version "[^"]+"', f'version "{ver}"', t)
+          t, nsha = re.subn(r'sha256 "[0-9a-fA-F]+"', f'sha256 "{arm}"', t)
+          # A regex that matches nothing rewrites nothing, and the commit step
+          # then reports "no cask changes" and exits 0 — a green run leaving a
+          # stale cask. If the cask's shape ever drifts from these patterns,
+          # say so here instead.
+          if nver != 1 or nsha != 1:
+              sys.exit(f"cask patch matched {nver} version and {nsha} sha256 lines, expected 1 each: {path} has drifted")
           p.write_text(t)
           print(p.read_text())
           PY
@@ -224,10 +267,15 @@ jobs:
       - name: Commit and push
         if: steps.gate.outputs.skip == 'false'
         working-directory: tap
+        # VERSION derives from the tag, so a crafted dispatch input reaches
+        # this line too. Same treatment as the other two: env, not ${{ }}.
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add Casks/merino.rb
           git diff --cached --quiet && echo "no cask changes" && exit 0
-          git commit -m "chore: merino ${{ steps.ver.outputs.version }}"
+          git commit -m "chore: merino ${VERSION}"
           git push
