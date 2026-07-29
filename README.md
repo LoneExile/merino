@@ -116,6 +116,12 @@ Username/password sign-in is **off by default** — a password that a whole LAN,
 
 Lost a phone? **Settings → Pairing → Panic revoke all phones**.
 
+**How long you stay signed in.** A paired phone stays signed in while you keep
+using it, and is signed out after **12 hours idle** or **7 days** since
+pairing, whichever comes first. Quitting Merino signs every device out
+immediately — the keys that sign sessions live in memory only, so a stolen
+session cannot outlive the app. After any of those, scan a new QR.
+
 ## Settings
 
 Everything is in the panel under **Settings**, grouped by intent:
