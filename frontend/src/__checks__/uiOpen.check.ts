@@ -12,6 +12,8 @@
  * not the tray, and uiOpen.ts is that seam — the Go side emits these exact
  * strings (see the tray menu in main.go).
  */
+import { readFileSync } from "node:fs";
+
 import {
   parseUiOpen,
   isSettingsTabId,
@@ -48,6 +50,24 @@ for (const [payload, want] of Object.entries(TRAY_MENU)) {
   );
 }
 
+// The other half of the contract, read from the Go source rather than
+// restated here. The table above is hand-copied, so on its own it proves only
+// that uiOpen.ts agrees with itself: renaming openUI("spawn") to openUI("new")
+// in main.go would leave every assertion above green while the tray item
+// silently opened nothing.
+const mainGo = readFileSync(new URL("../../../main.go", import.meta.url), "utf8");
+const emitted = [...mainGo.matchAll(/openUI\("([^"]+)"\)/g)].map((m) => m[1]);
+
+check("main.go emits deep links at all", emitted.length > 0, `found ${emitted.length}`);
+for (const payload of emitted) {
+  check(`main.go "${payload}" resolves`, parseUiOpen(payload).target !== null);
+  check(`main.go "${payload}" is covered above`, payload in TRAY_MENU);
+}
+// And the reverse, so a deleted tray item leaves a stale expectation behind.
+for (const payload of Object.keys(TRAY_MENU)) {
+  check(`TRAY_MENU "${payload}" is still emitted by main.go`, emitted.includes(payload));
+}
+
 // Bare settings must NOT pin a tab — that is what preserves "the tab you were
 // last in" for the plain Settings item.
 check("bare settings leaves the tab alone", parseUiOpen("settings").tab === null);
@@ -58,12 +78,23 @@ for (const id of SETTINGS_TAB_IDS) {
   check(`settings:${id} reaches ${id}`, parseUiOpen(`settings:${id}`).tab === id);
 }
 
-// Garbage from across the process boundary opens nothing rather than throwing.
-for (const junk of ["", "nope", "settings:", "settings:nope", ":", "SETTINGS", null, 7, {}]) {
+// Garbage from across the process boundary opens nothing. Asserted as two
+// groups with different right answers: a single disjunctive predicate would
+// accept an unknown tray string silently opening Settings, which is the
+// regression most worth catching here.
+for (const junk of ["", "nope", ":", "SETTINGS", "settings2", null, 7, {}]) {
   const got = parseUiOpen(junk);
-  const ok =
-    got.target === null || (got.target === "settings" && got.tab === null);
-  check(`junk ${JSON.stringify(junk)} degrades safely`, ok, `got ${got.target}/${got.tab}`);
+  check(`junk ${JSON.stringify(junk)} opens nothing`, got.target === null, `got ${got.target}`);
+}
+// A real target with a missing or unknown argument keeps the target and drops
+// the argument — that is how "settings" restores the user's last tab.
+for (const near of ["settings:", "settings:nope"]) {
+  const got = parseUiOpen(near);
+  check(
+    `${near} keeps settings and drops the tab`,
+    got.target === "settings" && got.tab === null,
+    `got ${got.target}/${got.tab}`,
+  );
 }
 
 check("isSettingsTabId accepts a real id", isSettingsTabId("about"));

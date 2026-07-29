@@ -2,6 +2,7 @@ package web
 
 import (
 	"net/http"
+	"path/filepath"
 	"strings"
 
 	"github.com/LoneExile/merino/internal/app"
@@ -57,13 +58,22 @@ func (s *Server) handleAgentKinds(w http.ResponseWriter, r *http.Request, id Ide
 	}
 	list, err := s.cfg.Writer.AgentKinds()
 	if err != nil {
+		s.log.Warn("agent kinds list failed", "err", err)
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
 	}
-	if list == nil {
-		list = []app.AgentKind{}
+
+	// Strip the absolute path before it leaves the machine. Its only consumer
+	// is a hover tooltip, but the full value names the macOS account and the
+	// operator's toolchain layout (~/.local/share/mise/installs/…), and this
+	// server binds 0.0.0.0 by default and may sit behind a public tunnel.
+	// The desktop binding keeps the full path: that caller is already local.
+	safe := make([]app.AgentKind, len(list))
+	for i, k := range list {
+		k.Path = filepath.Base(k.Path)
+		safe[i] = k
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"kinds": list})
+	writeJSON(w, http.StatusOK, map[string]any{"kinds": safe})
 }
 
 type startAgentPaneBody struct {

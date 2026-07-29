@@ -1431,21 +1431,12 @@ html.keyboard-open .jump-dock {
   outline-offset: -2px;
 }
 
-/* When a tab owns exactly one block, the tab name already titles it. Keep the
- * heading for assistive tech (aria-labelledby still resolves) but drop the
- * visible duplicate. */
-.settings-pane--single .settings-block__head h3 {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
-.settings-pane--single .settings-block__head:not(:has(> :nth-child(2))) {
-  display: none;
-}
+/* The `--single` heading-hiding rule that lived here is gone with the
+ * blocks-counting it depended on. It also mislabelled the Alerts block: on a
+ * phone the System tab collapses to Alerts alone, so its <h3> was clipped
+ * while the status pill beside it survived, leaving an unlabelled On/Off
+ * chip. A tab whose single heading genuinely duplicates its own name now
+ * drops that heading itself, in its own component. */
 
 .sheet--settings .sheet__body {
   padding: 0;

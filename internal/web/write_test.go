@@ -18,6 +18,9 @@ import (
 type fakeWriter struct {
 	calls []string
 	err   error
+	// empty makes the list methods return nil, so a test can prove the
+	// handlers serialise an empty herd as [] rather than null.
+	empty bool
 }
 
 func (f *fakeWriter) Respond(paneID, text string) error {
@@ -66,6 +69,9 @@ func (f *fakeWriter) Workspaces() ([]app.Workspace, error) {
 	if f.err != nil {
 		return nil, f.err
 	}
+	if f.empty {
+		return nil, nil
+	}
 	return []app.Workspace{{WorkspaceID: "w1", Label: "one", PaneCount: 2, TabCount: 1}}, nil
 }
 
@@ -73,6 +79,9 @@ func (f *fakeWriter) AgentKinds() ([]app.AgentKind, error) {
 	f.calls = append(f.calls, "agent_kinds")
 	if f.err != nil {
 		return nil, f.err
+	}
+	if f.empty {
+		return nil, nil
 	}
 	return []app.AgentKind{{Kind: "omp", Label: "Oh My Pi", Path: "/usr/local/bin/omp"}}, nil
 }

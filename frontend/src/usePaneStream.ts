@@ -38,7 +38,13 @@ export const INITIAL_HISTORY_LINES = 400;
 export const HISTORY_STEP = 400;
 /** Hard cap — matches app.MaxPaneHistoryLines. */
 export const MAX_HISTORY_LINES = 2000;
-
+/**
+ * How long without a payload counts as stalled, for a POLL transport only.
+ * Three intervals: one missed read is a hiccup, three in a row is a wall.
+ * A stream transport is judged by `live` instead — it delivers only on
+ * change, so silence there is a quiet pane, not a broken one.
+ */
+const STALL_AFTER_MS = POLL_MS * 3;
 /**
  * Live terminal output for one pane.
  *
@@ -69,6 +75,23 @@ export function usePaneStream(
   const holdHistoryRef = useRef(false);
   // loadMore in flight — stream snapshots must not clobber the larger buffer.
   const loadingMoreRef = useRef(false);
+  // When a payload last landed, by either transport. This is what makes a
+  // stalled POLL reportable: a stream announces its own failure through
+  // onError, but a poll that stops returning looks identical to a quiet pane.
+  const lastPayloadAt = useRef(0);
+
+  // Staleness needs its own tick. A stalled poll produces no payloads, so it
+  // produces no renders either — without a timer the chip could only appear
+  // when something unrelated happened to re-render the pane.
+  const [stalled, setStalled] = useState(false);
+  useEffect(() => {
+    if (!client || !paneId) return;
+    const id = window.setInterval(() => {
+      const at = lastPayloadAt.current;
+      setStalled(at > 0 && Date.now() - at > STALL_AFTER_MS);
+    }, POLL_MS);
+    return () => window.clearInterval(id);
+  }, [client, paneId]);
 
   useEffect(() => {
     if (pinned) holdHistoryRef.current = false;
@@ -81,6 +104,11 @@ export function usePaneStream(
     setLoaded(false);
     setError(null);
     setLive(false);
+    // Zero, not Date.now(): the staleness check ignores a zero timestamp, so
+    // a new pane cannot inherit the previous one's clock and flash the chip
+    // before its own first read has had a chance to land.
+    lastPayloadAt.current = 0;
+    setStalled(false);
     setHistoryLines(INITIAL_HISTORY_LINES);
     historyRef.current = INITIAL_HISTORY_LINES;
     textLenRef.current = 0;
@@ -122,6 +150,7 @@ export function usePaneStream(
       }
 
       textLenRef.current = t.length;
+      lastPayloadAt.current = Date.now();
       setText(t);
       setLoaded(true);
       // Don't clear a loadMore error on unrelated stream ticks if we want —
@@ -251,8 +280,12 @@ export function usePaneStream(
     text,
     loaded,
     live,
-    // Only a transport that offers a stream can be degraded by losing it.
-    degraded: Boolean(client?.streamPane) && !live,
+    // Each transport is judged by the signal it actually has. A stream
+    // announces its own failure (onError clears `live`) but is silent on a
+    // quiet pane; a poll is the reverse — it delivers on a fixed cadence
+    // regardless of change, so silence IS the failure. Conflating the two
+    // is what made the desktop panel unable to report a dead socket at all.
+    degraded: client?.streamPane ? !live : stalled,
     error,
     historyLines,
     loadingMore,

@@ -71,7 +71,12 @@ jobs:
       - name: Package binary
         run: go build -o bin/merino .
 
-      - uses: actions/upload-artifact@v5
+      # v6 is the first major whose action.yml declares `using: node24`; v5
+      # declares node20, which the runner now force-upgrades with a
+      # deprecation warning. Not v7: that adds an `archive` input and changes
+      # what `name` means when archive is false, which is a separate call.
+      # Nothing downloads this in-workflow, so no download-artifact to pair.
+      - uses: actions/upload-artifact@v6
         with:
           name: merino-macos
           path: bin/merino

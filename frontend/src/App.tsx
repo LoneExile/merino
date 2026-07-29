@@ -13,7 +13,7 @@ import {
   RenameSheet,
   SessionSheet,
   SettingsSheet,
-} from "./Sheets";
+} from "./sheets";
 import { nextTabRequest, parseUiOpen, type TabRequest } from "./uiOpen";
 
 type Overlay = "settings" | "sessions" | "palette" | "pair" | "spawn" | null;

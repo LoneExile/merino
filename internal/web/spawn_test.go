@@ -19,22 +19,123 @@ func TestSpawnRoutesAbsentWithoutWriter(t *testing.T) {
 	s := testServer(t, &fakeSource{agents: []app.Agent{agent("p1")}}, nil)
 	c := login(t, s, "alice", "correct-horse")
 
-	// POST has no route at all on a read-only build; the mux answers 405.
-	if rr := post(t, s, c, "/api/panes", `{"kind":"omp"}`); rr.Code == http.StatusOK {
-		t.Fatalf("POST /api/panes succeeded on a read-only build: %s", rr.Body.String())
+	// Assert the determinate status, not merely "not 200". A handler that
+	// answered 201 Created — an ordinary choice for a create endpoint, and one
+	// postJSON accepts — would satisfy a not-200 check while the route was
+	// live and creating panes on a read-only build.
+	if rr := post(t, s, c, "/api/panes", `{"kind":"omp"}`); rr.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("POST /api/panes = %d, want 405 on a read-only build: %s", rr.Code, rr.Body.String())
 	}
 
-	// The GETs fall through to the SPA, which serves HTML — never the JSON
-	// payload that would disclose the operator's workspaces and agents.
+	// The GETs fall through to the SPA. Pin that too: "not JSON" is also
+	// satisfied by a 500 text/plain, which would not prove non-disclosure.
 	for _, path := range []string{"/api/workspaces", "/api/agent-kinds"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		req.AddCookie(c)
 		rr := httptest.NewRecorder()
 		s.routes().ServeHTTP(rr, req)
-		if strings.Contains(rr.Header().Get("Content-Type"), "json") {
-			t.Fatalf("GET %s served JSON on a read-only build: %s", path, rr.Body.String())
+		if rr.Code != http.StatusOK || !strings.Contains(rr.Header().Get("Content-Type"), "text/html") {
+			t.Fatalf("GET %s = %d %s, want the SPA fallback: %s",
+				path, rr.Code, rr.Header().Get("Content-Type"), rr.Body.String())
 		}
 	}
+}
+
+// The response envelopes are the contract the spawn sheet consumes. Renaming
+// a key or dropping the nil-to-empty-slice normalisation breaks the sheet
+// while every other test stays green, so assert the shapes and the values.
+func TestSpawnListsReturnTheirEnvelopes(t *testing.T) {
+	wr := &fakeWriter{}
+	s, _ := writeServer(t, SingleOperator{}, wr)
+	c := login(t, s, "alice", "correct-horse")
+
+	var ws struct {
+		Workspaces []app.Workspace `json:"workspaces"`
+	}
+	if rr := getJSONInto(t, s, c, "/api/workspaces", &ws); rr != http.StatusOK {
+		t.Fatalf("GET /api/workspaces = %d", rr)
+	}
+	if len(ws.Workspaces) != 1 || ws.Workspaces[0].WorkspaceID != "w1" || ws.Workspaces[0].Label != "one" {
+		t.Fatalf("workspaces = %+v", ws.Workspaces)
+	}
+
+	var ks struct {
+		Kinds []app.AgentKind `json:"kinds"`
+	}
+	if rr := getJSONInto(t, s, c, "/api/agent-kinds", &ks); rr != http.StatusOK {
+		t.Fatalf("GET /api/agent-kinds = %d", rr)
+	}
+	if len(ks.Kinds) != 1 || ks.Kinds[0].Kind != "omp" || ks.Kinds[0].Label != "Oh My Pi" {
+		t.Fatalf("kinds = %+v", ks.Kinds)
+	}
+	// The absolute host path must not cross the HTTP boundary: the fixture
+	// serves /usr/local/bin/omp and the browser may be on a public tunnel.
+	if ks.Kinds[0].Path != "omp" {
+		t.Fatalf("path = %q, want the basename only", ks.Kinds[0].Path)
+	}
+}
+
+// An empty herd must serialise as [] rather than null, or the sheet's `?? []`
+// is the only thing standing between it and a crash.
+func TestSpawnListsSerialiseEmptyAsArray(t *testing.T) {
+	wr := &fakeWriter{empty: true}
+	s, _ := writeServer(t, SingleOperator{}, wr)
+	c := login(t, s, "alice", "correct-horse")
+
+	for path, key := range map[string]string{
+		"/api/workspaces":  "workspaces",
+		"/api/agent-kinds": "kinds",
+	} {
+		var raw map[string]json.RawMessage
+		if code := getJSONInto(t, s, c, path, &raw); code != http.StatusOK {
+			t.Fatalf("GET %s = %d", path, code)
+		}
+		if got := string(raw[key]); got != "[]" {
+			t.Errorf("GET %s %q = %s, want []", path, key, got)
+		}
+	}
+}
+
+// Every refusal branch must be audited, on all three endpoints — including
+// the two reads, whose branches nothing else exercises.
+func TestSpawnAuditsEveryRefusedEndpoint(t *testing.T) {
+	wr := &fakeWriter{}
+	s, auditBuf := writeServer(t, SingleOperator{}, wr)
+	if err := s.SetAllowWrites(false); err != nil {
+		t.Fatalf("close gate: %v", err)
+	}
+	c := login(t, s, "alice", "correct-horse")
+
+	getJSONInto(t, s, c, "/api/workspaces", &struct{}{})
+	getJSONInto(t, s, c, "/api/agent-kinds", &struct{}{})
+	post(t, s, c, "/api/panes", `{"kind":"omp"}`)
+
+	for _, action := range []string{"workspaces_list", "agent_kinds_list", "agent_pane_create"} {
+		if !strings.Contains(auditBuf.String(), action) {
+			t.Errorf("%s refusal was not audited: %s", action, auditBuf.String())
+		}
+	}
+	// Audited as refused, not merely audited.
+	if strings.Contains(auditBuf.String(), `"allowed":true`) {
+		t.Errorf("a refusal was recorded as allowed: %s", auditBuf.String())
+	}
+	if len(wr.calls) != 0 {
+		t.Fatalf("writer reached with the gate closed: %v", wr.calls)
+	}
+}
+
+func getJSONInto(t *testing.T, s *Server, c *http.Cookie, path string, into any) int {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	req.AddCookie(c)
+	rr := httptest.NewRecorder()
+	s.routes().ServeHTTP(rr, req)
+	if rr.Code == http.StatusOK {
+		if err := json.Unmarshal(rr.Body.Bytes(), into); err != nil {
+			t.Fatalf("decode %s: %v (%s)", path, err, rr.Body.String())
+		}
+	}
+	return rr.Code
 }
 
 func TestSpawnRefusedWhenWritesOff(t *testing.T) {
