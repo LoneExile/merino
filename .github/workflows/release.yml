@@ -136,9 +136,15 @@ jobs:
           TAG: ${{ steps.ver.outputs.tag }}
         run: |
           set -euo pipefail
+          # Resolve the body BEFORE opening the heredoc. Writing the opening
+          # delimiter and then failing leaves GITHUB_OUTPUT unterminated, and
+          # the runner reports "Unable to process file command 'output'"
+          # instead of the real error — which is how a missing `tac` on the
+          # macOS runner showed up as a confusing second failure.
+          BODY=$(./scripts/release-notes.sh "$TAG")
           {
             echo 'body<<RELEASE_NOTES_EOF'
-            ./scripts/release-notes.sh "$TAG"
+            printf '%s\n' "$BODY"
             echo 'RELEASE_NOTES_EOF'
           } >> "$GITHUB_OUTPUT"
 
