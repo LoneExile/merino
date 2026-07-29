@@ -8,6 +8,7 @@ import { PaneView } from "./PaneView";
 import { StatusDot, statusLabel } from "./StatusDot";
 import { Palette, type Command } from "./Palette";
 import { PairPhoneSheet, RenameSheet, SessionSheet, SettingsSheet } from "./Sheets";
+import { parseUiOpen, type SettingsTabId } from "./uiOpen";
 
 type Overlay = "settings" | "sessions" | "palette" | "pair" | null;
 
@@ -44,6 +45,10 @@ export default function App() {
 
   const [openPane, setOpenPane] = useState<string | null>(null);
   const [overlay, setOverlay] = useState<Overlay>(null);
+  // Which Settings tab a deep link asked for. Null means "whichever the user
+  // was last in". The tray menu sets it so "Check for Updates…" cannot land
+  // on Display.
+  const [settingsTab, setSettingsTab] = useState<SettingsTabId | null>(null);
   const [renaming, setRenaming] = useState<Agent | null>(null);
   // First-run pairing: open Pair phone once. Drop ?pair=1 from the URL so a
   // later full reload (e.g. session switch) does not re-open this sheet.
@@ -88,12 +93,13 @@ export default function App() {
             e && typeof e === "object" && "data" in e
               ? (e as { data: unknown }).data
               : undefined;
-          const which = typeof data === "string" ? data : "";
-          if (which === "settings") {
+          const { target, tab } = parseUiOpen(data);
+          if (target === "settings") {
+            setSettingsTab(tab);
             setOverlay("settings");
-          } else if (which === "pair") {
+          } else if (target === "pair") {
             setOverlay("pair");
-          } else if (which === "agents") {
+          } else if (target === "agents") {
             setOverlay(null);
             setOpenPane(null);
           }
@@ -179,7 +185,12 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const closeOverlay = useCallback(() => setOverlay(null), []);
+  const closeOverlay = useCallback(() => {
+    setOverlay(null);
+    // Drop the deep link, or the next plain Settings open would be dragged
+    // back to the tray menu's tab instead of the user's last one.
+    setSettingsTab(null);
+  }, []);
 
   const counts = useMemo(() => {
     const blocked = agents.filter((a) => a.status === "blocked").length;
@@ -400,6 +411,7 @@ export default function App() {
           onWrap={setWrap}
           onPref={setPref}
           termFont={termFont}
+          initialTab={settingsTab}
           onClose={closeOverlay}
         />
       )}

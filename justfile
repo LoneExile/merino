@@ -143,8 +143,18 @@ test:
 typecheck:
     cd frontend && npm run typecheck
 
+# Frontend logic checks. This repo has no JS test runner (vite + tsc only), so
+# the __checks__ files run as plain scripts under Node's type stripping.
+checks:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for f in frontend/src/__checks__/*.check.ts; do
+      echo "--- $f"
+      node --experimental-strip-types "$f"
+    done
+
 # Everything CI runs. Run this before pushing.
-gate: fmt typecheck
+gate: fmt typecheck checks
     @test -z "$(gofmt -l . | grep -v '^build/' || true)" || { echo "gofmt drift:"; gofmt -l . | grep -v '^build/'; exit 1; }
     go vet ./...
     go test ./... -race -count=1

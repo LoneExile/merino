@@ -284,30 +284,23 @@ func main() {
 	}
 	animator = trayicon.New(setTrayIcon)
 
+	// Tray menu, opened by RIGHT click (left click toggles the panel — see the
+	// OnClick below). Every item names its exact destination: Settings has
+	// tabs now, so "Check for Updates…" must land on the tab that carries the
+	// update button rather than on whichever tab happened to be open last.
+	openUI := func(which string) {
+		showPanel(tray, panel)
+		if wailsApp != nil {
+			wailsApp.Event.Emit("ui:open", which)
+		}
+	}
+
 	menu := wailsApp.NewMenu()
-	menu.Add("Show agents").OnClick(func(*application.Context) {
-		showPanel(tray, panel)
-		if wailsApp != nil {
-			wailsApp.Event.Emit("ui:open", "agents")
-		}
-	})
-	menu.Add("Settings").OnClick(func(*application.Context) {
-		showPanel(tray, panel)
-		if wailsApp != nil {
-			wailsApp.Event.Emit("ui:open", "settings")
-		}
-	})
-	menu.Add("Pair phone…").OnClick(func(*application.Context) {
-		showPanel(tray, panel)
-		if wailsApp != nil {
-			wailsApp.Event.Emit("ui:open", "pair")
-		}
-	})
+	menu.Add("Show agents").OnClick(func(*application.Context) { openUI("agents") })
+	menu.Add("Settings").OnClick(func(*application.Context) { openUI("settings") })
+	menu.Add("Pair phone…").OnClick(func(*application.Context) { openUI("pair") })
 	menu.Add("Check for Updates…").OnClick(func(*application.Context) {
-		showPanel(tray, panel)
-		if wailsApp != nil {
-			wailsApp.Event.Emit("ui:open", "settings")
-		}
+		openUI("settings:system")
 	})
 	menu.AddSeparator()
 	menu.Add("Quit").OnClick(func(*application.Context) { wailsApp.Quit() })

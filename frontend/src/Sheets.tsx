@@ -3,6 +3,7 @@ import type { Agent } from "../bindings/github.com/LoneExile/merino/internal/app
 import type { Client, HerdrSession, AccessOrigin, PairedDevice, PairingTicket, RenameKind, Session, SessionList, UpdateInfo } from "./client";
 import { Sheet } from "./Sheet";
 import type { ThemePref } from "./theme";
+import { SETTINGS_TAB_IDS, type SettingsTabId } from "./uiOpen";
 
 export interface SettingsSheetProps {
   session: Session | null;
@@ -23,6 +24,8 @@ export interface SettingsSheetProps {
     canZoomIn: boolean;
     canZoomOut: boolean;
   };
+  /** Deep link from the tray menu: force this tab instead of the last one. */
+  initialTab?: SettingsTabId | null;
   onClose: () => void;
 }
 
@@ -39,7 +42,7 @@ const WRAP_OPTS: { value: boolean; label: string }[] = [
 
 type PushStatus = "checking" | "unsupported" | "denied" | "off" | "subscribed";
 
-type TabId = "pairing" | "access" | "display" | "system" | "about";
+type TabId = SettingsTabId;
 
 interface SettingsTab {
   id: TabId;
@@ -53,7 +56,7 @@ const count = (...flags: boolean[]) => flags.filter(Boolean).length;
 
 const TAB_KEY = "merino.settings.tab";
 
-const TAB_IDS: TabId[] = ["pairing", "access", "display", "system", "about"];
+const TAB_IDS = SETTINGS_TAB_IDS;
 
 function readTab(): TabId {
   try {
@@ -130,6 +133,7 @@ export function SettingsSheet({
   wrap,
   onWrap,
   termFont,
+  initialTab,
   onClose,
 }: SettingsSheetProps) {
   const [pushStatus, setPushStatus] = useState<PushStatus>("checking");
@@ -162,7 +166,7 @@ export function SettingsSheet({
   const [panicArmed, setPanicArmed] = useState(false);
   const [sessionErr, setSessionErr] = useState<string | null>(null);
 
-  const [tab, setTab] = useState<TabId>(readTab);
+  const [tab, setTab] = useState<TabId>(() => initialTab ?? readTab());
   const selectTab = useCallback((id: TabId) => {
     setTab(id);
     try {
@@ -171,6 +175,12 @@ export function SettingsSheet({
       /* private mode / storage disabled */
     }
   }, []);
+
+  // The sheet stays mounted while open, so a second deep link (tray menu →
+  // Check for Updates… while Settings is already up) has to move the tab too.
+  useEffect(() => {
+    if (initialTab) selectTab(initialTab);
+  }, [initialTab, selectTab]);
 
   const refreshDevices = useCallback(() => {
     if (!client?.listDevices) return;
