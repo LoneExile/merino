@@ -124,12 +124,30 @@ jobs:
           ls -la dist
           cat dist/SHA256SUMS
 
+      # Release notes come from CHANGELOG.md, not from generate_release_notes.
+      # The generated list is flat and ungrouped, and it cannot carry a
+      # hand-written upgrade note. Sourcing the body from the committed file
+      # means the repo and the release page cannot disagree — and the step
+      # fails loudly if the section is missing, rather than shipping a release
+      # with empty notes because nobody ran `just changelog`.
+      - name: Release notes from CHANGELOG
+        id: notes
+        env:
+          TAG: ${{ steps.ver.outputs.tag }}
+        run: |
+          set -euo pipefail
+          {
+            echo 'body<<RELEASE_NOTES_EOF'
+            ./scripts/release-notes.sh "$TAG"
+            echo 'RELEASE_NOTES_EOF'
+          } >> "$GITHUB_OUTPUT"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.ver.outputs.tag }}
           name: Merino ${{ steps.ver.outputs.tag }}
-          generate_release_notes: true
+          body: ${{ steps.notes.outputs.body }}
           files: |
             dist/*
           fail_on_unmatched_files: true

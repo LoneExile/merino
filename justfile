@@ -162,6 +162,31 @@ gate: fmt typecheck checks
     go build -o {{binary}} .
     @echo "gate ok"
 
+# --- release ---------------------------------------------------------------
+
+# Version git-cliff is pinned to. Floating @latest would let a template change
+# rewrite the whole changelog on an unrelated day.
+cliff := "git-cliff@2.13.1"
+
+# Regenerate CHANGELOG.md for every tag, plus the release being prepared.
+#
+#   just changelog v0.2.0
+#
+# Hand-written upgrade notes already in a section survive: git-cliff rewrites
+# the file from commits, so re-add them if a regeneration drops one. Check the
+# diff before committing — that is the point of committing this file.
+changelog tag:
+    npx --yes {{cliff}} --tag {{tag}} -o CHANGELOG.md
+    @echo "review the diff, then commit CHANGELOG.md before tagging"
+
+# What the NEXT release would say, without writing anything.
+changelog-preview:
+    @npx --yes {{cliff}} --unreleased
+
+# The exact text the release workflow will post for a tag.
+release-notes tag:
+    @scripts/release-notes.sh {{tag}}
+
 # --- assets ----------------------------------------------------------------
 
 # Regenerate the sheep SVGs from the parametric drawing
