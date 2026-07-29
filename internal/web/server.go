@@ -443,6 +443,11 @@ func (s *Server) handleSession(w http.ResponseWriter, _ *http.Request, id Identi
 		"readOnly":         !s.WritesAllowed(),
 		"canRename":        s.WritesAllowed(),
 		"canSwitchSession": s.SessionSwitchAllowed(),
+		// Spawning needs the write gate open AND spawn authority. Reported
+		// separately from canRename because Policy answers them separately:
+		// a role-scoped identity may be allowed to type into an existing
+		// pane without being allowed to start new ones.
+		"canSpawn":         s.cfg.Writer != nil && s.WritesAllowed() && s.cfg.Policy.CanSpawn(id),
 		"pushEnabled":      s.push != nil,
 		"devicesEnabled":   s.cfg.Devices != nil,
 		"canManageDevices": !IsDeviceSubject(id.Subject) && s.cfg.Devices != nil,

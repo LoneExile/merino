@@ -610,3 +610,113 @@ func (s *AgentsService) RenameWorkspace(workspaceID, name string) error {
 	s.log.Info("rename_workspace", "workspace", workspaceID, "name", name)
 	return s.currentClient().RenameWorkspace(s.ctx, workspaceID, name)
 }
+
+// Workspace is one herdr workspace, as the UI sees it.
+type Workspace struct {
+	WorkspaceID string `json:"workspaceId"`
+	Number      int    `json:"number"`
+	Label       string `json:"label"`
+	Focused     bool   `json:"focused"`
+	PaneCount   int    `json:"paneCount"`
+	TabCount    int    `json:"tabCount"`
+	AgentStatus string `json:"agentStatus"`
+}
+
+// NewPane identifies the pane a spawn produced, so the caller can open it.
+type NewPane struct {
+	PaneID      string `json:"paneId"`
+	TabID       string `json:"tabId"`
+	WorkspaceID string `json:"workspaceId"`
+	Kind        string `json:"kind"`
+	Name        string `json:"name"`
+}
+
+// Workspaces lists the session's workspaces, so a spawn can name where it
+// should land instead of silently taking whichever one happens to be focused.
+func (s *AgentsService) Workspaces() ([]Workspace, error) {
+	list, err := s.currentClient().ListWorkspaces(s.ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Workspace, 0, len(list))
+	for _, w := range list {
+		out = append(out, Workspace{
+			WorkspaceID: w.WorkspaceID,
+			Number:      w.Number,
+			Label:       w.Label,
+			Focused:     w.Focused,
+			PaneCount:   w.PaneCount,
+			TabCount:    w.TabCount,
+			AgentStatus: string(w.AgentStatus),
+		})
+	}
+	return out, nil
+}
+
+// AgentKinds lists the interactive agents installed on this machine.
+func (s *AgentsService) AgentKinds() ([]AgentKind, error) {
+	return AvailableAgentKinds(s.ctx), nil
+}
+
+// StartAgentPane opens a tab in a workspace and starts an agent in it.
+//
+// Two herdr calls, and the second one can fail after the first succeeded —
+// the agent binary is missing, or it never reaches a prompt inside the
+// readiness budget. A half-completed spawn would leave an empty shell tab
+// the user did not ask for and did not see created, so a failed start rolls
+// the tab back. Rollback failure is logged, not returned: the caller needs
+// the reason the START failed, which is the actionable one.
+//
+// label is optional; empty means herdr names the tab.
+func (s *AgentsService) StartAgentPane(workspaceID, kind, label string) (NewPane, error) {
+	k, ok := findAgentKind(s.ctx, kind)
+	if !ok {
+		return NewPane{}, fmt.Errorf("%w: agent %q is not installed on this machine", ErrNotAllowed, kind)
+	}
+	if label != "" {
+		if err := checkRenameName(label); err != nil {
+			return NewPane{}, err
+		}
+	}
+
+	name := label
+	if name == "" {
+		name = k.Kind
+	}
+
+	client := s.currentClient()
+	tab, pane, err := client.CreateTab(s.ctx, workspaceID, label)
+	if err != nil {
+		return NewPane{}, err
+	}
+	s.log.Info("tab_created", "tab", tab.TabID, "pane", pane.PaneID, "workspace", tab.WorkspaceID)
+
+	if err := client.StartAgent(s.ctx, pane.PaneID, k.Kind, name); err != nil {
+		s.log.Warn("agent_start_failed", "pane", pane.PaneID, "kind", k.Kind, "err", err)
+		if cerr := client.CloseTab(s.ctx, tab.TabID); cerr != nil {
+			s.log.Error("rollback_tab_failed", "tab", tab.TabID, "err", cerr)
+		}
+		return NewPane{}, err
+	}
+
+	s.log.Info("agent_started", "pane", pane.PaneID, "kind", k.Kind, "name", name)
+	return NewPane{
+		PaneID:      pane.PaneID,
+		TabID:       tab.TabID,
+		WorkspaceID: tab.WorkspaceID,
+		Kind:        k.Kind,
+		Name:        name,
+	}, nil
+}
+
+// findAgentKind resolves a requested kind against what is actually installed.
+// herdr would reject an unknown kind anyway, but only after a tab has been
+// created and typed into; checking first keeps a typo from leaving debris.
+func findAgentKind(ctx context.Context, kind string) (AgentKind, bool) {
+	for _, k := range AvailableAgentKinds(ctx) {
+		if k.Kind == kind {
+			return k, true
+		}
+	}
+	return AgentKind{}, false
+}

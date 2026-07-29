@@ -297,6 +297,7 @@ func main() {
 
 	menu := wailsApp.NewMenu()
 	menu.Add("Show agents").OnClick(func(*application.Context) { openUI("agents") })
+	menu.Add("New agent…").OnClick(func(*application.Context) { openUI("spawn") })
 	menu.Add("Settings").OnClick(func(*application.Context) { openUI("settings") })
 	menu.Add("Pair phone…").OnClick(func(*application.Context) { openUI("pair") })
 	menu.Add("Check for Updates…").OnClick(func(*application.Context) {

@@ -61,6 +61,30 @@ func (f *fakeWriter) RenameWorkspace(workspaceID, name string) error {
 	return f.err
 }
 
+func (f *fakeWriter) Workspaces() ([]app.Workspace, error) {
+	f.calls = append(f.calls, "workspaces")
+	if f.err != nil {
+		return nil, f.err
+	}
+	return []app.Workspace{{WorkspaceID: "w1", Label: "one", PaneCount: 2, TabCount: 1}}, nil
+}
+
+func (f *fakeWriter) AgentKinds() ([]app.AgentKind, error) {
+	f.calls = append(f.calls, "agent_kinds")
+	if f.err != nil {
+		return nil, f.err
+	}
+	return []app.AgentKind{{Kind: "omp", Label: "Oh My Pi", Path: "/usr/local/bin/omp"}}, nil
+}
+
+func (f *fakeWriter) StartAgentPane(workspaceID, kind, label string) (app.NewPane, error) {
+	f.calls = append(f.calls, "start_agent_pane:"+workspaceID+":"+kind+":"+label)
+	if f.err != nil {
+		return app.NewPane{}, f.err
+	}
+	return app.NewPane{PaneID: "w1:p9", TabID: "w1:t9", WorkspaceID: workspaceID, Kind: kind, Name: label}, nil
+}
+
 type nopCloser struct{ *bytes.Buffer }
 
 func (nopCloser) Close() error { return nil }

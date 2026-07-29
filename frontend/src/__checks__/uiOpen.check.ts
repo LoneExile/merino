@@ -33,6 +33,7 @@ function check(name: string, cond: boolean, detail?: string): void {
 // the other is exactly the bug this check exists to catch.
 const TRAY_MENU: Record<string, { target: string | null; tab: string | null }> = {
   agents: { target: "agents", tab: null },
+  spawn: { target: "spawn", tab: null },
   settings: { target: "settings", tab: null },
   pair: { target: "pair", tab: null },
   "settings:system": { target: "settings", tab: "system" },

@@ -291,6 +291,60 @@ type paneListResult struct {
 	Panes []PaneInfo `json:"panes"`
 }
 
+// WorkspaceInfo is a single herdr workspace, as returned by workspace.list.
+type WorkspaceInfo struct {
+	WorkspaceID string      `json:"workspace_id"`
+	Number      int         `json:"number"`
+	Label       string      `json:"label"`
+	Focused     bool        `json:"focused"`
+	PaneCount   int         `json:"pane_count"`
+	TabCount    int         `json:"tab_count"`
+	ActiveTabID string      `json:"active_tab_id"`
+	AgentStatus AgentStatus `json:"agent_status"`
+}
+
+type workspaceListResult struct {
+	Workspaces []WorkspaceInfo `json:"workspaces"`
+}
+
+// TabInfo is the tab half of a tab.create response.
+type TabInfo struct {
+	TabID       string `json:"tab_id"`
+	WorkspaceID string `json:"workspace_id"`
+	Number      int    `json:"number"`
+	Label       string `json:"label"`
+	PaneCount   int    `json:"pane_count"`
+}
+
+type tabCreateParams struct {
+	WorkspaceID string `json:"workspace_id,omitempty"`
+	Label       string `json:"label,omitempty"`
+	CWD         string `json:"cwd,omitempty"`
+	Focus       bool   `json:"focus"`
+}
+
+// tabCreateResult carries the new tab AND its root pane. The pane is the
+// point: agent.start needs a pane that is already sitting at a shell prompt,
+// and this is the only response that hands one back.
+type tabCreateResult struct {
+	Tab      TabInfo  `json:"tab"`
+	RootPane PaneInfo `json:"root_pane"`
+}
+
+type tabTarget struct {
+	TabID string `json:"tab_id"`
+}
+
+// agentStartParams drives agent.start. Name is the label herdr shows for the
+// agent; Kind must be one of herdr's supported interactive kinds, which it
+// validates itself (unsupported_agent_kind).
+type agentStartParams struct {
+	Name      string `json:"name"`
+	Kind      string `json:"kind"`
+	PaneID    string `json:"pane_id"`
+	TimeoutMS *int   `json:"timeout_ms,omitempty"`
+}
+
 type paneReadParams struct {
 	PaneID string     `json:"pane_id"`
 	Source ReadSource `json:"source"`

@@ -29,7 +29,7 @@ export function isSettingsTabId(v: unknown): v is SettingsTabId {
   return typeof v === "string" && (SETTINGS_TAB_IDS as string[]).includes(v);
 }
 
-export type UiOpenTarget = "agents" | "pair" | "settings";
+export type UiOpenTarget = "agents" | "pair" | "settings" | "spawn";
 
 export interface UiOpen {
   target: UiOpenTarget | null;
@@ -46,7 +46,9 @@ export function parseUiOpen(payload: unknown): UiOpen {
   const raw = typeof payload === "string" ? payload : "";
   const [target, arg] = raw.split(":");
 
-  if (target === "agents" || target === "pair") return { target, tab: null };
+  if (target === "agents" || target === "pair" || target === "spawn") {
+    return { target, tab: null };
+  }
   if (target === "settings") {
     return { target: "settings", tab: isSettingsTabId(arg) ? arg : null };
   }

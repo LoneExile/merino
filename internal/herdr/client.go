@@ -191,6 +191,61 @@ func (c *Client) ListAgentPanes(ctx context.Context) ([]PaneInfo, error) {
 	return out, nil
 }
 
+// ListWorkspaces returns every workspace in the session.
+func (c *Client) ListWorkspaces(ctx context.Context) ([]WorkspaceInfo, error) {
+	var r workspaceListResult
+	if err := c.Call(ctx, "workspace.list", struct{}{}, &r); err != nil {
+		return nil, err
+	}
+	return r.Workspaces, nil
+}
+
+// CreateTab opens a tab in a workspace and returns it with its root pane.
+//
+// workspaceID may be empty, in which case herdr uses the focused workspace.
+// The new tab is NOT focused: creating a pane from a phone must not yank the
+// desktop's view to a different workspace mid-task.
+func (c *Client) CreateTab(ctx context.Context, workspaceID, label string) (TabInfo, PaneInfo, error) {
+	var r tabCreateResult
+	p := tabCreateParams{WorkspaceID: workspaceID, Label: label, Focus: false}
+	if err := c.Call(ctx, "tab.create", p, &r); err != nil {
+		return TabInfo{}, PaneInfo{}, err
+	}
+	return r.Tab, r.RootPane, nil
+}
+
+// CloseTab closes a tab and everything in it. Used to roll back a tab whose
+// agent failed to start, so a failed spawn leaves no empty shell behind.
+func (c *Client) CloseTab(ctx context.Context, tabID string) error {
+	return c.Call(ctx, "tab.close", tabTarget{TabID: tabID}, nil)
+}
+
+// AgentStartBudget is how long herdr may spend waiting for a freshly started
+// agent to become ready for input. Cold agent binaries routinely take tens of
+// seconds on first launch.
+const AgentStartBudget = 45 * time.Second
+
+// StartAgent launches a supported interactive agent in an existing pane and
+// blocks until herdr confirms it is ready for input.
+//
+// The pane must be sitting at its shell prompt — herdr types the agent's
+// command into it.
+//
+// This call gets its own client because the default 15s CallTimeout is
+// SHORTER than herdr's readiness wait. Hitting the client deadline first
+// would abandon a start that is still running, and the caller would roll
+// back a tab whose agent then appears seconds later. The sibling client
+// shares the socket; Client cannot be copied (atomic seq counter).
+func (c *Client) StartAgent(ctx context.Context, paneID, kind, name string) error {
+	starter := New(c.socket)
+	starter.DialTimeout = c.DialTimeout
+	starter.CallTimeout = AgentStartBudget + 10*time.Second
+
+	ms := int(AgentStartBudget / time.Millisecond)
+	p := agentStartParams{Name: name, Kind: kind, PaneID: paneID, TimeoutMS: &ms}
+	return starter.Call(ctx, "agent.start", p, nil)
+}
+
 // PaneRead is the payload of a pane.read response.
 type PaneRead struct {
 	PaneID    string `json:"pane_id"`

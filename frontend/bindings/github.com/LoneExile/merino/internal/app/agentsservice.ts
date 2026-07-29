@@ -16,6 +16,13 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
+ * AgentKinds lists the interactive agents installed on this machine.
+ */
+export function AgentKinds(): $CancellablePromise<$models.AgentKind[] | null> {
+    return $Call.ByID(1425232241);
+}
+
+/**
  * AttachImage stages one image for a known pane and returns the host path.
  * The caller is expected to send that path into the agent (SendText / prompt).
  */
@@ -160,6 +167,22 @@ export function SlashCommands(paneID: string, agent: string, query: string): $Ca
 }
 
 /**
+ * StartAgentPane opens a tab in a workspace and starts an agent in it.
+ * 
+ * Two herdr calls, and the second one can fail after the first succeeded —
+ * the agent binary is missing, or it never reaches a prompt inside the
+ * readiness budget. A half-completed spawn would leave an empty shell tab
+ * the user did not ask for and did not see created, so a failed start rolls
+ * the tab back. Rollback failure is logged, not returned: the caller needs
+ * the reason the START failed, which is the actionable one.
+ * 
+ * label is optional; empty means herdr names the tab.
+ */
+export function StartAgentPane(workspaceID: string, kind: string, label: string): $CancellablePromise<$models.NewPane> {
+    return $Call.ByID(397066554, workspaceID, kind, label);
+}
+
+/**
  * StreamOutput streams a pane's live output until ctx is cancelled, calling
  * onText with the latest rendering on every matching change.
  * 
@@ -190,4 +213,12 @@ export function StreamOutputANSI(paneID: string, lines: number, onText: any): $C
  */
 export function SwitchSession(id: string): $CancellablePromise<void> {
     return $Call.ByID(769073955, id);
+}
+
+/**
+ * Workspaces lists the session's workspaces, so a spawn can name where it
+ * should land instead of silently taking whichever one happens to be focused.
+ */
+export function Workspaces(): $CancellablePromise<$models.Workspace[] | null> {
+    return $Call.ByID(406411759);
 }

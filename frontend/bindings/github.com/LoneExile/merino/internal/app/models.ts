@@ -25,6 +25,26 @@ export interface Agent {
 }
 
 /**
+ * AgentKind is one interactive agent Merino can start in a new pane.
+ */
+export interface AgentKind {
+    /**
+     * Kind is herdr's identifier, passed verbatim to agent.start.
+     */
+    "kind": string;
+
+    /**
+     * Label is what a human reads.
+     */
+    "label": string;
+
+    /**
+     * Path is where the executable was found, for the UI to show as evidence.
+     */
+    "path": string;
+}
+
+/**
  * Conn describes connectivity to the herdr server.
  */
 export interface Conn {
@@ -42,6 +62,17 @@ export interface Counts {
     "total": number;
     "blocked": number;
     "working": number;
+}
+
+/**
+ * NewPane identifies the pane a spawn produced, so the caller can open it.
+ */
+export interface NewPane {
+    "paneId": string;
+    "tabId": string;
+    "workspaceId": string;
+    "kind": string;
+    "name": string;
 }
 
 /**
@@ -77,4 +108,17 @@ export interface SlashCommand {
      * builtin | skill | plugin
      */
     "source"?: string;
+}
+
+/**
+ * Workspace is one herdr workspace, as the UI sees it.
+ */
+export interface Workspace {
+    "workspaceId": string;
+    "number": number;
+    "label": string;
+    "focused": boolean;
+    "paneCount": number;
+    "tabCount": number;
+    "agentStatus": string;
 }

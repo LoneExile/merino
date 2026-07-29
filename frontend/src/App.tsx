@@ -7,10 +7,23 @@ import { useWrapPref } from "./wrapPref";
 import { PaneView } from "./PaneView";
 import { StatusDot, statusLabel } from "./StatusDot";
 import { Palette, type Command } from "./Palette";
-import { PairPhoneSheet, RenameSheet, SessionSheet, SettingsSheet } from "./Sheets";
+import {
+  NewAgentSheet,
+  PairPhoneSheet,
+  RenameSheet,
+  SessionSheet,
+  SettingsSheet,
+} from "./Sheets";
 import { nextTabRequest, parseUiOpen, type TabRequest } from "./uiOpen";
 
-type Overlay = "settings" | "sessions" | "palette" | "pair" | null;
+type Overlay = "settings" | "sessions" | "palette" | "pair" | "spawn" | null;
+
+/**
+ * How long to keep waiting for a freshly spawned pane to appear in the agent
+ * list. Generous because the wait is invisible — the herd list stays usable
+ * throughout — and the alternative is dropping a pane the operator asked for.
+ */
+const PENDING_PANE_MS = 30_000;
 
 /** Blocked first: the whole point of the dashboard is answering what is stuck. */
 const GROUPS: { key: string; label: string }[] = [
@@ -99,6 +112,8 @@ export default function App() {
             setOverlay("settings");
           } else if (target === "pair") {
             setOverlay("pair");
+          } else if (target === "spawn") {
+            setOverlay("spawn");
           } else if (target === "agents") {
             setOverlay(null);
             setOpenPane(null);
@@ -119,12 +134,33 @@ export default function App() {
     [agents, openPane],
   );
 
+  // A pane created from the New agent sheet exists on the host before Merino's
+  // own agent list catches up — herdr confirms the agent is ready, then its
+  // detection and our store each take their own moment. Opening it eagerly
+  // trips the vanish guard below and bounces straight back to the list, so
+  // remember it and open it the moment it actually appears.
+  const [pendingPane, setPendingPane] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!pendingPane) return;
+    if (agents.some((a) => a.paneId === pendingPane)) {
+      setOpenPane(pendingPane);
+      setPendingPane(null);
+      return;
+    }
+    // Give up eventually: a pane that never arrives must not leave the app
+    // waiting to hijack the view minutes later.
+    const t = window.setTimeout(() => setPendingPane(null), PENDING_PANE_MS);
+    return () => window.clearTimeout(t);
+  }, [pendingPane, agents]);
+
   // The pane the user opened can vanish — the agent exits, or the session is
   // switched underneath them. Fall back to the list rather than showing a
-  // terminal for something that no longer exists.
+  // terminal for something that no longer exists. A pane still being waited
+  // for is exempt: it has not vanished, it has not arrived.
   useEffect(() => {
-    if (openPane && ready && !current) setOpenPane(null);
-  }, [openPane, current, ready]);
+    if (openPane && ready && !current && openPane !== pendingPane) setOpenPane(null);
+  }, [openPane, current, ready, pendingPane]);
 
   const grouped = useMemo(() => {
     const by = new Map<string, Agent[]>();
@@ -233,6 +269,23 @@ export default function App() {
             >
               <span className="mono kbd-hint">⌘K</span>
             </button>
+            {session?.canSpawn !== false && client?.startAgentPane && (
+              <button
+                className="btn btn--icon"
+                onClick={() => setOverlay("spawn")}
+                aria-label="New agent"
+                title="Start an agent in a new pane"
+              >
+                <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                  <path
+                    d="M8 3.2v9.6M3.2 8h9.6"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
+            )}
             {client?.sessions && (
               <button
                 className="btn btn--icon"
@@ -417,6 +470,19 @@ export default function App() {
       )}
       {overlay === "sessions" && client && (
         <SessionSheet client={client} onClose={closeOverlay} />
+      )}
+      {overlay === "spawn" && client && (
+        <NewAgentSheet
+          client={client}
+          onClose={closeOverlay}
+          onCreated={(pane) => {
+            // Close now, open when it lands. Anything else makes the operator
+            // hunt for a pane they named a second ago — or, worse, shows the
+            // list as if the spawn had failed.
+            closeOverlay();
+            setPendingPane(pane.paneId);
+          }}
+        />
       )}
       {renaming && client && (
         <RenameSheet client={client} agent={renaming} onClose={() => setRenaming(null)} />

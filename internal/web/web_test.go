@@ -244,6 +244,7 @@ type denyAll struct{}
 
 func (denyAll) CanView(Identity, app.Agent) bool    { return false }
 func (denyAll) CanControl(Identity, app.Agent) bool { return false }
+func (denyAll) CanSpawn(Identity) bool              { return false }
 
 // The server must have no write endpoints while it is read-only.
 func TestNoWriteEndpoints(t *testing.T) {

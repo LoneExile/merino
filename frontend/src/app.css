@@ -2570,3 +2570,70 @@ html.desktop .sheet--pair .sheet__body {
   flex-direction: column;
   min-height: 0;
 }
+
+/* ---------------------------------------------------------------- new agent */
+
+.spawn-block {
+  display: grid;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-md);
+}
+
+.spawn-block__title {
+  margin: 0;
+  font: 600 var(--text-2xs) / 1 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ink-3);
+}
+
+/* Agents are a grid of equals, not a list: there is no ordering among them
+ * worth implying, and a phone should reach any of them with one thumb. */
+.spawn-kinds {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--space-2xs);
+}
+
+.spawn-kind {
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+  min-height: var(--tap);
+  padding: var(--space-2xs) var(--space-sm);
+  background: var(--color-paper);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out);
+}
+
+.spawn-kind:hover:not(:disabled) {
+  border-color: var(--color-rule-2);
+}
+
+.spawn-kind.is-on {
+  border-color: var(--color-accent);
+  background: var(--color-accent-wash);
+}
+
+.spawn-kind:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.spawn-kind__name {
+  font: 600 var(--text-sm) / 1.2 var(--font-body);
+  color: var(--color-ink);
+}
+
+.spawn-kind__cmd {
+  font-size: var(--text-2xs);
+  color: var(--color-ink-3);
+}
+
+.spawn-kind.is-on .spawn-kind__cmd {
+  color: var(--color-accent);
+}

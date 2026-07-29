@@ -256,6 +256,7 @@ type permitOnly struct{ name string }
 
 func (p permitOnly) CanView(id Identity, _ app.Agent) bool { return id.Name == p.name }
 func (p permitOnly) CanControl(Identity, app.Agent) bool   { return false }
+func (permitOnly) CanSpawn(Identity) bool                  { return false }
 
 func TestNotifyBlockedRespectsPolicy(t *testing.T) {
 	s, _ := pushTestServer(t, permitOnly{name: "alice"})

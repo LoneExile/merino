@@ -23,6 +23,16 @@ type Policy interface {
 	// keys, interrupts. Unused while the server is read-only, defined now so
 	// the write path cannot be added without confronting the question.
 	CanControl(id Identity, agent app.Agent) bool
+
+	// CanSpawn reports whether the identity may create a NEW agent pane.
+	//
+	// Separate from CanControl because it has no target to scope it: a policy
+	// that restricts an identity to certain panes cannot express "and may
+	// conjure more" through CanControl, which is only ever asked about a pane
+	// that already exists. Spawning starts a process on the operator's
+	// machine, so it gets its own answer rather than one inferred from a
+	// per-pane question.
+	CanSpawn(id Identity) bool
 }
 
 // SingleOperator grants any authenticated identity full access to every pane.
@@ -39,6 +49,7 @@ type SingleOperator struct{}
 
 func (SingleOperator) CanView(Identity, app.Agent) bool    { return true }
 func (SingleOperator) CanControl(Identity, app.Agent) bool { return true }
+func (SingleOperator) CanSpawn(Identity) bool              { return true }
 
 // RequireRole grants access only to identities carrying a named role.
 //
@@ -56,6 +67,13 @@ func (p RequireRole) CanView(id Identity, _ app.Agent) bool {
 }
 
 func (p RequireRole) CanControl(id Identity, _ app.Agent) bool {
+	return p.Control != "" && hasRole(id, p.Control)
+}
+
+// CanSpawn reuses the Control role rather than adding a third: starting an
+// agent and typing into one are the same trust level — both reach a live
+// terminal on the operator's machine.
+func (p RequireRole) CanSpawn(id Identity) bool {
 	return p.Control != "" && hasRole(id, p.Control)
 }
 

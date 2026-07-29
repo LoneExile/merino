@@ -8,8 +8,11 @@ export {
 
 export type {
     Agent,
+    AgentKind,
     Conn,
     Counts,
+    NewPane,
     SessionInfo,
-    SlashCommand
+    SlashCommand,
+    Workspace
 } from "./models.js";

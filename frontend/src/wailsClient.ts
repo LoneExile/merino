@@ -117,6 +117,14 @@ export function wailsClient(): Client {
           ? AgentsService.RenameTab(id, name)
           : AgentsService.RenameWorkspace(id, name),
 
+    // Spawning a new agent pane. The desktop panel is always allowed —
+    // it is the machine's own operator — so these are unconditional here,
+    // unlike the HTTP client where the server decides.
+    workspaces: async () => (await AgentsService.Workspaces()) ?? [],
+    agentKinds: async () => (await AgentsService.AgentKinds()) ?? [],
+    startAgentPane: (workspaceId: string, kind: string, label: string) =>
+      AgentsService.StartAgentPane(workspaceId, kind, label),
+
     // These were bound in Go from the start but never wired here, so the
     // session picker opened on the desktop and sat on "Looking for
     // sessions…" forever — the sheet awaited a method that did not exist.

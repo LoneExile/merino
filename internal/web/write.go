@@ -33,6 +33,14 @@ type Writer interface {
 	RenamePane(paneID, name string) error
 	RenameTab(tabID, name string) error
 	RenameWorkspace(workspaceID, name string) error
+	// Workspaces, AgentKinds and StartAgentPane back the "new agent pane"
+	// flow. The two reads sit behind Writer with the write they serve: a
+	// build that cannot spawn has no reason to enumerate the operator's
+	// workspaces or tell a browser which agents are installed on the
+	// machine.
+	Workspaces() ([]app.Workspace, error)
+	AgentKinds() ([]app.AgentKind, error)
+	StartAgentPane(workspaceID, kind, label string) (app.NewPane, error)
 	// AttachImage stages image bytes on the host and returns the absolute
 	// path. Used for clipboard-paste / file-picker images so agents can open
 	// the file the same way a terminal Ctrl+V paste does.
@@ -50,6 +58,9 @@ func (s *Server) mountWrites(mux *http.ServeMux) {
 	mux.Handle("POST /api/tabs/{id}/rename", s.authed(s.handleRenameTab))
 	mux.Handle("POST /api/workspaces/{id}/rename", s.authed(s.handleRenameWorkspace))
 	mux.Handle("POST /api/panes/{id}/attach", s.authed(s.handleAttach))
+	mux.Handle("GET /api/workspaces", s.authed(s.handleWorkspaces))
+	mux.Handle("GET /api/agent-kinds", s.authed(s.handleAgentKinds))
+	mux.Handle("POST /api/panes", s.authed(s.handleStartAgentPane))
 }
 
 // authorizeWrite resolves the pane and checks the identity may control it.

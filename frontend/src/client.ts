@@ -67,6 +67,11 @@ export interface Session {
   readOnly: boolean;
   /** True when the operator allowed the dashboard to change herdr session. */
   canSwitchSession?: boolean;
+  /**
+   * May this identity create new agent panes? Needs the write gate open AND
+   * spawn authority, which Policy answers separately from per-pane control.
+   */
+  canSpawn?: boolean;
   /** True when rename operations are permitted. */
   canRename?: boolean;
   /** True when the server has a VAPID keypair wired and can accept push
@@ -114,6 +119,34 @@ export interface SessionList {
 }
 
 export type RenameKind = "pane" | "tab" | "workspace";
+
+/** A herdr workspace, as a place a new agent pane can be created. */
+export interface Workspace {
+  workspaceId: string;
+  number: number;
+  label: string;
+  focused: boolean;
+  paneCount: number;
+  tabCount: number;
+  agentStatus: string;
+}
+
+/** An interactive agent installed on the host machine. */
+export interface AgentKind {
+  kind: string;
+  label: string;
+  /** Where the executable was found. Shown as evidence, never sent back. */
+  path: string;
+}
+
+/** The pane a spawn produced, so the caller can open it immediately. */
+export interface NewPane {
+  paneId: string;
+  tabId: string;
+  workspaceId: string;
+  kind: string;
+  name: string;
+}
 
 export interface Client {
   /** Human-facing description of the transport, for diagnostics. */
@@ -164,6 +197,17 @@ export interface Client {
   focus?(paneId: string): Promise<void>;
   interrupt?(paneId: string): Promise<void>;
   rename?(kind: RenameKind, id: string, name: string): Promise<void>;
+
+  /**
+   * Create a new agent pane, and the two lookups that form fills in.
+   *
+   * Absent on a transport that cannot write, and refused at runtime when the
+   * write gate is closed: starting an agent launches a process on the host,
+   * so it carries the same authority as typing into one.
+   */
+  workspaces?(): Promise<Workspace[]>;
+  agentKinds?(): Promise<AgentKind[]>;
+  startAgentPane?(workspaceId: string, kind: string, label: string): Promise<NewPane>;
 
   /** Session enumeration and switching. Absent unless the operator allowed it. */
   sessions?(): Promise<SessionList>;
@@ -481,6 +525,12 @@ async function httpClient(): Promise<Client> {
       postJSON(`/api/${kind === "workspace" ? "workspaces" : kind + "s"}/${pane(id)}/rename`, {
         name,
       }),
+    workspaces: async () =>
+      (await getJSON<{ workspaces: Workspace[] }>("/api/workspaces")).workspaces ?? [],
+    agentKinds: async () =>
+      (await getJSON<{ kinds: AgentKind[] }>("/api/agent-kinds")).kinds ?? [],
+    startAgentPane: (workspaceId, kind, label) =>
+      postJSON<NewPane>("/api/panes", { workspaceId, kind, label }),
   };
 }
 
