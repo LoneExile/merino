@@ -161,7 +161,16 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # Optional auto-bump of LoneExile/homebrew-merino.
-  # Create a classic PAT with `repo` on the tap, add it as secret HOMEBREW_TAP_TOKEN.
+  #
+  # Needs a fine-grained PAT as secret HOMEBREW_TAP_TOKEN:
+  #   Resource owner:     LoneExile
+  #   Repository access:  only LoneExile/homebrew-merino
+  #   Permissions:        Contents: Read and write   (Metadata read is forced)
+  #
+  # Not a classic PAT with `repo`, which this comment used to recommend: that
+  # grants write to every repository the owner has, to edit one file in one
+  # tap. Nothing here needs Actions — the asset download below uses the
+  # automatic GITHUB_TOKEN, not this one.
   bump-homebrew:
     name: Bump Homebrew cask
     needs: macos
@@ -174,7 +183,12 @@ jobs:
         run: |
           if [ -z "${TOKEN}" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "HOMEBREW_TAP_TOKEN not set — bump the cask manually after release"
+            # An annotation, not just a log line. Every step below is gated on
+            # skip=false, so without this the job reports a green tick having
+            # done nothing — indistinguishable from a successful bump on the
+            # run summary. The cask sat five releases stale behind that tick
+            # before anyone looked at the tap.
+            echo "::warning title=Homebrew cask NOT bumped::HOMEBREW_TAP_TOKEN is not set. The cask still points at the previous version — bump it manually."
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
@@ -215,8 +229,14 @@ jobs:
           ver, arm, path = sys.argv[1:4]
           p = pathlib.Path(path)
           t = p.read_text()
-          t = re.sub(r'version "[^"]+"', f'version "{ver}"', t)
-          t = re.sub(r'sha256 "[0-9a-fA-F]+"', f'sha256 "{arm}"', t)
+          t, nver = re.subn(r'version "[^"]+"', f'version "{ver}"', t)
+          t, nsha = re.subn(r'sha256 "[0-9a-fA-F]+"', f'sha256 "{arm}"', t)
+          # A regex that matches nothing rewrites nothing, and the commit step
+          # then reports "no cask changes" and exits 0 — a green run leaving a
+          # stale cask. If the cask's shape ever drifts from these patterns,
+          # say so here instead.
+          if nver != 1 or nsha != 1:
+              sys.exit(f"cask patch matched {nver} version and {nsha} sha256 lines, expected 1 each: {path} has drifted")
           p.write_text(t)
           print(p.read_text())
           PY
