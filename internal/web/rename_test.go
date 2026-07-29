@@ -24,7 +24,7 @@ func renameServer(t *testing.T, policy Policy, wr Writer, agents []app.Agent) (*
 		policy = SingleOperator{}
 	}
 	s, err := New(&fakeSource{agents: agents}, Config{
-		Provider:    NewPasswordProvider("alice", "correct-horse", DirectIP, false),
+		Provider:    testProvider("alice", "correct-horse"),
 		Policy:      policy,
 		Assets:      fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("<head></head>")}},
 		Logger:      slog.New(slog.DiscardHandler),

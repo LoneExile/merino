@@ -51,13 +51,27 @@ func (f *fakeSource) StreamOutputANSI(ctx context.Context, _ string, _ int, onTe
 	return nil
 }
 
+// testProvider builds a PasswordProvider with username/password sign-in ON.
+//
+// The production default is OFF (see NewPasswordProvider): the door is opened
+// deliberately by main.go from the persisted preference, never inherited from
+// a constructor. Tests that exercise the /login FORM have to open it the same
+// way, which is what this says out loud at every call site — rather than the
+// suite quietly depending on a fail-open default, which is how the old one
+// stayed unnoticed.
+func testProvider(user, pass string) *PasswordProvider {
+	p := NewPasswordProvider(user, pass, DirectIP, false)
+	p.SetPasswordLogin(true)
+	return p
+}
+
 func testServer(t *testing.T, src Source, policy Policy) *Server {
 	t.Helper()
 	if policy == nil {
 		policy = SingleOperator{}
 	}
 	s, err := New(src, Config{
-		Provider: NewPasswordProvider("alice", "correct-horse", DirectIP, false),
+		Provider: testProvider("alice", "correct-horse"),
 		Policy:   policy,
 		Assets:   fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("<head></head>")}},
 		Logger:   slog.New(slog.DiscardHandler),
@@ -78,7 +92,7 @@ func TestNewRequiresProviderAndPolicy(t *testing.T) {
 	if _, err := New(&fakeSource{}, Config{Policy: SingleOperator{}}); err == nil {
 		t.Error("server without a Provider should be refused")
 	}
-	if _, err := New(&fakeSource{}, Config{Provider: NewPasswordProvider("a", "b", DirectIP, false)}); err == nil {
+	if _, err := New(&fakeSource{}, Config{Provider: testProvider("a", "b")}); err == nil {
 		t.Error("server without a Policy should be refused")
 	}
 }
@@ -299,7 +313,7 @@ func TestInlineScriptsAreNonced(t *testing.T) {
 		Data: []byte(`<head></head><body><script>window.boot=1</script><script src="/a.js"></script></body>`),
 	}}
 	srv, err := New(&fakeSource{}, Config{
-		Provider: NewPasswordProvider("alice", "correct-horse", DirectIP, false),
+		Provider: testProvider("alice", "correct-horse"),
 		Policy:   SingleOperator{},
 		Assets:   assets,
 		Logger:   slog.New(slog.DiscardHandler),

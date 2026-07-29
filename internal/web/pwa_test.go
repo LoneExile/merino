@@ -25,7 +25,7 @@ func TestServiceWorkerAndManifestServedDirectly(t *testing.T) {
 		"manifest.webmanifest": &fstest.MapFile{Data: []byte(`{"name":"Merino"}`)},
 	}
 	s, err := New(&fakeSource{}, Config{
-		Provider: NewPasswordProvider("alice", "correct-horse", DirectIP, false),
+		Provider: testProvider("alice", "correct-horse"),
 		Policy:   SingleOperator{},
 		Assets:   assets,
 		Logger:   slog.New(slog.DiscardHandler),
@@ -130,7 +130,7 @@ func TestPWAAssetsAreReachableWithoutSession(t *testing.T) {
 		"favicon-64.png":        &fstest.MapFile{Data: []byte("\x89PNG\r\n\x1a\nf64")},
 	}
 	s, err := New(&fakeSource{}, Config{
-		Provider: NewPasswordProvider("alice", "correct-horse", DirectIP, false),
+		Provider: testProvider("alice", "correct-horse"),
 		Policy:   SingleOperator{},
 		Assets:   assets,
 		Logger:   slog.New(slog.DiscardHandler),
@@ -201,7 +201,7 @@ func TestIconAssetRevalidatesWithETag(t *testing.T) {
 		"favicon-64.png": &fstest.MapFile{Data: []byte(payload)},
 	}
 	s, err := New(&fakeSource{}, Config{
-		Provider: NewPasswordProvider("alice", "correct-horse", DirectIP, false),
+		Provider: testProvider("alice", "correct-horse"),
 		Policy:   SingleOperator{},
 		Assets:   assets,
 		Logger:   slog.New(slog.DiscardHandler),

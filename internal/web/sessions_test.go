@@ -43,7 +43,7 @@ func sessionsServer(t *testing.T, sessions SessionSource, switcher SessionSwitch
 	t.Helper()
 	t.Helper()
 	s, err := New(&fakeSource{agents: []app.Agent{agent("p1")}}, Config{
-		Provider: NewPasswordProvider("alice", "correct-horse", DirectIP, false),
+		Provider: testProvider("alice", "correct-horse"),
 		Policy:   SingleOperator{},
 		Assets:   fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("<head></head>")}},
 		Logger:   slog.New(slog.DiscardHandler),
@@ -230,7 +230,7 @@ func TestSessionSwitchRequiresAuth(t *testing.T) {
 // existing readOnly flag, tracking Switcher/Writer independently.
 func TestSessionEndpointReportsCapabilityFlags(t *testing.T) {
 	full, err := New(&fakeSource{agents: []app.Agent{agent("p1")}}, Config{
-		Provider:    NewPasswordProvider("alice", "correct-horse", DirectIP, false),
+		Provider:    testProvider("alice", "correct-horse"),
 		Policy:      SingleOperator{},
 		Assets:      fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("<head></head>")}},
 		Logger:      slog.New(slog.DiscardHandler),

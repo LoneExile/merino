@@ -129,13 +129,45 @@ func resolveKinds(ctx context.Context) []AgentKind {
 	return out
 }
 
+// supportedKind reports whether a kind is one herdr can start, returning the
+// canonical spelling. Backed by the compile-time table, never by the PATH
+// probe: whether a binary is visible to us is a UI hint, not a fact about
+// what herdr will accept.
+func supportedKind(kind string) (string, bool) {
+	for _, k := range supportedKinds {
+		if k.kind == kind {
+			return k.kind, true
+		}
+	}
+	return "", false
+}
+
+// probeSentinel is printed as the script's last statement. Its presence in
+// stdout is the ONLY evidence the script ran to completion.
+const probeSentinel = "merino-probe-complete"
+
 // lookupInLoginShell runs one `command -v` per binary inside a single
 // interactive login shell and parses the resolved paths back out.
 //
 // One shell for the whole set, not one per binary: rc files can take hundreds
 // of milliseconds, and twenty-one of those in series is a visibly slow sheet.
-// Returns nil (not an empty map) when the shell itself could not be run, so
-// the caller can tell "no agents installed" from "could not ask".
+//
+// Returns nil (not an empty map) when the shell could not answer, so the
+// caller can tell "no agents installed" from "could not ask" and fall back.
+// That distinction is drawn from the SENTINEL, not from the exit status or
+// from stdout being non-empty, because both of those are wrong here:
+//
+//   - Exit status is the LAST command's, so the script exits non-zero
+//     whenever the last binary in the table happens to be missing. On this
+//     machine it exits 1 on every single run.
+//   - Non-empty stdout is not evidence either. An rc file that prints a
+//     banner (MOTD, fastfetch, an update notice) before the script fails
+//     leaves output that parses to nothing, which would be accepted as "no
+//     agents installed" and skip the fallback entirely.
+//
+// Non-POSIX login shells are handled by the same path rather than special
+// cased: fish has no `p=$(…)` assignment and csh rejects `-lic` outright, so
+// neither emits the sentinel and both fall back correctly.
 func lookupInLoginShell(ctx context.Context, bins []string) map[string]string {
 	shell := os.Getenv("SHELL")
 	if shell == "" {
@@ -144,14 +176,14 @@ func lookupInLoginShell(ctx context.Context, bins []string) map[string]string {
 
 	var b strings.Builder
 	for _, bin := range bins {
-		// Print "<name>\t<path>" per hit; misses print nothing. command -v is
-		// POSIX and works in sh, bash, zsh and fish-as-login-sh alike.
+		// Print "<name>\t<path>" per hit; misses print nothing.
 		b.WriteString("p=$(command -v ")
 		b.WriteString(bin)
 		b.WriteString(" 2>/dev/null) && printf '")
 		b.WriteString(bin)
 		b.WriteString("\\t%s\\n' \"$p\"\n")
 	}
+	b.WriteString("printf '" + probeSentinel + "\\n'\n")
 
 	ctx, cancel := context.WithTimeout(ctx, lookupTimeout)
 	defer cancel()
@@ -160,18 +192,24 @@ func lookupInLoginShell(ctx context.Context, bins []string) map[string]string {
 	// sources ~/.zshrc (where mise/asdf usually land) for interactive shells.
 	cmd := exec.CommandContext(ctx, shell, "-lic", b.String())
 	cmd.Env = append(os.Environ(), "TERM=dumb")
-	out, err := cmd.Output()
-	if err != nil && len(out) == 0 {
-		return nil
-	}
+	out, _ := cmd.Output()
 
 	found := make(map[string]string, len(bins))
+	complete := false
 	for _, line := range strings.Split(string(out), "\n") {
-		name, path, ok := strings.Cut(strings.TrimSpace(line), "\t")
+		line = strings.TrimSpace(line)
+		if line == probeSentinel {
+			complete = true
+			continue
+		}
+		name, path, ok := strings.Cut(line, "\t")
 		if !ok || name == "" || path == "" {
 			continue
 		}
 		found[name] = path
+	}
+	if !complete {
+		return nil
 	}
 	return found
 }

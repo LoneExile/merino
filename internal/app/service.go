@@ -669,20 +669,24 @@ func (s *AgentsService) AgentKinds() ([]AgentKind, error) {
 //
 // label is optional; empty means herdr names the tab.
 func (s *AgentsService) StartAgentPane(workspaceID, kind, label string) (NewPane, error) {
-	k, ok := findAgentKind(s.ctx, kind)
+	// Checked against the compile-time allowlist, NOT against what the PATH
+	// probe found installed. The probe asks a login shell and degrades in
+	// several environments (see AvailableAgentKinds); gating a start on it
+	// would answer "not installed" for an agent herdr can start perfectly
+	// well. herdr validates the kind itself and says unsupported_agent_kind,
+	// so this check exists only to keep a typo from creating a tab first.
+	canonical, ok := supportedKind(kind)
 	if !ok {
-		return NewPane{}, fmt.Errorf("%w: agent %q is not installed on this machine", ErrNotAllowed, kind)
+		// Name what the caller actually sent, not the empty canonical form.
+		return NewPane{}, fmt.Errorf("%w: agent %q is not a supported kind", ErrNotAllowed, kind)
 	}
+	kind = canonical
 	if label != "" {
 		if err := checkRenameName(label); err != nil {
 			return NewPane{}, err
 		}
 	}
-
-	name := label
-	if name == "" {
-		name = k.Kind
-	}
+	name := agentNameFrom(label, kind)
 
 	client := s.currentClient()
 	tab, pane, err := client.CreateTab(s.ctx, workspaceID, label)
@@ -691,32 +695,71 @@ func (s *AgentsService) StartAgentPane(workspaceID, kind, label string) (NewPane
 	}
 	s.log.Info("tab_created", "tab", tab.TabID, "pane", pane.PaneID, "workspace", tab.WorkspaceID)
 
-	if err := client.StartAgent(s.ctx, pane.PaneID, k.Kind, name); err != nil {
-		s.log.Warn("agent_start_failed", "pane", pane.PaneID, "kind", k.Kind, "err", err)
-		if cerr := client.CloseTab(s.ctx, tab.TabID); cerr != nil {
+	if err := client.StartAgent(s.ctx, pane.PaneID, kind, name); err != nil {
+		s.log.Warn("agent_start_failed", "pane", pane.PaneID, "kind", kind, "err", err)
+		// Rollback gets its own context. s.ctx is the service's lifetime
+		// context, and a quit mid-start cancels it — the very case that
+		// produced the failure would then also skip the cleanup and leak an
+		// empty tab into the user's herd.
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(s.ctx), rollbackBudget)
+		defer cancel()
+		if cerr := client.CloseTab(ctx, tab.TabID); cerr != nil {
 			s.log.Error("rollback_tab_failed", "tab", tab.TabID, "err", cerr)
 		}
 		return NewPane{}, err
 	}
 
-	s.log.Info("agent_started", "pane", pane.PaneID, "kind", k.Kind, "name", name)
+	s.log.Info("agent_started", "pane", pane.PaneID, "kind", kind, "name", name)
 	return NewPane{
 		PaneID:      pane.PaneID,
 		TabID:       tab.TabID,
 		WorkspaceID: tab.WorkspaceID,
-		Kind:        k.Kind,
+		Kind:        kind,
 		Name:        name,
 	}, nil
 }
 
-// findAgentKind resolves a requested kind against what is actually installed.
-// herdr would reject an unknown kind anyway, but only after a tab has been
-// created and typed into; checking first keeps a typo from leaving debris.
-func findAgentKind(ctx context.Context, kind string) (AgentKind, bool) {
-	for _, k := range AvailableAgentKinds(ctx) {
-		if k.Kind == kind {
-			return k, true
+// rollbackBudget bounds the cleanup call that closes a tab whose agent failed
+// to start. Short: the user is already waiting on an error.
+const rollbackBudget = 5 * time.Second
+
+// agentNameFrom derives a herdr agent name from the user's tab label.
+//
+// The two are NOT the same string, which is the bug this exists to prevent.
+// tab.create takes a free-form display label, but agent.start enforces
+// ^[a-z][a-z0-9_-]{0,31}$ and rejects anything else outright — so passing the
+// label straight through meant a perfectly ordinary "Scratch Pad" created a
+// tab, failed the start, rolled back, and showed the user herdr's complaint
+// about lowercase letters.
+//
+// Falls back to the kind, which is always a valid name by construction.
+func agentNameFrom(label, kind string) string {
+	var b strings.Builder
+	dash := false
+	for _, r := range strings.ToLower(label) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '_':
+			b.WriteRune(r)
+			dash = false
+		case b.Len() > 0 && !dash:
+			// Any run of unsupported characters collapses to one separator,
+			// never a leading one.
+			b.WriteByte('-')
+			dash = true
 		}
 	}
-	return AgentKind{}, false
+	name := strings.TrimRight(b.String(), "-_")
+
+	// Must START with a letter: "2nd try" would otherwise yield "2nd-try".
+	name = strings.TrimLeft(name, "0123456789_-")
+	if len(name) > maxAgentNameLen {
+		name = strings.TrimRight(name[:maxAgentNameLen], "-_")
+	}
+	if name == "" {
+		return kind
+	}
+	return name
 }
+
+// maxAgentNameLen is herdr's own cap on an agent name.
+const maxAgentNameLen = 32

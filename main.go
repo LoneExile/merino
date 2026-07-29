@@ -464,8 +464,13 @@ func startWeb(src web.Source, addr string, behindProxy, allowWrites, allowSessio
 		return nil, nil, nil, nil, bootErr
 	}
 	if generated {
-		logger.Info("generated local operator credentials for zero-config start",
-			"user", user, "path", filepath.Join(stateDir, "bootstrap-creds.json"))
+		// Not "zero-config start" any more: password sign-in defaults OFF, so
+		// these credentials do nothing until the operator opens that door in
+		// Settings. Saying otherwise sends people to a login form that will
+		// refuse them.
+		logger.Info("stored local operator credentials",
+			"user", user, "path", filepath.Join(stateDir, "bootstrap-creds.json"),
+			"note", "usable only once password sign-in is enabled in Settings")
 	}
 
 	dist, err := fs.Sub(assets, "frontend/dist")
@@ -550,7 +555,13 @@ func startWeb(src web.Source, addr string, behindProxy, allowWrites, allowSessio
 		return nil, nil, nil, nil, devErr
 	}
 	provider.SetDevices(devices)
-	provider.SetPasswordLogin(web.PasswordLoginEnabled(stateDir))
+	passwordLogin := web.PasswordLoginEnabled(stateDir)
+	provider.SetPasswordLogin(passwordLogin)
+	// Reported like the write and session-switch gates beside it. Without
+	// this line the app's weakest door is the only one whose state a startup
+	// log does not name, and an install that lost password sign-in to the
+	// default change has nothing to read.
+	logger.Info("password sign-in gate", "enabled", passwordLogin)
 	if ou, op, ok := web.LoadOptionalPassword(stateDir); ok {
 		provider.SetOptionalPassword(ou, op)
 		logger.Info("optional phone password enabled", "user", ou)

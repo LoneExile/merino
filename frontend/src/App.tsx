@@ -143,24 +143,31 @@ export default function App() {
 
   useEffect(() => {
     if (!pendingPane) return;
-    if (agents.some((a) => a.paneId === pendingPane)) {
-      setOpenPane(pendingPane);
-      setPendingPane(null);
-      return;
-    }
-    // Give up eventually: a pane that never arrives must not leave the app
-    // waiting to hijack the view minutes later.
+    if (!agents.some((a) => a.paneId === pendingPane)) return;
+    // Only when the operator is still on the list. If they opened something
+    // while the agent was starting, that pane outranks the one we are
+    // delivering — and swapping would remount PaneView (it is keyed on the
+    // pane id) and throw away a half-typed reply.
+    setOpenPane((cur) => cur ?? pendingPane);
+    setPendingPane(null);
+  }, [pendingPane, agents]);
+
+  // Deadline keyed on the pane id ALONE. Listing `agents` here too would
+  // re-arm the timer on every herd event — and both transports hand React a
+  // fresh array each time — so the window became "30s since the herd last
+  // went quiet", which on a working herd is never.
+  useEffect(() => {
+    if (!pendingPane) return;
     const t = window.setTimeout(() => setPendingPane(null), PENDING_PANE_MS);
     return () => window.clearTimeout(t);
-  }, [pendingPane, agents]);
+  }, [pendingPane]);
 
   // The pane the user opened can vanish — the agent exits, or the session is
   // switched underneath them. Fall back to the list rather than showing a
-  // terminal for something that no longer exists. A pane still being waited
-  // for is exempt: it has not vanished, it has not arrived.
+  // terminal for something that no longer exists.
   useEffect(() => {
-    if (openPane && ready && !current && openPane !== pendingPane) setOpenPane(null);
-  }, [openPane, current, ready, pendingPane]);
+    if (openPane && ready && !current) setOpenPane(null);
+  }, [openPane, current, ready]);
 
   const grouped = useMemo(() => {
     const by = new Map<string, Agent[]>();

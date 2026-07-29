@@ -1402,7 +1402,10 @@ html.keyboard-open .jump-dock {
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
   padding: var(--space-xs) var(--space-2xs) calc(var(--space-xs) - 1px);
-  min-height: 34px;
+  /* The locked floor from design.md, via the token every other control uses.
+   * This is the primary navigation of Settings on a phone, so it is the last
+   * control that should be under-sized. */
+  min-height: var(--tap);
   font: 600 var(--text-2xs) / 1 var(--font-mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;

@@ -32,7 +32,7 @@ func pushTestServer(t *testing.T, policy Policy) (*Server, *bytes.Buffer) {
 		policy = SingleOperator{}
 	}
 	s, err := New(&fakeSource{agents: []app.Agent{agent("p1")}}, Config{
-		Provider: NewPasswordProvider("alice", "correct-horse", DirectIP, false),
+		Provider: testProvider("alice", "correct-horse"),
 		Policy:   policy,
 		Assets:   fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("<head></head>")}},
 		Logger:   slog.New(slog.DiscardHandler),

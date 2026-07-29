@@ -169,7 +169,11 @@ export function SettingsSheet({
   const [phoneUser, setPhoneUser] = useState("phone");
   const [phonePass, setPhonePass] = useState("");
   const [passMsg, setPassMsg] = useState<string | null>(null);
-  const [passwordLoginOn, setPasswordLoginOn] = useState(true);
+  // Seeded OFF to match the host default (PasswordLoginEnabled returns false
+  // for a missing file). Seeding true painted this switch ON — above a hint
+  // reading "Off by default" — for the frame before the host answered, which
+  // misreports the state of the weakest door in the app.
+  const [passwordLoginOn, setPasswordLoginOn] = useState(false);
   const [sessionSwitchOn, setSessionSwitchOn] = useState(false);
   const [sessionSwitchBusy, setSessionSwitchBusy] = useState(false);
   const [allowWritesOn, setAllowWritesOn] = useState(false);

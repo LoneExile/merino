@@ -60,7 +60,12 @@ type PasswordProvider struct {
 	altPass [32]byte
 	hasAlt  bool
 	// allowPassword gates HTTP username/password (bootstrap + optional).
-	// QR/token pairing is unaffected. Default true.
+	// QR/token pairing is unaffected.
+	//
+	// Default FALSE. This is the weakest door the app has and the constructor
+	// is not where it should be opened: main.go resolves the persisted
+	// preference (PasswordLoginEnabled) and calls SetPasswordLogin. A
+	// construction site that forgets is then closed, not open.
 	allowPassword bool
 
 	mu       sync.Mutex
@@ -96,7 +101,7 @@ func NewPasswordProvider(user, password string, ip IPResolver, behindProxy bool)
 		passHash:      sha256.Sum256([]byte(password)),
 		ip:            ip,
 		behindProxy:   behindProxy,
-		allowPassword: true,
+		allowPassword: false,
 		failures:      make(map[string]*attemptRecord),
 	}
 }
