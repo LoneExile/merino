@@ -145,15 +145,18 @@ type passwordLoginFile struct {
 }
 
 // PasswordLoginEnabled reports whether user/pass HTTP login is on.
-// Missing file ⇒ enabled (legacy default).
+//
+// Missing or unreadable file ⇒ OFF. A fresh install accepts QR pairing only:
+// a password that a whole LAN (or a public tunnel) can attempt is the weakest
+// door this app has, and it should be opened deliberately, never inherited.
 func PasswordLoginEnabled(dir string) bool {
 	raw, err := os.ReadFile(passwordLoginPath(dir))
 	if err != nil {
-		return true
+		return false
 	}
 	var f passwordLoginFile
 	if json.Unmarshal(raw, &f) != nil {
-		return true
+		return false
 	}
 	return f.Enabled
 }

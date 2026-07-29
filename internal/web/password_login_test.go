@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 )
@@ -40,5 +41,37 @@ func TestPasswordLoginDisabledBlocksForm(t *testing.T) {
 		if c.Name == sessionCookie && c.Value != "" && c.MaxAge >= 0 {
 			t.Fatal("must not issue session when password login disabled")
 		}
+	}
+}
+
+// A fresh install must not accept username/password: the state dir has no
+// password-login.json until someone turns the toggle on deliberately.
+func TestPasswordLoginDefaultsOff(t *testing.T) {
+	dir := t.TempDir()
+
+	if PasswordLoginEnabled(dir) {
+		t.Fatal("fresh state dir must default to password login OFF")
+	}
+
+	if err := SetPasswordLoginEnabled(dir, true); err != nil {
+		t.Fatalf("enable: %v", err)
+	}
+	if !PasswordLoginEnabled(dir) {
+		t.Fatal("explicit enable must persist")
+	}
+
+	if err := SetPasswordLoginEnabled(dir, false); err != nil {
+		t.Fatalf("disable: %v", err)
+	}
+	if PasswordLoginEnabled(dir) {
+		t.Fatal("explicit disable must persist")
+	}
+
+	// A corrupt file is not an invitation to open the door.
+	if err := os.WriteFile(passwordLoginPath(dir), []byte("{nope"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if PasswordLoginEnabled(dir) {
+		t.Fatal("unparseable file must read as OFF")
 	}
 }
