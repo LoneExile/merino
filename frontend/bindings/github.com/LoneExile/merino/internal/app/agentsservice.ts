@@ -74,8 +74,9 @@ export function Read(paneID: string, lines: number): $CancellablePromise<string>
 
 /**
  * ReadANSI is Read but preserves ANSI/SGR colour and style escapes instead
- * of stripping them, for a renderer that can display them. Used only by the
- * web dashboard's terminal view; the desktop panel calls Read.
+ * of stripping them, for a renderer that can display them. Both the web
+ * dashboard and the desktop panel use it — the panel used plain Read until
+ * its terminal was noticed to be monochrome next to the browser's.
  */
 export function ReadANSI(paneID: string, lines: number): $CancellablePromise<string> {
     return $Call.ByID(3177936194, paneID, lines);

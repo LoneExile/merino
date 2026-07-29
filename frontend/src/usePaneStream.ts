@@ -10,6 +10,15 @@ export interface PaneStream {
   /** True while a push transport is delivering. False means the content is
    *  still correct but arriving by poll, or not arriving at all. */
   live: boolean;
+  /**
+   * True only when a transport that HAS a push stream is not delivering, so
+   * the UI is on the slower poll fallback. False on a transport with no
+   * stream at all: the desktop panel polls by design (Wails cannot marshal a
+   * Go func across IPC, so StreamOutputANSI is unreachable from JS), and
+   * flagging its normal operating mode as "reconnecting" is a lie that never
+   * clears.
+   */
+  degraded: boolean;
   error: string | null;
   /** How many lines the current buffer was requested with. */
   historyLines: number;
@@ -238,5 +247,16 @@ export function usePaneStream(
       });
   }, [client, paneId, canLoadMore]);
 
-  return { text, loaded, live, error, historyLines, loadingMore, canLoadMore, loadMore };
+  return {
+    text,
+    loaded,
+    live,
+    // Only a transport that offers a stream can be degraded by losing it.
+    degraded: Boolean(client?.streamPane) && !live,
+    error,
+    historyLines,
+    loadingMore,
+    canLoadMore,
+    loadMore,
+  };
 }

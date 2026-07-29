@@ -385,8 +385,9 @@ func (s *AgentsService) StreamOutput(ctx context.Context, paneID string, lines i
 }
 
 // ReadANSI is Read but preserves ANSI/SGR colour and style escapes instead
-// of stripping them, for a renderer that can display them. Used only by the
-// web dashboard's terminal view; the desktop panel calls Read.
+// of stripping them, for a renderer that can display them. Both the web
+// dashboard and the desktop panel use it — the panel used plain Read until
+// its terminal was noticed to be monochrome next to the browser's.
 func (s *AgentsService) ReadANSI(paneID string, lines int) (string, error) {
 	if err := s.guard.CheckPane(paneID); err != nil {
 		return "", err

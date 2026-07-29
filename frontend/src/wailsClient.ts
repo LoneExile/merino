@@ -65,7 +65,18 @@ export function wailsClient(): Client {
       const list = (await AgentsService.SlashCommands(paneId, agent, query)) ?? [];
       return list as SlashCommand[];
     },
-    read: (paneId: string, lines: number) => AgentsService.Read(paneId, lines),
+    // ReadANSI, not Read: Read strips SGR escapes, which is why the panel's
+    // terminal was monochrome while the browser showed colour. PaneView runs
+    // the same parseAnsi renderer on both transports, so the only difference
+    // was that this one asked for the colour to be thrown away.
+    //
+    // There is deliberately no streamPane here. The generated binding for
+    // StreamOutputANSI is `$Call.ByID(78234507, paneID, lines, onText)`, and
+    // $Call marshals its arguments as JSON — a function has no JSON
+    // representation, so the Go side cannot receive a JS callback through it.
+    // The panel polls instead; usePaneStream treats a stream-less transport
+    // as normal rather than degraded.
+    read: (paneId: string, lines: number) => AgentsService.ReadANSI(paneId, lines),
 
     subscribe(onAgents) {
       const off = Events.On(EVENT_AGENTS_CHANGED, (e: unknown) => {

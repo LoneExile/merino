@@ -218,7 +218,7 @@ export function PaneView({ client, agent, readOnly = false, wrap, termFont, onBa
   const [searchQ, setSearchQ] = useState("");
   const [matchIdx, setMatchIdx] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const { text, loaded, live, error, loadingMore, canLoadMore, loadMore } = usePaneStream(
+  const { text, loaded, degraded, error, loadingMore, canLoadMore, loadMore } = usePaneStream(
     client,
     agent.paneId,
     pinned,
@@ -412,7 +412,7 @@ export function PaneView({ client, agent, readOnly = false, wrap, termFont, onBa
         </div>
 
         <div className="pane__bar-actions">
-          {!live && loaded && (
+          {degraded && loaded && (
             <span className="chip chip--warn mono" role="status">
               reconnecting
             </span>
