@@ -10,8 +10,11 @@ on:
         description: "Tag to release (e.g. v0.1.0)"
         required: true
 
+# Least privilege per job, not one blanket grant: only the release job writes
+# anything here. bump-homebrew reads this repo (release assets) and writes to
+# the tap using its own PAT, so it has no business holding write on this one.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -21,15 +24,26 @@ jobs:
   macos:
     name: macOS package
     runs-on: macos-latest
+    permissions:
+      contents: write # creates the GitHub Release and uploads assets
     steps:
       - uses: actions/checkout@v5
         with:
+          # An action input, not a shell word: safe to interpolate.
           ref: ${{ github.event.inputs.tag || github.ref }}
 
       - name: Resolve version
         id: ver
+        # Through env, never interpolated into the script. A ${{ }} expression
+        # is pasted in as raw text before the shell parses the line, so a
+        # dispatch input containing a quote executes the rest as commands — in
+        # a job that holds a write token. GITHUB_REF_NAME is the built-in
+        # equivalent of github.ref_name.
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
         run: |
-          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          set -euo pipefail
+          TAG="${INPUT_TAG:-$GITHUB_REF_NAME}"
           TAG="${TAG#refs/tags/}"
           VERSION="${TAG#v}"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
@@ -149,7 +163,11 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        # Pinned to a commit, not a tag. This is the only third-party action
+        # here and it receives a token that can write to this repository; a
+        # mutable tag lets whoever controls it point that token at new code.
+        # Renovate still bumps SHA pins and keeps the comment in step.
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           tag_name: ${{ steps.ver.outputs.tag }}
           name: Merino ${{ steps.ver.outputs.tag }}
@@ -196,8 +214,13 @@ jobs:
       - name: Resolve version
         if: steps.gate.outputs.skip == 'false'
         id: ver
+        # Same reasoning as the macOS job: through env, never pasted into the
+        # script. This job holds the tap PAT, so the stakes are higher here.
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
         run: |
-          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          set -euo pipefail
+          TAG="${INPUT_TAG:-$GITHUB_REF_NAME}"
           TAG="${TAG#refs/tags/}"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
@@ -244,10 +267,15 @@ jobs:
       - name: Commit and push
         if: steps.gate.outputs.skip == 'false'
         working-directory: tap
+        # VERSION derives from the tag, so a crafted dispatch input reaches
+        # this line too. Same treatment as the other two: env, not ${{ }}.
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add Casks/merino.rb
           git diff --cached --quiet && echo "no cask changes" && exit 0
-          git commit -m "chore: merino ${{ steps.ver.outputs.version }}"
+          git commit -m "chore: merino ${VERSION}"
           git push
