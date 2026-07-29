@@ -249,14 +249,48 @@ assets/sheep/               parametric drawing every sheep mark comes from
 
 Maintainers only.
 
-1. Bump the version in `frontend/package.json` (and its lockfile) and
+> **Never bump the version without the maintainer explicitly agreeing to it.**
+> A version bump is a decision about what the release *means* — not
+> housekeeping to tidy up alongside a change. Land the work first; the bump is
+> a separate, deliberate act. If you think a release is due, say so and wait
+> for a yes. This applies to agents and humans equally.
+
+1. Agree that a release is happening, and on the number
+2. Bump it in `frontend/package.json` (and its lockfile) and
    `build/darwin/Info.plist` / `Info.dev.plist`
-2. `just gate`
-3. Tag `vX.Y.Z` and push it — `.github/workflows/release.yml` builds, packages,
-   and publishes the release
-4. Update the Homebrew cask SHA
+3. `just changelog vX.Y.Z` — review the diff. git-cliff regenerates from
+   commits, so re-add any hand-written upgrade note it drops
+4. Add an upgrade note for anything that changes behaviour on an existing
+   install. Commit subjects cannot say "this can lock you out"; a note can
+5. `just gate`
+6. Merge the release PR, then tag `vX.Y.Z` and push the tag —
+   `.github/workflows/release.yml` builds, packages, and posts the CHANGELOG
+   section as the release body
+7. The Homebrew cask bump is automatic; check it landed
+
+`just release-notes vX.Y.Z` prints exactly what the workflow will post.
 
 ## Pull requests
+
+`main` is protected. Direct pushes are rejected for everyone including
+admins, so every change arrives as a PR:
+
+```bash
+git checkout -b fix/some-thing
+# work, commit
+git push -u origin fix/some-thing
+gh pr create --fill
+```
+
+CI (`build`) must be green and conversations resolved before merge. Approvals
+are set to zero rather than one because GitHub forbids approving your own PR,
+which would deadlock a solo maintainer — the gate is CI and the PR itself, not
+a rubber stamp.
+
+Merge with **squash** or **rebase**. Merge commits are disabled: their
+`Merge pull request #12 from…` subject is not a Conventional Commit, and
+git-cliff would either skip it or emit it as noise. Squash takes the PR title
+as the subject, so write the title as a Conventional Commit.
 
 - One logical change per PR. Split refactors from behaviour.
 - `just gate` green.
@@ -264,3 +298,13 @@ Maintainers only.
   ran and what you observed is.
 - Note anything you could **not** verify. An honest gap is worth more than a
   confident claim that does not hold.
+
+### If protection has to come off
+
+It should not, but a broken `build` can wedge an urgent fix. Lifting it is a
+deliberate, visible act, not a quiet `--force`:
+
+```bash
+gh api -X DELETE repos/LoneExile/merino/branches/main/protection
+# fix, push, then put it straight back — see git history for the payload
+```
