@@ -336,7 +336,7 @@ func (s *Server) routes() http.Handler {
 // API calls so the frontend can react without following HTML.
 func (s *Server) authed(h func(http.ResponseWriter, *http.Request, Identity)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id, ok := s.sessions.Read(r)
+		sess, ok := s.sessions.ReadSession(r)
 		if !ok {
 			if strings.HasPrefix(r.URL.Path, "/api/") {
 				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthenticated"})
@@ -345,6 +345,7 @@ func (s *Server) authed(h func(http.ResponseWriter, *http.Request, Identity)) ht
 			http.Redirect(w, r, s.cfg.Provider.LoginPath(), http.StatusSeeOther)
 			return
 		}
+		id := sess.Identity
 		// Per-device grants can be revoked while a cookie is still valid.
 		if s.cfg.Devices != nil && IsDeviceSubject(id.Subject) && !s.cfg.Devices.Active(id.Subject) {
 			s.sessions.Clear(w)
@@ -355,6 +356,11 @@ func (s *Server) authed(h func(http.ResponseWriter, *http.Request, Identity)) ht
 			http.Redirect(w, r, s.cfg.Provider.LoginPath(), http.StatusSeeOther)
 			return
 		}
+		// Renew before the handler runs: it sets a header, and handlers here
+		// stream (SSE) or write bodies immediately, after which a Set-Cookie
+		// would be silently dropped. Deliberately after the revocation check,
+		// so a revoked device is never handed a fresh cookie.
+		s.sessions.Renew(w, sess)
 		h(w, r, id)
 	})
 }
