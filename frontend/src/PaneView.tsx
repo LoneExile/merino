@@ -6,6 +6,7 @@ import { StatusDot } from "./StatusDot";
 import { parseAnsi } from "./ansi";
 import { splitPasteImages } from "./pasteImages";
 import { rememberImage } from "./imageCache";
+import { agentSubtitle, agentTitle } from "./agentName";
 import type { useTermFontPref } from "./termFontPref";
 import { findMatches, stripAnsi } from "./termSearch";
 
@@ -388,7 +389,7 @@ export function PaneView({ client, agent, readOnly = false, wrap, termFont, onBa
   }, [searchOpen, openSearch, closeSearch, goMatch, termFont]);
 
   return (
-    <section className="pane" aria-label={`${agent.agent} terminal`}>
+    <section className="pane" aria-label={`${agentTitle(agent)} terminal`}>
       <header className="pane__bar">
         <button className="btn btn--icon" onClick={onBack} aria-label="Back to agents">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
@@ -406,9 +407,15 @@ export function PaneView({ client, agent, readOnly = false, wrap, termFont, onBa
         <div className="pane__id">
           <span className="pane__agent">
             <StatusDot status={agent.status} />
-            {agent.agent || "pane"}
+            {agentTitle(agent)}
           </span>
-          <span className="mono pane__meta">{agent.paneId}</span>
+          {/* paneId is passed explicitly, not left to agentSubtitle's default:
+            * this is the one surface where the raw id earns its width, since
+            * it is what you type at herdr. An unnamed pane therefore reads
+            * exactly as before. A named pane demotes its kind into this line,
+            * same rule as a list row, so the header still says which agent
+            * it is. */}
+          <span className="mono pane__meta">{agentSubtitle(agent, agent.paneId)}</span>
         </div>
 
         <div className="pane__bar-actions">

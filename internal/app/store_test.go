@@ -110,6 +110,32 @@ func TestUpsertIgnoresNonVisualChurn(t *testing.T) {
 	}
 }
 
+// A rename is the one write whose entire visible effect is a field the store
+// used to ignore: every other field is unchanged, so an omission here made
+// `pane.rename` succeed at the socket and read as a no-op in the UI.
+func TestUpsertTreatsRenameAsChange(t *testing.T) {
+	s := NewStore()
+	p := pane("p1", "omp", herdr.StatusWorking)
+	s.Replace([]herdr.PaneInfo{p})
+
+	renamed := p
+	renamed.Label = "deploy"
+	if !s.UpsertPane(renamed) {
+		t.Fatal("label change must count as a change")
+	}
+	if got := s.Agents()[0].Label; got != "deploy" {
+		t.Errorf("label not projected: got %q, want %q", got, "deploy")
+	}
+
+	// Title is deliberately not projected: it tracks the terminal's own title
+	// and would re-render the list on every prompt redraw.
+	titled := renamed
+	titled.Title = "~/src/app — vim"
+	if s.UpsertPane(titled) {
+		t.Error("terminal title churn should not count as a change")
+	}
+}
+
 func TestCounts(t *testing.T) {
 	s := NewStore()
 	s.Replace([]herdr.PaneInfo{
