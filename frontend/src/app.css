@@ -1377,8 +1377,21 @@ html.keyboard-open .jump-dock {
 .sheet--settings {
   width: min(26rem, 100%);
   /* Head and tabs sticky; body scrolls. minmax(0,1fr) is required so the grid
-   * child can shrink below content height on mobile. */
-  max-height: min(88dvh, 100%);
+   * child can shrink below content height on mobile.
+   *
+   * `height`, not `max-height` alone. With only a ceiling the grid sized to
+   * whatever the current tab held, and at 390x844 that is a 243px..874px
+   * swing: switching Display -> System resized the sheet under the
+   * operator's thumb and moved the tab strip they were aiming at. Tabs are
+   * chrome, and chrome does not move.
+   *
+   * 72dvh and not the 88dvh ceiling: measured, the two content-heavy tabs
+   * (Access 579px, Display 474px) fit inside it without scrolling, About is
+   * long enough to scroll at any sane height, and the remaining scrim stays
+   * big enough to tap to dismiss. 88dvh fits one more tab and costs the
+   * short ones ~490px of void. */
+  height: min(72dvh, 100%);
+  max-height: min(72dvh, 100%);
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
   min-height: 0;
