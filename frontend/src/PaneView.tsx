@@ -7,6 +7,7 @@ import { parseAnsi } from "./ansi";
 import { splitPasteImages } from "./pasteImages";
 import { rememberImage } from "./imageCache";
 import { agentSubtitle, agentTitle } from "./agentName";
+import { composerEscapeAction } from "./composerKeys";
 import type { useTermFontPref } from "./termFontPref";
 import { findMatches, stripAnsi } from "./termSearch";
 
@@ -219,6 +220,10 @@ export function PaneView({ client, agent, readOnly = false, wrap, termFont, onBa
   const [searchQ, setSearchQ] = useState("");
   const [matchIdx, setMatchIdx] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [composeExpanded, setComposeExpanded] = useState(false);
+  // Mirrors Composer's own canWrite. The header control must not offer to
+  // enlarge a writing surface that this transport cannot write with.
+  const canCompose = Boolean(client.sendText) && !readOnly;
   const { text, loaded, degraded, error, loadingMore, canLoadMore, loadMore } = usePaneStream(
     client,
     agent.paneId,
@@ -437,6 +442,40 @@ export function PaneView({ client, agent, readOnly = false, wrap, termFont, onBa
               <path d="M10.2 10.2 13.5 13.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
           </button>
+          {canCompose && (
+            <button
+              type="button"
+              className={`btn btn--icon${composeExpanded ? " is-on" : ""}`}
+              aria-label={composeExpanded ? "Collapse composer" : "Expand composer"}
+              title={composeExpanded ? "Collapse composer (Esc)" : "Expand composer"}
+              aria-pressed={composeExpanded}
+              onClick={() => setComposeExpanded((v) => !v)}
+            >
+              {composeExpanded ? (
+                <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                  <path
+                    d="M2.7 9.3H6.7v4M13.3 6.7H9.3v-4M9.3 6.7 14 2M2 14l4.7-4.7"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                  <path
+                    d="M10 2h4v4M14 2 9.3 6.7M6 14H2v-4M2 14l4.7-4.7"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              )}
+            </button>
+          )}
           <div className="pane__zoom" role="group" aria-label="Terminal font size">
             <button
               type="button"
@@ -630,7 +669,14 @@ export function PaneView({ client, agent, readOnly = false, wrap, termFont, onBa
         )}
       </div>
 
-      <Composer client={client} agent={agent} readOnly={readOnly} onSent={() => setPinned(true)} />
+      <Composer
+        client={client}
+        agent={agent}
+        readOnly={readOnly}
+        onSent={() => setPinned(true)}
+        expanded={composeExpanded}
+        onCollapse={() => setComposeExpanded(false)}
+      />
 
       {lightbox && (
         <ImageLightbox src={lightbox.src} alt={lightbox.alt} onClose={() => setLightbox(null)} />
@@ -644,6 +690,13 @@ interface ComposerProps {
   agent: Agent;
   readOnly?: boolean;
   onSent: () => void;
+  /**
+   * Fullscreen compose. Owned by PaneView because its control lives in the
+   * pane header beside the other view controls (find, font size), not in the
+   * composer row where it competed with the input for width.
+   */
+  expanded: boolean;
+  onCollapse: () => void;
 }
 
 interface PendingAttach {
@@ -686,7 +739,7 @@ function slashTokenAt(
   return { start: i, end: j, query: text.slice(i + 1, j) };
 }
 
-function Composer({ client, agent, readOnly = false, onSent }: ComposerProps) {
+function Composer({ client, agent, readOnly = false, onSent, expanded, onCollapse }: ComposerProps) {
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -707,15 +760,24 @@ function Composer({ client, agent, readOnly = false, onSent }: ComposerProps) {
   const canKeys = Boolean(client.sendKeys) && !readOnly;
   const canApprove = Boolean(client.respond) && agent.status === "blocked" && !readOnly;
   const canAttach = Boolean(client.attachImage) && canWrite;
+  // Gates the placeholder's "/" hint. Advertising a menu the transport
+  // cannot open would be a lie in the one place a new operator reads.
+  const canSlash = Boolean(client.slashCommands) && canWrite;
 
   // Grow with the content up to a cap, so a long reply is readable while the
-  // terminal keeps most of the screen.
+  // terminal keeps most of the screen. Skipped while expanded: the CSS flex
+  // rules for .composer--expanded own the height there, and an inline style
+  // here would just reimpose the 140px collapsed cap over them.
   useEffect(() => {
     const el = box.current;
     if (!el) return;
+    if (expanded) {
+      el.style.height = "";
+      return;
+    }
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
-  }, [value]);
+  }, [value, expanded]);
 
   // Slash typeahead at the caret: any "/token" whose start is a word boundary
   // (start of draft or after whitespace). Mid-sentence "/help" works the same
@@ -942,7 +1004,7 @@ function Composer({ client, agent, readOnly = false, onSent }: ComposerProps) {
   }
 
   return (
-    <footer className="composer">
+    <footer className={`composer${expanded ? " composer--expanded" : ""}`}>
       {err && (
         <p className="composer__err" role="alert">
           {err}
@@ -1144,14 +1206,19 @@ function Composer({ client, agent, readOnly = false, onSent }: ComposerProps) {
             value={value}
             maxLength={MAX_TEXT}
             disabled={busy}
+            // The agent name is already the pane's title and this field's
+            // accessible name, so repeating it here only cost width: at 15px
+            // Inter the old string measured 240px against 226px of content
+            // box and wrapped to two lines, and "mastracode" pushed it to
+            // 293px. These are agent-independent, so the hint never wraps.
+            // "paste image" is dropped: the attach button sits immediately
+            // left of this field and says it better than words do.
             placeholder={
-              agent.agent
-                ? canAttach
-                  ? `Message ${agent.agent} · paste image or /…`
-                  : `Message ${agent.agent}, or / for commands…`
+              canSlash
+                ? "Reply, or / for commands"
                 : canKeys
-                  ? `Reply, or Esc/↑/↓/Enter for menus…`
-                  : `Reply to pane…`
+                  ? "Reply, or Esc/↑/↓/Enter for menus"
+                  : "Reply"
             }
             aria-label={`Reply to ${agent.agent || "pane"}`}
             onChange={(e) => {
@@ -1192,7 +1259,10 @@ function Composer({ client, agent, readOnly = false, onSent }: ComposerProps) {
               // go to the pane instead of sending the reply.
               const live = e.currentTarget.value;
 
-              // Slash typeahead navigation — steals arrows/enter/tab/esc while open.
+              // Slash typeahead navigation — steals arrows/enter/tab while
+              // open. Escape is handled below by composerEscapeAction, which
+              // treats an open slash menu as the highest-priority case too,
+              // so this split changes nothing about when it wins.
               if (slashOpen) {
                 if (e.key === "ArrowDown") {
                   e.preventDefault();
@@ -1210,19 +1280,47 @@ function Composer({ client, agent, readOnly = false, onSent }: ComposerProps) {
                   if (hit) applySlash(hit);
                   return;
                 }
-                if (e.key === "Escape") {
-                  e.preventDefault();
-                  setSlashHits([]);
-                  return;
+              }
+
+              // Escape precedence lives in composerKeys.ts, where a check
+              // script can exercise it: 1) close an open slash menu,
+              // 2) collapse an expanded composer, 3) route to the pane when
+              // the draft is empty and key routing is on, 4) clear the draft.
+              if (e.key === "Escape") {
+                const action = composerEscapeAction({
+                  slashOpen,
+                  expanded,
+                  empty: live.length === 0,
+                  canKeys,
+                });
+                switch (action) {
+                  case "slash":
+                    e.preventDefault();
+                    setSlashHits([]);
+                    return;
+                  case "collapse":
+                    e.preventDefault();
+                    onCollapse();
+                    return;
+                  case "pane":
+                    e.preventDefault();
+                    void press(["Escape"]);
+                    return;
+                  case "clear":
+                    e.preventDefault();
+                    setValue("");
+                    return;
+                  case "none":
+                    return;
                 }
               }
 
               // Empty box → TUI navigation keys go to the pane, not the chat.
-              // That is how you drive the Ask chooser (↑/↓, Enter, Esc) from a
-              // phone keyboard or a laptop without hunting for the toolbar.
+              // That is how you drive the Ask chooser (↑/↓, Enter, Tab) from
+              // a phone keyboard or a laptop without hunting for the
+              // toolbar. Escape is handled above, not in this map.
               if (canKeys && live.length === 0 && !e.metaKey && !e.ctrlKey && !e.altKey) {
                 const map: Record<string, string> = {
-                  Escape: "Escape",
                   ArrowUp: "Up",
                   ArrowDown: "Down",
                   ArrowLeft: "Left",
@@ -1238,14 +1336,9 @@ function Composer({ client, agent, readOnly = false, onSent }: ComposerProps) {
                 }
               }
 
-              // Non-empty: Esc clears the draft (do not fire Escape into the
-              // pane while the user is mid-reply). Enter sends, Shift+Enter
-              // inserts a newline — the chat convention.
-              if (e.key === "Escape" && live.length > 0) {
-                e.preventDefault();
-                setValue("");
-                return;
-              }
+              // Enter sends, Shift+Enter inserts a newline — the chat
+              // convention. (Non-empty Esc-clears-draft moved into the
+              // Escape precedence block above.)
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 void send(live, "reply");

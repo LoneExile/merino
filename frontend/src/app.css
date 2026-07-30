@@ -1275,6 +1275,69 @@ html.keyboard-open .jump-dock {
   text-align: end;
 }
 
+/* Fullscreen compose: the composer's own grid row grows over the terminal
+ * body row instead of a `position: fixed` overlay, which would fight the
+ * visualViewport / --app-height soft-keyboard handling above (see
+ * html.keyboard-open). The terminal body's track collapses to 0 — its own
+ * overflow: hidden (.pane__body) just clips screen/find/jump-dock, nothing
+ * needs to unmount.
+ *
+ * Deliberately not transitioned. Animating grid-template-rows is animating a
+ * layout property, which this design system bans, and track interpolation
+ * between mismatched keywords is unreliable across browsers regardless. The
+ * swap is instant, which is also the honest reading: the writing surface is
+ * either the whole pane or it is not. */
+.pane:has(> .composer.composer--expanded) {
+  grid-template-rows: auto 0 minmax(0, 1fr);
+}
+
+.composer--expanded {
+  min-height: 0;
+}
+
+/* The keybar drives the terminal, which is hidden while expanded — no
+ * screen to see the effect of an arrow/Enter press, so it stays out of the
+ * way and gives its space to the writing surface instead. */
+.composer--expanded .composer__keys {
+  display: none;
+}
+
+/* Full width, controls beneath. As a flex row the attach and Send buttons
+ * sat *beside* a 700px-tall field, which left the writing surface inset
+ * behind two dead gutters and stranded the controls at the bottom of a
+ * column they had no relationship to. The field is the screen here; the
+ * controls are a strip under it. */
+.composer--expanded .composer__row {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "field field"
+    "attach send";
+  align-items: end;
+}
+
+.composer--expanded .composer__input {
+  grid-area: field;
+  align-self: stretch;
+  min-height: 0;
+  max-height: none;
+}
+
+/* Addressed by role, not by nth-child: the attach button is conditional and
+ * the file input is a hidden sibling, so positional selectors would slide. */
+.composer--expanded .composer__row > .btn--icon {
+  grid-area: attach;
+  justify-self: start;
+}
+
+.composer--expanded .composer__row > .btn--primary {
+  grid-area: send;
+  justify-self: end;
+}
+
 /* ---------------------------------------------------------------- overlays */
 
 .scrim {
