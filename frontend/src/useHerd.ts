@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Agent } from "../bindings/github.com/LoneExile/merino/internal/app";
+import type { Agent, Conn } from "../bindings/github.com/LoneExile/merino/internal/app";
 import { isAuthDead, makeClient, onAuthDead, type Client, type Session } from "./client";
 
 /**
@@ -20,6 +20,10 @@ export function useHerd() {
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [live, setLive] = useState(false);
+  // null means "the transport has not said": a desktop panel before the first
+  // conn:changed, or a web client whose SSE has not opened yet. Distinct from
+  // a Conn that reports connected:false, which is herdr genuinely unreachable.
+  const [conn, setConn] = useState<Conn | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -58,6 +62,10 @@ export function useHerd() {
           // pulls /api/agents on reopen so live flips only when push is back.
           setLive(false);
           setError("Reconnecting…");
+        },
+        (next) => {
+          if (!alive) return;
+          setConn(next);
         },
       );
     };
@@ -125,5 +133,5 @@ export function useHerd() {
     };
   }, []);
 
-  return { client, session, agents, ready, live, error, setError };
+  return { client, session, agents, ready, live, error, setError, conn };
 }

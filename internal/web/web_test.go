@@ -29,10 +29,17 @@ type fakeSource struct {
 	// stopped, if set, is closed when StreamOutput returns — proof the
 	// background subscription actually exits rather than leaking.
 	stopped chan struct{}
+
+	// conn is what Connection reports. The zero value is a DISCONNECTED
+	// herd, so a test that cares about the connected path has to say so —
+	// the failure mode this field exists for should not be the one you get
+	// by forgetting.
+	conn app.Conn
 }
 
-func (f *fakeSource) List() []app.Agent  { return f.agents }
-func (f *fakeSource) Counts() app.Counts { return app.Counts{Total: len(f.agents)} }
+func (f *fakeSource) List() []app.Agent    { return f.agents }
+func (f *fakeSource) Counts() app.Counts   { return app.Counts{Total: len(f.agents)} }
+func (f *fakeSource) Connection() app.Conn { return f.conn }
 func (f *fakeSource) ReadANSI(string, int) (string, error) {
 	return f.text, nil
 }
