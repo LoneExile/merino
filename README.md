@@ -78,10 +78,13 @@ Downloads the latest [release](https://github.com/LoneExile/merino/releases/late
 ```bash
 brew tap LoneExile/merino
 brew trust LoneExile/merino          # third-party tap
-brew install --cask --no-quarantine merino
+brew install --cask merino
 ```
 
-Upgrade with `brew update && brew upgrade --cask --no-quarantine merino`.
+Upgrade with `brew update && brew upgrade --cask merino`.
+
+No `--no-quarantine` needed, and Homebrew 6 rejects it outright: the cask's own
+postflight strips the quarantine bit after install.
 
 ### Manual
 
