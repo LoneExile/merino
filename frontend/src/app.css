@@ -1302,16 +1302,40 @@ html.keyboard-open .jump-dock {
   display: none;
 }
 
+/* Full width, controls beneath. As a flex row the attach and Send buttons
+ * sat *beside* a 700px-tall field, which left the writing surface inset
+ * behind two dead gutters and stranded the controls at the bottom of a
+ * column they had no relationship to. The field is the screen here; the
+ * controls are a strip under it. */
 .composer--expanded .composer__row {
   flex: 1 1 auto;
   min-height: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "field field"
+    "attach send";
+  align-items: end;
 }
 
 .composer--expanded .composer__input {
-  flex: 1 1 auto;
+  grid-area: field;
   align-self: stretch;
   min-height: 0;
   max-height: none;
+}
+
+/* Addressed by role, not by nth-child: the attach button is conditional and
+ * the file input is a hidden sibling, so positional selectors would slide. */
+.composer--expanded .composer__row > .btn--icon {
+  grid-area: attach;
+  justify-self: start;
+}
+
+.composer--expanded .composer__row > .btn--primary {
+  grid-area: send;
+  justify-self: end;
 }
 
 /* ---------------------------------------------------------------- overlays */

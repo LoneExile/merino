@@ -220,6 +220,10 @@ export function PaneView({ client, agent, readOnly = false, wrap, termFont, onBa
   const [searchQ, setSearchQ] = useState("");
   const [matchIdx, setMatchIdx] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [composeExpanded, setComposeExpanded] = useState(false);
+  // Mirrors Composer's own canWrite. The header control must not offer to
+  // enlarge a writing surface that this transport cannot write with.
+  const canCompose = Boolean(client.sendText) && !readOnly;
   const { text, loaded, degraded, error, loadingMore, canLoadMore, loadMore } = usePaneStream(
     client,
     agent.paneId,
@@ -438,6 +442,40 @@ export function PaneView({ client, agent, readOnly = false, wrap, termFont, onBa
               <path d="M10.2 10.2 13.5 13.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
           </button>
+          {canCompose && (
+            <button
+              type="button"
+              className={`btn btn--icon${composeExpanded ? " is-on" : ""}`}
+              aria-label={composeExpanded ? "Collapse composer" : "Expand composer"}
+              title={composeExpanded ? "Collapse composer (Esc)" : "Expand composer"}
+              aria-pressed={composeExpanded}
+              onClick={() => setComposeExpanded((v) => !v)}
+            >
+              {composeExpanded ? (
+                <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                  <path
+                    d="M2.7 9.3H6.7v4M13.3 6.7H9.3v-4M9.3 6.7 14 2M2 14l4.7-4.7"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                  <path
+                    d="M10 2h4v4M14 2 9.3 6.7M6 14H2v-4M2 14l4.7-4.7"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              )}
+            </button>
+          )}
           <div className="pane__zoom" role="group" aria-label="Terminal font size">
             <button
               type="button"
@@ -631,7 +669,14 @@ export function PaneView({ client, agent, readOnly = false, wrap, termFont, onBa
         )}
       </div>
 
-      <Composer client={client} agent={agent} readOnly={readOnly} onSent={() => setPinned(true)} />
+      <Composer
+        client={client}
+        agent={agent}
+        readOnly={readOnly}
+        onSent={() => setPinned(true)}
+        expanded={composeExpanded}
+        onCollapse={() => setComposeExpanded(false)}
+      />
 
       {lightbox && (
         <ImageLightbox src={lightbox.src} alt={lightbox.alt} onClose={() => setLightbox(null)} />
@@ -645,6 +690,13 @@ interface ComposerProps {
   agent: Agent;
   readOnly?: boolean;
   onSent: () => void;
+  /**
+   * Fullscreen compose. Owned by PaneView because its control lives in the
+   * pane header beside the other view controls (find, font size), not in the
+   * composer row where it competed with the input for width.
+   */
+  expanded: boolean;
+  onCollapse: () => void;
 }
 
 interface PendingAttach {
@@ -687,15 +739,11 @@ function slashTokenAt(
   return { start: i, end: j, query: text.slice(i + 1, j) };
 }
 
-function Composer({ client, agent, readOnly = false, onSent }: ComposerProps) {
+function Composer({ client, agent, readOnly = false, onSent, expanded, onCollapse }: ComposerProps) {
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const box = useRef<HTMLTextAreaElement>(null);
-  // Fullscreen compose: escapes the .composer__input 140px cap via CSS
-  // (see .composer--expanded in app.css) instead of `position: fixed`,
-  // which would fight the visualViewport/--app-height keyboard handling.
-  const [expanded, setExpanded] = useState(false);
   const [slashHits, setSlashHits] = useState<SlashCommand[]>([]);
   const [slashIdx, setSlashIdx] = useState(0);
   // Caret position drives mid-string slash detection (not only draft-start).
@@ -712,6 +760,9 @@ function Composer({ client, agent, readOnly = false, onSent }: ComposerProps) {
   const canKeys = Boolean(client.sendKeys) && !readOnly;
   const canApprove = Boolean(client.respond) && agent.status === "blocked" && !readOnly;
   const canAttach = Boolean(client.attachImage) && canWrite;
+  // Gates the placeholder's "/" hint. Advertising a menu the transport
+  // cannot open would be a lie in the one place a new operator reads.
+  const canSlash = Boolean(client.slashCommands) && canWrite;
 
   // Grow with the content up to a cap, so a long reply is readable while the
   // terminal keeps most of the screen. Skipped while expanded: the CSS flex
@@ -1148,39 +1199,6 @@ function Composer({ client, agent, readOnly = false, onSent }: ComposerProps) {
               </button>
             </>
           )}
-          <button
-            type="button"
-            className="btn btn--icon"
-            disabled={busy}
-            title={expanded ? "Collapse composer" : "Expand composer"}
-            aria-label={expanded ? "Collapse composer" : "Expand composer"}
-            aria-expanded={expanded}
-            onClick={() => setExpanded((e) => !e)}
-          >
-            {expanded ? (
-              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-                <path
-                  d="M2.7 9.3H6.7v4M13.3 6.7H9.3v-4M9.3 6.7 14 2M2 14l4.7-4.7"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            ) : (
-              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-                <path
-                  d="M10 2h4v4M14 2 9.3 6.7M6 14H2v-4M2 14l4.7-4.7"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            )}
-          </button>
           <textarea
             ref={box}
             className="composer__input"
@@ -1188,14 +1206,19 @@ function Composer({ client, agent, readOnly = false, onSent }: ComposerProps) {
             value={value}
             maxLength={MAX_TEXT}
             disabled={busy}
+            // The agent name is already the pane's title and this field's
+            // accessible name, so repeating it here only cost width: at 15px
+            // Inter the old string measured 240px against 226px of content
+            // box and wrapped to two lines, and "mastracode" pushed it to
+            // 293px. These are agent-independent, so the hint never wraps.
+            // "paste image" is dropped: the attach button sits immediately
+            // left of this field and says it better than words do.
             placeholder={
-              agent.agent
-                ? canAttach
-                  ? `Message ${agent.agent} · paste image or /…`
-                  : `Message ${agent.agent}, or / for commands…`
+              canSlash
+                ? "Reply, or / for commands"
                 : canKeys
-                  ? `Reply, or Esc/↑/↓/Enter for menus…`
-                  : `Reply to pane…`
+                  ? "Reply, or Esc/↑/↓/Enter for menus"
+                  : "Reply"
             }
             aria-label={`Reply to ${agent.agent || "pane"}`}
             onChange={(e) => {
@@ -1277,7 +1300,7 @@ function Composer({ client, agent, readOnly = false, onSent }: ComposerProps) {
                     return;
                   case "collapse":
                     e.preventDefault();
-                    setExpanded(false);
+                    onCollapse();
                     return;
                   case "pane":
                     e.preventDefault();
