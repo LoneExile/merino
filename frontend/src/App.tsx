@@ -33,7 +33,10 @@ const GROUPS: { key: string; label: string }[] = [
 ];
 
 export default function App() {
-  const { client, session, agents, ready, live, error } = useHerd();
+  const { client, session, agents, ready, live, error, conn } = useHerd();
+  // Only ever true on an explicit report. A transport that has not said
+  // anything yet (conn === null) must not accuse herdr of being down.
+  const herdDown = conn !== null && !conn.connected;
   const { pref, actual, setPref } = useTheme();
   const { wrap, setWrap } = useWrapPref();
   const termFont = useTermFontPref();
@@ -241,6 +244,19 @@ export default function App() {
     return { blocked, working, total: agents.length };
   }, [agents]);
 
+  // One precedence order, shared by the status dot and the summary line, so
+  // the two can never describe different states. A dropped push transport
+  // outranks connectivity: once SSE is down the last Conn we were told is
+  // stale, and reporting it as current is the liveness lie this product
+  // exists not to tell.
+  const herdState = !ready
+    ? "Connecting"
+    : !live
+      ? "Reconnecting"
+      : herdDown
+        ? "herdr not reachable"
+        : "Live";
+
   return (
     <div className={`app${current ? " app--pane" : ""}`}>
       {/* Global chrome stays on the board. Inside a pane the pane header is
@@ -251,9 +267,9 @@ export default function App() {
             <img className="rail__mark" src="/favicon-64.png" alt="" width="22" height="22" />
             <span className="rail__name">Merino</span>
             <span
-              className={`rail__pulse${live ? " is-live" : ""}${!ready ? " is-boot" : ""}`}
-              title={live ? "Live" : ready ? "Reconnecting" : "Connecting"}
-              aria-label={live ? "Live" : ready ? "Reconnecting" : "Connecting"}
+              className={`rail__pulse${live && !herdDown ? " is-live" : ""}${!ready ? " is-boot" : ""}${herdDown && ready ? " is-down" : ""}`}
+              title={herdState}
+              aria-label={herdState}
             />
           </div>
 
@@ -262,9 +278,11 @@ export default function App() {
               ? "…"
               : !live
                 ? "reconnecting"
-                : counts.blocked > 0
-                  ? `${counts.blocked} need${counts.blocked === 1 ? "s" : ""} you`
-                  : `${counts.working}/${counts.total}`}
+                : herdDown
+                  ? "no herd"
+                  : counts.blocked > 0
+                    ? `${counts.blocked} need${counts.blocked === 1 ? "s" : ""} you`
+                    : `${counts.working}/${counts.total}`}
           </p>
 
           <div className="rail__actions">
@@ -364,7 +382,15 @@ export default function App() {
       ) : (
         <main className="board">
           {!ready && <p className="empty mono">Connecting to herdr…</p>}
-          {ready && agents.length === 0 && (
+          {ready && herdDown && (
+            <p className="empty">
+              Cannot reach herdr.
+              <span className="mono">
+                {conn?.socket ? `No socket at ${conn.socket}` : "The herdr socket is not answering"}
+              </span>
+            </p>
+          )}
+          {ready && !herdDown && agents.length === 0 && (
             <p className="empty">
               No agents are running.
               <span className="mono">Start one in herdr and it appears here.</span>

@@ -289,6 +289,15 @@ html.desktop .app {
   animation: pulse-boot 1.1s ease-in-out infinite;
 }
 
+/* herdr unreachable. Danger hue, and it does not pulse: a breathing dot
+ * reads as "working on it", and nothing is working on it. The state is
+ * carried in text beside this mark as well, never colour alone. */
+.rail__pulse.is-down {
+  background: var(--color-danger);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-danger) 22%, transparent);
+  animation: none;
+}
+
 @keyframes pulse-boot {
   0%, 100% { opacity: 0.45; }
   50% { opacity: 1; }

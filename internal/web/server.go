@@ -29,6 +29,11 @@ import (
 type Source interface {
 	List() []app.Agent
 	Counts() app.Counts
+	// Connection reports whether herdr itself is reachable. The agent list
+	// going empty is ambiguous on its own — an idle herd and a dead socket
+	// look identical — and a dashboard that cannot tell them apart is the
+	// "lies about liveness" failure this product names as an anti-reference.
+	Connection() app.Conn
 	// ReadANSI returns a pane's visible screen with ANSI/SGR colour and
 	// style preserved, so the dashboard can render it instead of dumping
 	// plain text.
@@ -562,10 +567,18 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request, id Identit
 	defer s.unsubscribe(ch)
 
 	// Send current state immediately so a reconnecting client is never stale.
+	sendConn := func() {
+		b, err := json.Marshal(s.src.Connection())
+		if err != nil {
+			return
+		}
+		fmt.Fprintf(w, "event: conn\ndata: %s\n\n", b)
+	}
 	if b, err := json.Marshal(filterViewable(s.cfg.Policy, id, s.src.List())); err == nil {
 		fmt.Fprintf(w, "event: agents\ndata: %s\n\n", b)
-		flusher.Flush()
 	}
+	sendConn()
+	flusher.Flush()
 
 	keepalive := time.NewTicker(25 * time.Second)
 	defer keepalive.Stop()
@@ -586,6 +599,10 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request, id Identit
 				continue
 			}
 			fmt.Fprintf(w, "event: agents\ndata: %s\n\n", b)
+			// Connectivity rides the same wake. A herd that just went
+			// unreachable publishes an empty list, and without this frame
+			// the browser would render "no agents" for a dead socket.
+			sendConn()
 			flusher.Flush()
 		}
 	}

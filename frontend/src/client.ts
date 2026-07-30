@@ -17,7 +17,7 @@
 // not have is an absent method, so `if (client.streamPane)` is a real check the
 // type system enforces — rather than a flag the UI can forget to honour.
 
-import type { Agent } from "../bindings/github.com/LoneExile/merino/internal/app";
+import type { Agent, Conn } from "../bindings/github.com/LoneExile/merino/internal/app";
 
 /** Once a 401 is seen, stop SSE reconnect storms and boot retries. */
 let authDead = false;
@@ -158,8 +158,19 @@ export interface Client {
   list(): Promise<Agent[]>;
   read(paneId: string, lines: number): Promise<string>;
 
-  /** Subscribe to agent updates. Returns an unsubscribe function. */
-  subscribe(onAgents: (agents: Agent[]) => void, onError?: (err: unknown) => void): () => void;
+  /**
+   * Subscribe to agent updates. Returns an unsubscribe function.
+   *
+   * onConn reports whether herdr itself is reachable, which the agent list
+   * cannot: an idle herd and a dead socket both arrive as an empty array.
+   * Optional because a transport may not know — absent means "no opinion",
+   * not "disconnected".
+   */
+  subscribe(
+    onAgents: (agents: Agent[]) => void,
+    onError?: (err: unknown) => void,
+    onConn?: (conn: Conn) => void,
+  ): () => void;
 
   /**
    * Live terminal output for one pane. Returns an unsubscribe function.
@@ -363,7 +374,7 @@ async function httpClient(): Promise<Client> {
       return r.text;
     },
 
-    subscribe(onAgents, onError) {
+    subscribe(onAgents, onError, onConn) {
       // EventSource reconnects on its own, which is most of why this is SSE
       // rather than a WebSocket. On each (re)open we re-seed the agent list so
       // a phone that slept through a burst of events still catches up.
@@ -383,6 +394,14 @@ async function httpClient(): Promise<Client> {
           sawError = false;
         } catch (err) {
           onError?.(err);
+        }
+      });
+      es.addEventListener("conn", (ev) => {
+        try {
+          onConn?.(JSON.parse((ev as MessageEvent<string>).data) as Conn);
+        } catch {
+          // A malformed conn frame must not take the agent stream down with
+          // it: the list is the product, connectivity is the annotation.
         }
       });
       es.onopen = () => {

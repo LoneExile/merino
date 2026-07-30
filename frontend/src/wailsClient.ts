@@ -11,11 +11,13 @@ import { Events } from "@wailsio/runtime";
 import {
   AgentsService,
   type Agent,
+  type Conn,
 } from "../bindings/github.com/LoneExile/merino/internal/app";
 import * as DesktopSettings from "../bindings/github.com/LoneExile/merino/internal/desktop/settings";
 import type { Client, Session, SessionList, SlashCommand } from "./client";
 
 const EVENT_AGENTS_CHANGED = "agents:changed";
+const EVENT_CONN_CHANGED = "conn:changed";
 
 /**
  * Extract an event payload.
@@ -78,14 +80,21 @@ export function wailsClient(): Client {
     // as normal rather than degraded.
     read: (paneId: string, lines: number) => AgentsService.ReadANSI(paneId, lines),
 
-    subscribe(onAgents) {
+    subscribe(onAgents, onError, onConn) {
       const off = Events.On(EVENT_AGENTS_CHANGED, (e: unknown) => {
         const next = payload<Agent[]>(e);
         // Guard the invariant: a non-array would throw inside the component
         // tree and unmount everything.
         if (Array.isArray(next)) onAgents(next);
       });
-      return () => off?.();
+      const offConn = Events.On(EVENT_CONN_CHANGED, (e: unknown) => {
+        const next = payload<Conn>(e);
+        if (next && typeof next === "object") onConn?.(next);
+      });
+      return () => {
+        off?.();
+        offConn?.();
+      };
     },
 
     respond: (paneId: string, text: string) => AgentsService.Respond(paneId, text),

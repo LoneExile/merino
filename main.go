@@ -88,7 +88,38 @@ func main() {
 		desk         *desktop.Settings
 	)
 
+	// herdReachable mirrors the latest Conn so the tray label can distinguish
+	// "no agents running" from "cannot reach herdr at all". Both render as an
+	// empty herd otherwise, and only one of them is the operator's problem.
+	var herdReachable atomic.Bool
+	herdReachable.Store(true)
+	var lastCounts atomic.Pointer[app.Counts]
+
+	refreshTray := func() {
+		if tray == nil {
+			return
+		}
+		c := app.Counts{}
+		if p := lastCounts.Load(); p != nil {
+			c = *p
+		}
+		up := herdReachable.Load()
+		tray.SetLabel(trayLabel(c, up))
+		tray.SetTooltip(trayTooltip(c, up, client.Socket()))
+	}
+
 	emit := func(name string, data ...any) {
+		if name == app.EventConnChanged && len(data) > 0 {
+			if c, ok := data[0].(app.Conn); ok {
+				herdReachable.Store(c.Connected)
+				refreshTray()
+				// Wake browsers too: setConn does not run through publish, so
+				// without this a phone keeps showing the last good herd.
+				if webSrv != nil {
+					webSrv.Notify()
+				}
+			}
+		}
 		if wailsApp != nil {
 			wailsApp.Event.Emit(name, data...)
 		}
@@ -96,9 +127,8 @@ func main() {
 	// Called after every publish, which is exactly when connected browsers
 	// need waking too.
 	onCounts := func(c app.Counts) {
-		if tray != nil {
-			tray.SetLabel(trayLabel(c))
-		}
+		lastCounts.Store(&c)
+		refreshTray()
 		if animator != nil {
 			animator.Update(c)
 		}
@@ -260,8 +290,8 @@ func main() {
 	})
 
 	tray = wailsApp.SystemTray.New()
-	tray.SetTooltip("Merino")
-	tray.SetLabel(trayLabel(app.Counts{}))
+	// One path sets label and tooltip, so the two can never disagree.
+	refreshTray()
 
 	// setTrayIcon dispatches an animation frame to the platform-appropriate
 	// tray API: a template icon on darwin, so the sheep silhouette adopts
@@ -343,16 +373,41 @@ func main() {
 }
 
 // trayLabel renders the herd summary shown next to the menubar icon.
-func trayLabel(c app.Counts) string {
+//
+// The unreachable case is spelled out rather than left blank. An empty label
+// already means "an idle herd, nothing wants you", so reusing it for "herdr
+// is not running" would hide the one state where the whole app is useless
+// behind the one state where everything is fine.
+func trayLabel(c app.Counts, herdReachable bool) string {
+	if !herdReachable {
+		return "no herd"
+	}
 	switch {
 	case c.Blocked > 0:
 		return fmt.Sprintf("%d!", c.Blocked)
 	case c.Working > 0:
 		return fmt.Sprintf("%d", c.Working)
-	case c.Total > 0:
-		return ""
 	default:
 		return ""
+	}
+}
+
+// trayTooltip carries what the label has no room for. The socket path is the
+// first thing worth knowing when herdr is unreachable: it is usually a herd
+// running under a different HERDR_SOCK, not a herd that is down.
+func trayTooltip(c app.Counts, herdReachable bool, socket string) string {
+	if !herdReachable {
+		return fmt.Sprintf("Merino — herdr not reachable at %s", socket)
+	}
+	switch {
+	case c.Blocked > 0:
+		return fmt.Sprintf("Merino — %d of %d agents need you", c.Blocked, c.Total)
+	case c.Working > 0:
+		return fmt.Sprintf("Merino — %d of %d agents working", c.Working, c.Total)
+	case c.Total > 0:
+		return fmt.Sprintf("Merino — %d agents idle", c.Total)
+	default:
+		return "Merino — no agents running"
 	}
 }
 
