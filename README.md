@@ -27,7 +27,8 @@
 - Streaming pane output, in colour
 - Approve, type, and interrupt when you enable writes
 - Start a new agent in any workspace, without going back to the Mac
-- Phone dashboard over LAN, Tailscale, or a public HTTPS tunnel
+- Phone dashboard over LAN, Tailscale, or a Cloudflare Tunnel
+- Installs to your phone's home screen as a PWA, with push when an agent blocks
 - One-shot QR pairing with revocable, per-device access
 
 ## Screenshots
@@ -136,11 +137,26 @@ Everything is in the panel under **Settings**, grouped by intent:
 
 **Phone writes** decides whether a paired phone can answer asks, type, and interrupt agents. It is on by default in the menu bar app. Every write is recorded in the audit log at `~/Library/Logs/merino/audit.jsonl`. Reload the phone dashboard after changing it.
 
+## Install it on your phone
+
+The dashboard is a PWA. Adding it to the home screen gets you a standalone
+window with no browser chrome, the Merino icon in your app grid, and on iPhone
+it is the only way to receive push notifications.
+
+- **iPhone / iPad**: Safari, then **Share → Add to Home Screen**. Safari tabs
+  never receive push, so for alerts this is required rather than cosmetic.
+- **Android**: Chrome offers **Install app** in the address bar or the ⋮ menu.
+
+It is not an offline app, and does not pretend to be. The service worker caches
+the app shell so it opens instantly and rides out a flaky connection, but every
+agent, every line of pane output and every keystroke comes from your Mac live.
+With the Mac asleep you get the shell and an empty herd.
+
 ## Notifications
 
 Enable them in **Settings → System** to be told the moment an agent needs you, even with the app closed.
 
-On iPhone this requires installing the dashboard to your Home Screen first (**Share → Add to Home Screen**). Safari tabs do not receive push.
+On iPhone this requires [installing the dashboard to your Home Screen](#install-it-on-your-phone) first. Safari tabs do not receive push.
 
 ## Reaching it from your phone
 
@@ -154,16 +170,55 @@ by default, so nothing needs configuring for the two common cases:
 Both are in **Pair phone…**, which shows every address your Mac can be reached
 at and mints a one-shot code for the one you choose.
 
-> **Going further than that needs the command line.** Serving Merino through a
-> public HTTPS tunnel needs `--behind-proxy` and a public origin for the QR
-> links, and neither can be set from the app — a bundle launched from Finder
-> takes no flags and inherits no shell environment. Run the binary from a
-> terminal instead; see [CONTRIBUTING.md](CONTRIBUTING.md#the-loop).
-
 Do not simply forward port 8730 from your router. It is plain HTTP, and the
-dashboard can type into live terminals.
+dashboard can type into live terminals. For access from outside your network,
+use a tunnel.
 
-Your data — audit log, device grants, keys — stays under `~/Library/Logs/merino/`.
+Your data (audit log, device grants, keys) stays under
+`~/Library/Logs/merino/`.
+
+### Cloudflare Tunnel
+
+A [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)
+gives you real HTTPS on a hostname you own, with no inbound port open anywhere:
+the connector dials out to Cloudflare, so your router keeps saying no to
+everything.
+
+This is the one part of Merino that needs the command line. A bundle launched
+from Finder, Homebrew or login items is given no arguments and inherits no
+shell environment, so neither setting below can reach the installed app.
+
+| Setting | Why |
+| --- | --- |
+| `--behind-proxy` | Marks session cookies Secure, and trusts the proxy's client-IP header so the login throttle counts the phone rather than the tunnel. |
+| `MERINO_PUBLIC_URL` | Points the pairing QR at the public origin. Without it Merino advertises the LAN address it can see, which your phone cannot open from outside. |
+
+Where to bind depends on where `cloudflared` runs.
+
+**Connector on the same Mac**: bind loopback, and nothing else can reach the
+origin at all.
+
+```bash
+MERINO_PUBLIC_URL=https://merino.example.com \
+  merino --listen 127.0.0.1:8730 --behind-proxy
+```
+
+**Connector in Docker or a VM**: it cannot reach the host's loopback, so bind
+the LAN interface.
+
+```bash
+MERINO_PUBLIC_URL=https://merino.example.com \
+  merino --listen 0.0.0.0:8730 --behind-proxy
+```
+
+The second shape has a trade-off worth stating: with a LAN bind, another
+machine on your network can spoof `X-Forwarded-For` or `CF-Connecting-IP` and
+dilute the login throttle. That is acceptable on a home LAN behind a firewall.
+It is not a reason to let port 8730 past that firewall.
+
+Then point the tunnel's public hostname at whichever origin you chose. The
+`tunnel` and `tunnel-loopback` recipes in the justfile wrap both shapes for
+development; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Troubleshooting
 
@@ -173,7 +228,11 @@ Your data — audit log, device grants, keys — stays under `~/Library/Logs/mer
 
 **The login page says password sign-in is disabled.** That is the default. Pair with a QR, or enable it in **Settings → Access**.
 
-**The public URL returns an error but the Mac app is running.** The problem is almost certainly your tunnel, not Merino. Check that your tunnel connector is up — Cloudflare answers `530` when no connector is registered, before the request ever reaches your Mac.
+**The public URL returns `530` but the Mac app is running.** No connector is registered, so Cloudflare fails before the request ever reaches your Mac. The problem is the tunnel, not Merino: check the connector is running. If it lives in Docker, check the container is up.
+
+**The public URL returns `502`.** The opposite: the connector is up and Cloudflare reached it, but it could not reach Merino. Almost always the origin bind. A connector in Docker cannot reach the Mac's loopback, so `--listen 127.0.0.1:8730` is unreachable to it; use `0.0.0.0:8730`. See [Cloudflare Tunnel](#cloudflare-tunnel).
+
+**Signed in over a tunnel, but the QR still shows a LAN address.** `MERINO_PUBLIC_URL` is unset, so Merino is advertising the address it can see rather than the one your phone uses.
 
 **An agent is missing from the New agent list.** Merino offers only agents it can find in your login shell. If `command -v <agent>` works in a normal terminal but the agent is missing here, reopen Settings — the list is cached briefly.
 
