@@ -20,12 +20,17 @@ export function agentTitle(a: Pick<Agent, "label" | "agent">): string {
 
 /**
  * Secondary line. Carries the agent kind only when the title has given it up,
- * so the kind is legible on every row either way and never printed twice.
+ * so the kind is legible on every surface either way and never printed twice.
+ *
+ * `where` is the trailing detail: the project for a list row, the pane id in
+ * the pane header, which is the one surface where the raw id is worth the
+ * space. Parameterised rather than duplicated so a named pane demotes its
+ * kind by exactly one rule everywhere.
  */
 export function agentSubtitle(
   a: Pick<Agent, "label" | "agent" | "project" | "cwd" | "paneId">,
+  where: string = a.project || a.cwd || a.paneId,
 ): string {
-  const where = a.project || a.cwd || a.paneId;
   if (!a.label?.trim()) return where;
   return `${a.agent || "pane"} · ${where}`;
 }

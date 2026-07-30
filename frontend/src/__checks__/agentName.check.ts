@@ -66,6 +66,17 @@ check("bare named subtitle", agentSubtitle({ ...bare, label: "scratch" }), "pane
 const cwdOnly: Row = { ...unnamed, project: "", cwd: "/srv/app" };
 check("cwd fallback", agentSubtitle(cwdOnly), "/srv/app");
 
+// The pane header reuses the same rule with the pane id as the trailing
+// detail. Passed explicitly, because the default (project) would silently
+// change what an unnamed pane's header has always shown.
+check("header meta, unnamed", agentSubtitle(unnamed, unnamed.paneId), "w2:pA7");
+check("header meta, named", agentSubtitle(named, named.paneId), "omp · w2:pA7");
+check("header meta, blank label", agentSubtitle(blank, blank.paneId), "w2:pA7");
+
+// The default must stay the list's behaviour: omitting `where` still reads
+// project-first, so the two call sites cannot drift into each other.
+check("default where is still the project", agentSubtitle(named), "omp · cozystack");
+
 if (failures > 0) {
   console.error(`\n${failures} check(s) failed`);
   process.exit(1);
