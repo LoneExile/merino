@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Agent } from "../../bindings/github.com/LoneExile/merino/internal/app";
+import { agentTitle } from "../agentName";
 import type { Client, RenameKind } from "../client";
 import { Sheet } from "../Sheet";
 
@@ -7,11 +8,22 @@ export interface RenameTarget {
   kind: RenameKind;
   id: string;
   current: string;
+  /**
+   * The operator-set name, when this target already has one. Only panes
+   * carry it: herdr labels tabs and workspaces too, but Merino does not
+   * project those, and inventing one from the id would be a lie.
+   */
+  named?: string;
 }
 
 export function renameTargets(agent: Agent): RenameTarget[] {
   return [
-    { kind: "pane", id: agent.paneId, current: agent.agent || agent.paneId },
+    {
+      kind: "pane",
+      id: agent.paneId,
+      current: agentTitle(agent),
+      named: agent.label?.trim() || undefined,
+    },
     { kind: "tab", id: agent.tabId, current: agent.tabId },
     { kind: "workspace", id: agent.workspaceId, current: agent.workspaceId },
   ];
@@ -62,7 +74,12 @@ export function RenameSheet({ client, agent, onClose }: RenameSheetProps) {
         ))}
       </div>
 
-      <p className="hint mono">{target.id}</p>
+      {/* Naming something you cannot see the current name of is guesswork,
+        * and it is why a successful rename read as a no-op. */}
+      <p className="hint mono">
+        {target.id}
+        {target.named && <> · {target.named}</>}
+      </p>
 
       <label className="field">
         <span className="field__label">New name</span>

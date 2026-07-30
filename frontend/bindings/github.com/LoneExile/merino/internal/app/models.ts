@@ -15,6 +15,13 @@ import * as herdr$0 from "../herdr/models.js";
 export interface Agent {
     "paneId": string;
     "agent": string;
+
+    /**
+     * Label is the operator-set pane name from herdr (`pane.rename`). Empty
+     * for a pane nobody has named. Distinct from Title, which is the
+     * terminal-reported title and churns with every prompt redraw.
+     */
+    "label": string;
     "status": herdr$0.AgentStatus;
     "project": string;
     "cwd": string;

@@ -6,6 +6,7 @@ import { useTermFontPref } from "./termFontPref";
 import { useWrapPref } from "./wrapPref";
 import { PaneView } from "./PaneView";
 import { StatusDot, statusLabel } from "./StatusDot";
+import { agentSubtitle, agentTitle } from "./agentName";
 import { Palette, type Command } from "./Palette";
 import {
   NewAgentSheet,
@@ -183,7 +184,7 @@ export default function App() {
   const commands = useMemo<Command[]>(() => {
     const cmds: Command[] = agents.map((a) => ({
       id: `pane:${a.paneId}`,
-      label: `${a.agent || "pane"} · ${a.project || a.cwd || a.paneId}`,
+      label: `${agentTitle(a)} · ${agentSubtitle(a)}`,
       hint: `${statusLabel(a.status)} · ${a.paneId}`,
       run: () => setOpenPane(a.paneId),
     }));
@@ -391,15 +392,15 @@ export default function App() {
                         >
                           <StatusDot status={a.status} />
                           <span className="row__main">
-                            <span className="row__title">{a.agent || "pane"}</span>
-                            <span className="row__sub mono">{a.project || a.cwd || a.paneId}</span>
+                            <span className="row__title">{agentTitle(a)}</span>
+                            <span className="row__sub mono">{agentSubtitle(a)}</span>
                           </span>
                         </button>
                         {client?.focus && (
                           <button
                             type="button"
                             className="row__icon"
-                            aria-label={`Focus ${a.agent || "pane"} in herdr`}
+                            aria-label={`Focus ${agentTitle(a)} in herdr`}
                             title="Focus in herdr"
                             onClick={() => void client.focus?.(a.paneId)}
                           >

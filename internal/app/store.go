@@ -16,8 +16,12 @@ import (
 // derived fields the UI needs and shields the frontend from wire churn when
 // herdr's schema moves.
 type Agent struct {
-	PaneID         string            `json:"paneId"`
-	Agent          string            `json:"agent"`
+	PaneID string `json:"paneId"`
+	Agent  string `json:"agent"`
+	// Label is the operator-set pane name from herdr (`pane.rename`). Empty
+	// for a pane nobody has named. Distinct from Title, which is the
+	// terminal-reported title and churns with every prompt redraw.
+	Label          string            `json:"label"`
 	Status         herdr.AgentStatus `json:"status"`
 	Project        string            `json:"project"`
 	CWD            string            `json:"cwd"`
@@ -39,6 +43,7 @@ func agentFromPane(p herdr.PaneInfo) Agent {
 	return Agent{
 		PaneID:         p.PaneID,
 		Agent:          name,
+		Label:          p.Label,
 		Status:         p.AgentStatus,
 		Project:        filepath.Base(cwd),
 		CWD:            cwd,
@@ -277,9 +282,15 @@ func (s *Store) Counts() Counts {
 
 // sameForUI compares only the fields the UI projects, so high-frequency
 // pane.updated churn (cursor, revision, scroll) does not trigger renders.
+//
+// Label belongs here because it is projected: without it a `pane.rename` is
+// invisible, since every other field is unchanged and the store suppresses
+// the callback. Title is deliberately absent — it is not projected, and it
+// changes on every prompt redraw.
 func sameForUI(a, b herdr.PaneInfo) bool {
 	return a.Agent == b.Agent &&
 		a.DisplayAgent == b.DisplayAgent &&
+		a.Label == b.Label &&
 		a.AgentStatus == b.AgentStatus &&
 		a.CWD == b.CWD &&
 		a.ForegroundCWD == b.ForegroundCWD &&
