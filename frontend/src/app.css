@@ -1275,6 +1275,45 @@ html.keyboard-open .jump-dock {
   text-align: end;
 }
 
+/* Fullscreen compose: the composer's own grid row grows over the terminal
+ * body row instead of a `position: fixed` overlay, which would fight the
+ * visualViewport / --app-height soft-keyboard handling above (see
+ * html.keyboard-open). The terminal body's track collapses to 0 — its own
+ * overflow: hidden (.pane__body) just clips screen/find/jump-dock, nothing
+ * needs to unmount.
+ *
+ * Deliberately not transitioned. Animating grid-template-rows is animating a
+ * layout property, which this design system bans, and track interpolation
+ * between mismatched keywords is unreliable across browsers regardless. The
+ * swap is instant, which is also the honest reading: the writing surface is
+ * either the whole pane or it is not. */
+.pane:has(> .composer.composer--expanded) {
+  grid-template-rows: auto 0 minmax(0, 1fr);
+}
+
+.composer--expanded {
+  min-height: 0;
+}
+
+/* The keybar drives the terminal, which is hidden while expanded — no
+ * screen to see the effect of an arrow/Enter press, so it stays out of the
+ * way and gives its space to the writing surface instead. */
+.composer--expanded .composer__keys {
+  display: none;
+}
+
+.composer--expanded .composer__row {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.composer--expanded .composer__input {
+  flex: 1 1 auto;
+  align-self: stretch;
+  min-height: 0;
+  max-height: none;
+}
+
 /* ---------------------------------------------------------------- overlays */
 
 .scrim {

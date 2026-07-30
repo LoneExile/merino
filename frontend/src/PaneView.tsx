@@ -7,6 +7,7 @@ import { parseAnsi } from "./ansi";
 import { splitPasteImages } from "./pasteImages";
 import { rememberImage } from "./imageCache";
 import { agentSubtitle, agentTitle } from "./agentName";
+import { composerEscapeAction } from "./composerKeys";
 import type { useTermFontPref } from "./termFontPref";
 import { findMatches, stripAnsi } from "./termSearch";
 
@@ -691,6 +692,10 @@ function Composer({ client, agent, readOnly = false, onSent }: ComposerProps) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const box = useRef<HTMLTextAreaElement>(null);
+  // Fullscreen compose: escapes the .composer__input 140px cap via CSS
+  // (see .composer--expanded in app.css) instead of `position: fixed`,
+  // which would fight the visualViewport/--app-height keyboard handling.
+  const [expanded, setExpanded] = useState(false);
   const [slashHits, setSlashHits] = useState<SlashCommand[]>([]);
   const [slashIdx, setSlashIdx] = useState(0);
   // Caret position drives mid-string slash detection (not only draft-start).
@@ -709,13 +714,19 @@ function Composer({ client, agent, readOnly = false, onSent }: ComposerProps) {
   const canAttach = Boolean(client.attachImage) && canWrite;
 
   // Grow with the content up to a cap, so a long reply is readable while the
-  // terminal keeps most of the screen.
+  // terminal keeps most of the screen. Skipped while expanded: the CSS flex
+  // rules for .composer--expanded own the height there, and an inline style
+  // here would just reimpose the 140px collapsed cap over them.
   useEffect(() => {
     const el = box.current;
     if (!el) return;
+    if (expanded) {
+      el.style.height = "";
+      return;
+    }
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
-  }, [value]);
+  }, [value, expanded]);
 
   // Slash typeahead at the caret: any "/token" whose start is a word boundary
   // (start of draft or after whitespace). Mid-sentence "/help" works the same
@@ -942,7 +953,7 @@ function Composer({ client, agent, readOnly = false, onSent }: ComposerProps) {
   }
 
   return (
-    <footer className="composer">
+    <footer className={`composer${expanded ? " composer--expanded" : ""}`}>
       {err && (
         <p className="composer__err" role="alert">
           {err}
@@ -1137,6 +1148,39 @@ function Composer({ client, agent, readOnly = false, onSent }: ComposerProps) {
               </button>
             </>
           )}
+          <button
+            type="button"
+            className="btn btn--icon"
+            disabled={busy}
+            title={expanded ? "Collapse composer" : "Expand composer"}
+            aria-label={expanded ? "Collapse composer" : "Expand composer"}
+            aria-expanded={expanded}
+            onClick={() => setExpanded((e) => !e)}
+          >
+            {expanded ? (
+              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                <path
+                  d="M2.7 9.3H6.7v4M13.3 6.7H9.3v-4M9.3 6.7 14 2M2 14l4.7-4.7"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                <path
+                  d="M10 2h4v4M14 2 9.3 6.7M6 14H2v-4M2 14l4.7-4.7"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            )}
+          </button>
           <textarea
             ref={box}
             className="composer__input"
@@ -1192,7 +1236,10 @@ function Composer({ client, agent, readOnly = false, onSent }: ComposerProps) {
               // go to the pane instead of sending the reply.
               const live = e.currentTarget.value;
 
-              // Slash typeahead navigation — steals arrows/enter/tab/esc while open.
+              // Slash typeahead navigation — steals arrows/enter/tab while
+              // open. Escape is handled below by composerEscapeAction, which
+              // treats an open slash menu as the highest-priority case too,
+              // so this split changes nothing about when it wins.
               if (slashOpen) {
                 if (e.key === "ArrowDown") {
                   e.preventDefault();
@@ -1210,19 +1257,47 @@ function Composer({ client, agent, readOnly = false, onSent }: ComposerProps) {
                   if (hit) applySlash(hit);
                   return;
                 }
-                if (e.key === "Escape") {
-                  e.preventDefault();
-                  setSlashHits([]);
-                  return;
+              }
+
+              // Escape precedence lives in composerKeys.ts, where a check
+              // script can exercise it: 1) close an open slash menu,
+              // 2) collapse an expanded composer, 3) route to the pane when
+              // the draft is empty and key routing is on, 4) clear the draft.
+              if (e.key === "Escape") {
+                const action = composerEscapeAction({
+                  slashOpen,
+                  expanded,
+                  empty: live.length === 0,
+                  canKeys,
+                });
+                switch (action) {
+                  case "slash":
+                    e.preventDefault();
+                    setSlashHits([]);
+                    return;
+                  case "collapse":
+                    e.preventDefault();
+                    setExpanded(false);
+                    return;
+                  case "pane":
+                    e.preventDefault();
+                    void press(["Escape"]);
+                    return;
+                  case "clear":
+                    e.preventDefault();
+                    setValue("");
+                    return;
+                  case "none":
+                    return;
                 }
               }
 
               // Empty box → TUI navigation keys go to the pane, not the chat.
-              // That is how you drive the Ask chooser (↑/↓, Enter, Esc) from a
-              // phone keyboard or a laptop without hunting for the toolbar.
+              // That is how you drive the Ask chooser (↑/↓, Enter, Tab) from
+              // a phone keyboard or a laptop without hunting for the
+              // toolbar. Escape is handled above, not in this map.
               if (canKeys && live.length === 0 && !e.metaKey && !e.ctrlKey && !e.altKey) {
                 const map: Record<string, string> = {
-                  Escape: "Escape",
                   ArrowUp: "Up",
                   ArrowDown: "Down",
                   ArrowLeft: "Left",
@@ -1238,14 +1313,9 @@ function Composer({ client, agent, readOnly = false, onSent }: ComposerProps) {
                 }
               }
 
-              // Non-empty: Esc clears the draft (do not fire Escape into the
-              // pane while the user is mid-reply). Enter sends, Shift+Enter
-              // inserts a newline — the chat convention.
-              if (e.key === "Escape" && live.length > 0) {
-                e.preventDefault();
-                setValue("");
-                return;
-              }
+              // Enter sends, Shift+Enter inserts a newline — the chat
+              // convention. (Non-empty Esc-clears-draft moved into the
+              // Escape precedence block above.)
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 void send(live, "reply");
