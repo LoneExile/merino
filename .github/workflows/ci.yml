@@ -63,6 +63,31 @@ jobs:
       - name: Go build
         run: go build ./...
 
+      # The web dashboard is the product; the menubar is a shell around it.
+      # internal/web must therefore stay buildable without a desktop, so a
+      # headless daemon can serve the same UI. This is a check rather than a
+      # convention because the failure is a one-line convenience import that
+      # nobody would flag in review.
+      #
+      # Wails v3 alpha2.118's Linux layer does not compile at all
+      # ("undefined: pointer" across pkg/application/*_linux.go), so a single
+      # import anywhere under internal/app or internal/web takes the whole
+      # cross-build down — the build below IS most of the assertion. The
+      # go list check is the early-warning half: it goes red on an import
+      # that happens to compile.
+      #
+      # Must be GOOS=linux scoped. On darwin this same command prints 22,
+      # because internal/app/service_wails.go is compiled in — that file is
+      # the one sanctioned Wails surface of package app.
+      - name: Dashboard stays portable
+        run: |
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
+            go build ./internal/app/... ./internal/web/... ./internal/herdr/...
+          reached=$(GOOS=linux GOARCH=amd64 go list -deps ./internal/web/... | grep 'wailsapp/wails' || true)
+          if [ -n "$reached" ]; then
+            echo "::error::internal/web reaches Wails on linux:"; echo "$reached"; exit 1
+          fi
+
       - name: Go test
         # Tests requiring a live herdr socket skip automatically when none is
         # present, so this stays green on CI runners.
