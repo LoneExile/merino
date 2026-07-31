@@ -69,7 +69,8 @@ jobs:
         working-directory: frontend
         run: npm run typecheck
 
-      # Must build frontend before any Go step: main.go embeds frontend/dist.
+      # Must build frontend before any Go step: internal/assets embeds
+      # internal/assets/dist, which vite writes (frontend build.outDir).
       - name: Frontend build
         working-directory: frontend
         run: npm run build

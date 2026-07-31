@@ -41,10 +41,11 @@ jobs:
             echo "::error::gofmt drift in:"; echo "$unformatted"; exit 1
           fi
 
-      # The frontend must be built before ANY Go step. main.go embeds
-      # frontend/dist with `//go:embed`, and that directive fails at type-check
-      # time when the directory is absent — breaking `go vet` and `go build`
-      # with a confusing "pattern ... no matching files found".
+      # The frontend must be built before ANY Go step. internal/assets embeds
+      # internal/assets/dist with `//go:embed`, and that directive fails at
+      # type-check time when the directory is absent — breaking `go vet` and
+      # `go build` with a confusing "pattern ... no matching files found".
+      # Vite writes that directory (frontend/vite.config.ts build.outDir).
       - name: Frontend install
         working-directory: frontend
         run: npm ci
@@ -71,21 +72,25 @@ jobs:
       #
       # Wails v3 alpha2.118's Linux layer does not compile at all
       # ("undefined: pointer" across pkg/application/*_linux.go), so a single
-      # import anywhere under internal/app or internal/web takes the whole
-      # cross-build down — the build below IS most of the assertion. The
-      # go list check is the early-warning half: it goes red on an import
-      # that happens to compile.
+      # import anywhere under the packages below takes the whole cross-build
+      # down — the build IS most of the assertion. The go list check is the
+      # early-warning half: it goes red on an import that happens to compile.
+      #
+      # internal/serve is the boot path a headless daemon will call, so it is
+      # covered too: the point of lifting it out of main.go is that it does
+      # not need a desktop.
       #
       # Must be GOOS=linux scoped. On darwin this same command prints 22,
       # because internal/app/service_wails.go is compiled in — that file is
       # the one sanctioned Wails surface of package app.
       - name: Dashboard stays portable
         run: |
-          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
-            go build ./internal/app/... ./internal/web/... ./internal/herdr/...
-          reached=$(GOOS=linux GOARCH=amd64 go list -deps ./internal/web/... | grep 'wailsapp/wails' || true)
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build \
+            ./internal/app/... ./internal/assets/... ./internal/herdr/... \
+            ./internal/serve/... ./internal/web/...
+          reached=$(GOOS=linux GOARCH=amd64 go list -deps ./internal/serve/... ./internal/web/... | grep 'wailsapp/wails' || true)
           if [ -n "$reached" ]; then
-            echo "::error::internal/web reaches Wails on linux:"; echo "$reached"; exit 1
+            echo "::error::the headless boot path reaches Wails on linux:"; echo "$reached"; exit 1
           fi
 
       - name: Go test

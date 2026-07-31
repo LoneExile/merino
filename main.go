@@ -6,13 +6,9 @@
 package main
 
 import (
-	"embed"
-	"errors"
 	"flag"
 	"fmt"
-	"io/fs"
 	"log/slog"
-	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -20,8 +16,10 @@ import (
 	"time"
 
 	"github.com/LoneExile/merino/internal/app"
+	"github.com/LoneExile/merino/internal/assets"
 	"github.com/LoneExile/merino/internal/desktop"
 	"github.com/LoneExile/merino/internal/herdr"
+	"github.com/LoneExile/merino/internal/serve"
 	"github.com/LoneExile/merino/internal/trayicon"
 	"github.com/LoneExile/merino/internal/web"
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -29,9 +27,6 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/updater"
 	"github.com/wailsapp/wails/v3/pkg/updater/providers/github"
 )
-
-//go:embed all:frontend/dist
-var assets embed.FS
 
 func init() {
 	// Registering events gives the frontend strongly typed listeners for them.
@@ -175,16 +170,23 @@ func main() {
 			writesOK = true
 		}
 	}
-	var startErr error
-	srv, pair, passProv, devStore, startErr := startWeb(agents, webAddr, *behindProxy, writesOK, switchOK, assets, logger)
+	dash, startErr := serve.Start(serve.Options{
+		Source:             agents,
+		Addr:               webAddr,
+		BehindProxy:        *behindProxy,
+		AllowWrites:        writesOK,
+		AllowSessionSwitch: switchOK,
+		Logger:             logger,
+	})
 	if startErr != nil {
 		logger.Error("web dashboard failed to start", "err", startErr)
 		os.Exit(1)
 	}
+	srv := dash.Server
 	webSrv = srv
-	pairing = pair
-	passProvider = passProv
-	devices = devStore
+	pairing = dash.Pairing
+	passProvider = dash.Password
+	devices = dash.Devices
 
 	desk = desktop.NewSettings(nil, "dev.apinant.merino", version, "LoneExile/merino", pairing, devices, filepath.Dir(app.DefaultAuditPath()), webAddr, passProvider)
 	desk.SetWebServer(srv)
@@ -209,7 +211,7 @@ func main() {
 			application.NewService(desk),
 		},
 		Assets: application.AssetOptions{
-			Handler: application.AssetFileServerFS(assets),
+			Handler: application.AssetFileServerFS(assets.FS),
 		},
 		Mac: application.MacOptions{
 			// A menubar app owns no dock icon and must outlive its panel.
@@ -503,196 +505,6 @@ func showPanel(tray *application.SystemTray, panel *application.WebviewWindow) {
 	// bundle did not execute — and index.html reports it.
 	panel.SetSize(panelW, panelH+1)
 	panel.SetSize(panelW, panelH)
-}
-
-// startWeb boots the browser dashboard.
-//
-// Public-release GUI launches always call this (default bind 0.0.0.0:8730) so
-// QR pairing works after drag-to-Applications with zero flags. Safety is the
-// login wall + one-shot pairing tokens + revocable device grants — not "did
-// the operator remember --listen". CLI users can still pass an explicit
-// --listen address (including 127.0.0.1) to narrow the bind.
-func startWeb(src web.Source, addr string, behindProxy, allowWrites, allowSessionSwitch bool, assets embed.FS, logger *slog.Logger) (*web.Server, *web.Pairing, *web.PasswordProvider, *web.DeviceStore, error) {
-	stateDir := filepath.Dir(app.DefaultAuditPath())
-	user, pass, generated, bootErr := web.LoadOrCreateBootstrap(stateDir)
-	if bootErr != nil {
-		return nil, nil, nil, nil, bootErr
-	}
-	if generated {
-		// Not "zero-config start" any more: password sign-in defaults OFF, so
-		// these credentials do nothing until the operator opens that door in
-		// Settings. Saying otherwise sends people to a login form that will
-		// refuse them.
-		logger.Info("stored local operator credentials",
-			"user", user, "path", filepath.Join(stateDir, "bootstrap-creds.json"),
-			"note", "usable only once password sign-in is enabled in Settings")
-	}
-
-	dist, err := fs.Sub(assets, "frontend/dist")
-	if err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("locate frontend assets: %w", err)
-	}
-
-	// The audit log is opened whenever the dashboard runs, not only when
-	// writes are enabled: subscribing to push notifications (below) is
-	// itself an authenticated state change and deserves the same durable
-	// record pane writes get. A read-only dashboard ran for a long time
-	// before push existed without ever needing this directory to be
-	// writable, so a failure here is only fatal when writes are also on —
-	// otherwise push subscriptions simply go unaudited (logged once) rather
-	// than taking the whole dashboard down.
-	var (
-		writer web.Writer
-		audit  *app.Audit
-	)
-	if a, auditErr := app.NewAudit(app.DefaultAuditPath()); auditErr != nil {
-		if allowWrites {
-			return nil, nil, nil, nil, auditErr
-		}
-		logger.Warn("could not open audit log; push subscriptions will not be recorded",
-			"path", app.DefaultAuditPath(), "err", auditErr)
-	} else {
-		audit = a
-	}
-	// Always wire Writer when the source supports it and audit is open, so
-	// Mac Settings can flip the live gate without restart. allowWrites only
-	// sets the initial gate (CLI / disk / menubar default).
-	if w, castOK := src.(web.Writer); castOK && audit != nil {
-		writer = w
-		if allowWrites {
-			logger.Warn("web dashboard can write to your agents",
-				"audit", app.DefaultAuditPath(),
-				"note", "approvals, keys and interrupts are accepted from any signed-in browser")
-		} else {
-			logger.Info("web dashboard writes available but off",
-				"note", "enable from Mac Settings or --allow-writes")
-		}
-	} else if allowWrites {
-		if _, castOK := src.(web.Writer); !castOK {
-			return nil, nil, nil, nil, errors.New("source does not support writes")
-		}
-		return nil, nil, nil, nil, errors.New("writes require an audit log")
-	}
-
-	// Session discovery is always offered: it is read-only, and knowing
-	// which herdr socket a dashboard is even looking at is useful whether or
-	// not switching between them is allowed.
-	var sessions web.SessionSource
-	if ss, ok := src.(web.SessionSource); ok {
-		sessions = ss
-	}
-
-	var switcher web.SessionSwitcher
-	if sw, castOK := src.(web.SessionSwitcher); castOK {
-		switcher = sw
-		if allowSessionSwitch {
-			logger.Warn("web dashboard session switch enabled",
-				"note", "repointing the session changes which agents every signed-in browser sees")
-		} else {
-			logger.Info("web dashboard session switch available but off",
-				"note", "enable from Mac Settings or --allow-session-switch")
-		}
-	} else if allowSessionSwitch {
-		return nil, nil, nil, nil, errors.New("source does not support session switching")
-	}
-
-	publicURL := app.Env("PUBLIC_URL")
-	if publicURL == "" {
-		// Zero-config: QR targets this Mac on the LAN, not a missing tunnel host.
-		publicURL = web.PreferLANBase(addr)
-	}
-	pairing := web.NewPairing(publicURL)
-	provider := web.NewPasswordProvider(user, pass, ipResolver(behindProxy), behindProxy)
-	provider.SetPairing(pairing)
-
-	devices, devErr := web.OpenDeviceStore(stateDir)
-	if devErr != nil {
-		return nil, nil, nil, nil, devErr
-	}
-	provider.SetDevices(devices)
-	passwordLogin := web.PasswordLoginEnabled(stateDir)
-	provider.SetPasswordLogin(passwordLogin)
-	// Reported like the write and session-switch gates beside it. Without
-	// this line the app's weakest door is the only one whose state a startup
-	// log does not name, and an install that lost password sign-in to the
-	// default change has nothing to read.
-	logger.Info("password sign-in gate", "enabled", passwordLogin)
-	if ou, op, ok := web.LoadOptionalPassword(stateDir); ok {
-		provider.SetOptionalPassword(ou, op)
-		logger.Info("optional phone password enabled", "user", ou)
-	}
-
-	// OAuth rung: mount scaffold routes only when explicitly configured AND
-	// we have a public HTTPS base (redirect URIs). Full code flow is TODO.
-	if oidc := web.OIDCFromEnv(); oidc.Enabled() && app.Env("PUBLIC_URL") != "" {
-		logger.Info("OIDC scaffold enabled (authorization code not implemented yet)",
-			"issuer", oidc.Issuer)
-		// Keep password as the Mount provider; OIDC routes are registered via
-		// a tiny side mount below after New — see attachOIDCScaffold.
-		_ = oidc
-	}
-
-	srv, err := web.New(src, web.Config{
-		Addr:     addr,
-		Provider: provider,
-		// Single operator still: paired devices carry view+control roles for
-		// RequireRole later; today every authenticated identity is trusted.
-		Policy:        web.SingleOperator{},
-		BehindProxy:   behindProxy,
-		Assets:        dist,
-		Logger:        logger,
-		Writer:        writer,
-		Audit:         audit,
-		Sessions:      sessions,
-		Switcher:      switcher,
-		SessionSwitch: allowSessionSwitch,
-		AllowWrites:   allowWrites,
-		Pairing:       pairing,
-		PublicBaseURL: app.Env("PUBLIC_URL"),
-		// Same directory the audit log above resolves to, so an operator who
-		// already knows where one lives knows where to find the other.
-		PushDir:  stateDir,
-		Devices:  devices,
-		StateDir: stateDir,
-	})
-	if err != nil {
-		return nil, nil, nil, nil, err
-	}
-
-	// Wire the edge-triggered blocked-transition hook straight into push.
-	// AttachBlockedNotifier is a package function (not a Wails-bound method).
-	// NotifyBlocked itself is a no-op whenever push failed to initialise or
-	// was never configured, so wiring it unconditionally is safe.
-	if agents, ok := src.(*app.AgentsService); ok {
-		app.AttachBlockedNotifier(agents, srv.NotifyBlocked)
-	}
-
-	if err := srv.Start(); err != nil {
-		return nil, nil, nil, nil, err
-	}
-
-	if h, _, splitErr := net.SplitHostPort(addr); splitErr == nil && (h == "0.0.0.0" || h == "" || h == "::") {
-		if behindProxy {
-			logger.Warn("web dashboard is published to the public internet",
-				"addr", addr,
-				"note", "a single password is the only barrier; put an identity proxy in front of it")
-		} else {
-			logger.Warn("web dashboard is reachable from your whole network",
-				"addr", addr,
-				"note", "traffic is unencrypted HTTP; use a tunnel before exposing it beyond the LAN")
-		}
-	}
-	return srv, pairing, provider, devices, nil
-}
-
-// ipResolver picks how the client address is determined. Proxy headers are
-// only believed when the operator has declared a proxy, because reached
-// directly they are just strings the caller chose.
-func ipResolver(behindProxy bool) web.IPResolver {
-	if behindProxy {
-		return web.ProxiedIP
-	}
-	return web.DirectIP
 }
 
 // initAppUpdater wires Wails app.Updater to GitHub Releases for in-app install.
