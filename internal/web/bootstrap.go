@@ -144,6 +144,17 @@ type passwordLoginFile struct {
 	Enabled bool `json:"enabled"`
 }
 
+// PasswordLoginExplicit is true when the operator has saved a preference,
+// which is not the same as PasswordLoginEnabled being false: a config.yml
+// key may set the default for an install that has never touched the toggle,
+// but must not silently reopen a door somebody deliberately closed.
+//
+// The sibling of SessionSwitchExplicit and AllowWritesExplicit.
+func PasswordLoginExplicit(dir string) bool {
+	_, err := os.ReadFile(passwordLoginPath(dir))
+	return err == nil
+}
+
 // PasswordLoginEnabled reports whether user/pass HTTP login is on.
 //
 // Missing or unreadable file ⇒ OFF. A fresh install accepts QR pairing only:

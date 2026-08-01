@@ -15,6 +15,7 @@ import (
 
 	"github.com/LoneExile/merino/internal/app"
 	"github.com/LoneExile/merino/internal/assets"
+	"github.com/LoneExile/merino/internal/config"
 	"github.com/LoneExile/merino/internal/web"
 )
 
@@ -38,6 +39,16 @@ type Options struct {
 	// not a ceiling.
 	AllowWrites        bool
 	AllowSessionSwitch bool
+
+	// PasswordLogin is the third gate, already resolved by the caller so
+	// config.yml gets a say. Its zero value keeps today's behaviour: fall
+	// back to the panel's side-file, which defaults off.
+	PasswordLogin config.Gate
+
+	// PublicURL is the base a pairing QR points at. Empty autodetects a LAN
+	// address, which inside a container is the container's own address — a
+	// URL no phone can open.
+	PublicURL string
 
 	Logger *slog.Logger
 }
@@ -151,7 +162,8 @@ func Start(opts Options) (*Dashboard, error) {
 		return nil, errors.New("source does not support session switching")
 	}
 
-	publicURL := app.Env("PUBLIC_URL")
+	// Resolved by the caller (env > config.yml); empty still means autodetect.
+	publicURL := opts.PublicURL
 	if publicURL == "" {
 		// Zero-config: QR targets this Mac on the LAN, not a missing tunnel host.
 		publicURL = web.PreferLANBase(addr)
@@ -165,21 +177,28 @@ func Start(opts Options) (*Dashboard, error) {
 		return nil, devErr
 	}
 	provider.SetDevices(devices)
-	passwordLogin := web.PasswordLoginEnabled(stateDir)
-	provider.SetPasswordLogin(passwordLogin)
+	// The caller resolves this gate so config.yml gets a say; the zero Gate
+	// means nobody did, in which case the panel's side-file decides as before.
+	passwordGate := opts.PasswordLogin
+	if passwordGate.Source == "" {
+		passwordGate = config.Gate{On: web.PasswordLoginEnabled(stateDir), Source: config.GateSettings}
+	}
+	provider.SetPasswordLogin(passwordGate.On)
 	// Reported like the write and session-switch gates beside it. Without
 	// this line the app's weakest door is the only one whose state a startup
 	// log does not name, and an install that lost password sign-in to the
 	// default change has nothing to read.
-	logger.Info("password sign-in gate", "enabled", passwordLogin)
+	logger.Info("password sign-in gate", "enabled", passwordGate.On,
+		"source", passwordGate.Source, "locked", passwordGate.Locked)
 	if ou, op, ok := web.LoadOptionalPassword(stateDir); ok {
 		provider.SetOptionalPassword(ou, op)
 		logger.Info("optional phone password enabled", "user", ou)
 	}
 
 	// OAuth rung: mount scaffold routes only when explicitly configured AND
-	// we have a public HTTPS base (redirect URIs). Full code flow is TODO.
-	if oidc := web.OIDCFromEnv(); oidc.Enabled() && app.Env("PUBLIC_URL") != "" {
+	// we have a public HTTPS base (redirect URIs) — env or config.yml, never
+	// the LAN autodetect. Full code flow is TODO.
+	if oidc := web.OIDCFromEnv(); oidc.Enabled() && opts.PublicURL != "" {
 		logger.Info("OIDC scaffold enabled (authorization code not implemented yet)",
 			"issuer", oidc.Issuer)
 		// Keep password as the Mount provider; OIDC routes are registered via
@@ -203,7 +222,10 @@ func Start(opts Options) (*Dashboard, error) {
 		SessionSwitch: allowSessionSwitch,
 		AllowWrites:   allowWrites,
 		Pairing:       pairing,
-		PublicBaseURL: app.Env("PUBLIC_URL"),
+		// The explicit value only, never the LAN autodetect: an absent
+		// public base means "there isn't one", which is not the same as
+		// "here is a guess that works on this Wi-Fi".
+		PublicBaseURL: opts.PublicURL,
 		// Same directory the audit log above resolves to, so an operator who
 		// already knows where one lives knows where to find the other.
 		PushDir:  stateDir,

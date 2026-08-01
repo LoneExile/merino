@@ -86,8 +86,8 @@ jobs:
       - name: Dashboard stays portable
         run: |
           GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build \
-            ./internal/app/... ./internal/assets/... ./internal/herdr/... \
-            ./internal/serve/... ./internal/web/...
+            ./internal/app/... ./internal/assets/... ./internal/config/... \
+            ./internal/herdr/... ./internal/serve/... ./internal/web/...
           reached=$(GOOS=linux GOARCH=amd64 go list -deps ./internal/serve/... ./internal/web/... | grep 'wailsapp/wails' || true)
           if [ -n "$reached" ]; then
             echo "::error::the headless boot path reaches Wails on linux:"; echo "$reached"; exit 1

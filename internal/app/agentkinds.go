@@ -4,9 +4,11 @@ import (
 	"context"
 	"os"
 	"os/exec"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -77,9 +79,54 @@ type kindCache struct {
 
 var kinds kindCache
 
-// AvailableAgentKinds returns the supported agents whose executable exists on
-// this machine, newest lookup cached for kindCacheTTL.
+// pinnedKinds is the operator's explicit list, set once at boot from
+// config.yml's herdr.agents and never mutated afterwards.
+//
+// Autodetection probes Merino's OWN login shell for 21 binaries. That is
+// right on a workstation, where Merino and herdr share a machine, and wrong
+// the moment herdr lives somewhere else: the agents are on the herd host, so
+// the spawn sheet renders empty. herdr does not expose the set over the
+// socket (see supportedKinds), so it cannot be asked — the operator has to
+// say.
+var pinnedKinds atomic.Pointer[[]AgentKind]
+
+// PinAgentKinds fixes the spawn sheet's list, bypassing autodetection.
+//
+// Unknown names are dropped and returned so the caller can warn: herdr would
+// answer unsupported_agent_kind anyway, but a typo in a config file should
+// be reported at boot, not discovered when a spawn fails.
+func PinAgentKinds(names []string) (dropped []string) {
+	if len(names) == 0 {
+		return nil
+	}
+	list := make([]AgentKind, 0, len(names))
+	for _, name := range names {
+		idx := slices.IndexFunc(supportedKinds, func(k struct{ kind, label, bin string }) bool {
+			return k.kind == name
+		})
+		if idx < 0 {
+			dropped = append(dropped, name)
+			continue
+		}
+		// No Path: nothing was probed, so there is no evidence to show.
+		// The UI treats this as "the operator says so".
+		list = append(list, AgentKind{Kind: supportedKinds[idx].kind, Label: supportedKinds[idx].label})
+	}
+	pinnedKinds.Store(&list)
+	return dropped
+}
+
+// AvailableAgentKinds returns the agent kinds the spawn sheet may offer:
+// the operator's pinned list when config.yml set one, otherwise the
+// supported agents whose executable exists on this machine, cached for
+// kindCacheTTL.
 func AvailableAgentKinds(ctx context.Context) []AgentKind {
+	// Checked before the lock and before the cache: a pinned list is a
+	// constant, so there is nothing to probe and nothing to expire.
+	if pinned := pinnedKinds.Load(); pinned != nil {
+		return *pinned
+	}
+
 	kinds.mu.Lock()
 	defer kinds.mu.Unlock()
 
