@@ -293,12 +293,6 @@ func writable(path string) bool {
 // be told, not left to discover it.
 func (f *File) unhonoured() []string {
 	var out []string
-	if f.Auth.User != "" {
-		out = append(out, "auth.user")
-	}
-	if f.Auth.PasswordFile != "" {
-		out = append(out, "auth.passwordFile")
-	}
 	if f.Paths.StateDir != "" {
 		out = append(out, "paths.stateDir")
 	}

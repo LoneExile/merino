@@ -1,8 +1,14 @@
+//go:build darwin
+
 // Command merino is a menubar dashboard for herdr coding agents.
 //
 // It holds a persistent connection to the herdr socket API and projects live
 // agent state into a tray label and an attached panel window. State is driven
 // entirely by the server's push event stream — the herdr CLI is never invoked.
+//
+// darwin-only: this is the Wails half of the product. Everything it shows in
+// a browser is served by internal/web, which cmd/merinod runs without any
+// desktop at all.
 package main
 
 import (
@@ -12,15 +18,12 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/LoneExile/merino/internal/app"
 	"github.com/LoneExile/merino/internal/assets"
-	"github.com/LoneExile/merino/internal/config"
 	"github.com/LoneExile/merino/internal/desktop"
-	"github.com/LoneExile/merino/internal/herdr"
 	"github.com/LoneExile/merino/internal/serve"
 	"github.com/LoneExile/merino/internal/trayicon"
 	"github.com/LoneExile/merino/internal/web"
@@ -65,58 +68,31 @@ func main() {
 			"then /etc/merino/config.yml are tried, and finding none is normal")
 	flag.Parse()
 
-	// Which flags were actually typed. flag.Bool cannot distinguish "not
-	// given" from "-flag=false", and for behind-proxy that difference is
-	// security-relevant: it decides Secure cookies and whether a
-	// client-IP header from the network is believed. Without this,
-	// `-behind-proxy=false` against a config.yml that says true would be
-	// silently ignored.
+	// flag.Bool cannot distinguish "not given" from "-flag=false", and for
+	// behind-proxy that difference decides Secure cookies and whether a
+	// client-IP header from the network is believed.
 	given := map[string]bool{}
 	flag.Visit(func(f *flag.Flag) { given[f.Name] = true })
 
-	// Loaded before the logger because log.level is one of its keys. Failing
-	// here is fatal on purpose: a config that cannot be parsed means the
-	// operator's intent is unknown, and guessing it is worse than stopping.
-	cfg, cfgErr := config.Load(*configPath)
-	if cfgErr != nil {
-		// No logger yet, and this is the one message that must survive
-		// whatever level the file was trying to set.
-		fmt.Fprintln(os.Stderr, cfgErr)
-		os.Exit(1)
+	// One resolver for both entry points: see serve.Prepare. Failing here is
+	// fatal on purpose — a config that cannot be parsed means the operator's
+	// intent is unknown, and guessing it is worse than stopping.
+	boot, bootErr := serve.Prepare(serve.Menubar, serve.Flags{
+		ConfigPath:         *configPath,
+		Listen:             *listen,
+		BehindProxy:        *behindProxy,
+		BehindProxyGiven:   given["behind-proxy"],
+		AllowWrites:        *allowWrites,
+		AllowSessionSwitch: *allowSessionSwitch,
+	})
+	if bootErr != nil {
+		serve.Fatal(bootErr)
 	}
-
-	// Resolved once and reused: the tray-frame counter below consults it on
-	// a hot path, and re-deriving it per frame would re-read the env.
-	level := logLevel(cfg.Log.Level)
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-		Level: level,
-	}))
+	logger, level, client := boot.Logger, boot.Level, boot.Client
 	// Helpers outside main (showPanel, showPanelWhenReady) log through the
 	// package-level slog functions; without this they would write to Go's
 	// default INFO handler and their debug lines would vanish.
 	slog.SetDefault(logger)
-
-	if cfg.Path != "" {
-		// Writability is reported, not just used: it is what decides whether
-		// the access keys are defaults or pins, and §6's honest hole is that
-		// a writable-looking path can still be ephemeral. Printing it makes
-		// that inspectable instead of inferred.
-		logger.Info("config loaded", "path", cfg.Path, "writable", cfg.Writable, "gatesPinned", cfg.Locked())
-	}
-	for _, key := range cfg.Unhonoured {
-		logger.Warn("config key is not honoured by this build yet", "key", key)
-	}
-
-	// herdr.socket: env stays above the file, because HERDR_SOCK is
-	// documented today and `just web` / `just tunnel` set it.
-	client := herdr.New(config.String("", os.Getenv("HERDR_SOCK"), cfg.Herdr.Socket, ""))
-
-	// Spawn-sheet agents. Autodetection probes this machine's login shell,
-	// which is the wrong machine whenever herdr lives elsewhere.
-	if dropped := app.PinAgentKinds(cfg.Herdr.Agents); len(dropped) > 0 {
-		logger.Warn("config named agent kinds herdr does not support; ignoring them",
-			"kinds", dropped)
-	}
 
 	// The service is constructed before the application so it can be bound at
 	// creation time; emit and tray callbacks are late-bound via closures over
@@ -184,75 +160,18 @@ func main() {
 	agents := app.NewAgentsService(client, logger, emit, onCounts)
 
 	// Public release: the menubar .app always starts a local dashboard so
-	// phone QR pairing works with zero flags. CLI --listen still overrides
-	// the bind address (and is required for headless/tunnel-only runs).
-	// Bind address: flag > config.yml > LAN default. No env rung for this key.
-	webAddr := config.String(*listen, "", cfg.Listen, "")
-	if webAddr == "" {
-		// LAN bind so a phone on the same Wi‑Fi can open the QR URL. Pairing
-		// tokens are one-shot + short TTL; device grants are revocable.
-		webAddr = "0.0.0.0:8730"
-	}
-	// zeroConfigGUI is the menubar double-click path: nobody asked for a
-	// specific bind, so this is someone opening an app rather than an
-	// operator scripting a daemon. It is what makes writes and session
-	// switching default ON, so answering a blocked agent from a phone works
-	// with no setup. A config.yml that sets `listen` is a deployment, so it
-	// drops out of that default exactly like --listen does.
-	zeroConfigGUI := *listen == "" && cfg.Listen == ""
-	stateDir := filepath.Dir(app.DefaultAuditPath())
+	// phone QR pairing works with zero flags. Everything about how it binds
+	// and which gates open was already decided by serve.Prepare, which the
+	// daemon calls too — the only thing left to supply here is the agent
+	// source, which only this process owns.
+	webAddr := boot.Options.Addr
+	switchOK := boot.Options.AllowSessionSwitch
+	writesOK := boot.Options.AllowWrites
+	boot.LogGates()
 
-	// D1 lives in config.ResolveGate: a writable config.yml is a default the
-	// panel outranks, a read-only one pins. The three gates differ only in
-	// which flag and which side-file they read.
-	switchGate := cfg.ResolveGate(config.GateInputs{
-		FlagOn:           *allowSessionSwitch,
-		Config:           cfg.Access.AllowSessionSwitch,
-		SettingsExplicit: web.SessionSwitchExplicit(stateDir),
-		SettingsOn:       web.SessionSwitchEnabled(stateDir),
-		Default:          zeroConfigGUI,
-	})
-	writesGate := cfg.ResolveGate(config.GateInputs{
-		FlagOn:           *allowWrites,
-		Config:           cfg.Access.AllowWrites,
-		SettingsExplicit: web.AllowWritesExplicit(stateDir),
-		SettingsOn:       web.AllowWritesEnabled(stateDir),
-		Default:          zeroConfigGUI,
-	})
-	// No flag and no GUI default: password sign-in is the weakest door this
-	// app has and stays off until somebody opens it deliberately.
-	passwordGate := cfg.ResolveGate(config.GateInputs{
-		Config:           cfg.Access.PasswordLogin,
-		SettingsExplicit: web.PasswordLoginExplicit(stateDir),
-		SettingsOn:       web.PasswordLoginEnabled(stateDir),
-		Default:          false,
-	})
-	logGate(logger, cfg, "session switch", switchGate, cfg.Access.AllowSessionSwitch)
-	logGate(logger, cfg, "write", writesGate, cfg.Access.AllowWrites)
-
-	switchOK := switchGate.On
-	writesOK := writesGate.On
-
-	// behind-proxy is a plain bool, not a gate: there is no panel toggle for
-	// it, so the ladder is just flag > config.yml > false. An explicitly
-	// typed flag wins in BOTH directions — -behind-proxy=false against a
-	// config that says true must actually turn it off, because the operator
-	// who typed it is standing in front of the deployment.
-	behindProxyOn := cfg.BehindProxy != nil && *cfg.BehindProxy
-	if given["behind-proxy"] {
-		behindProxyOn = *behindProxy
-	}
-
-	dash, startErr := serve.Start(serve.Options{
-		Source:             agents,
-		Addr:               webAddr,
-		PublicURL:          config.String("", app.Env("PUBLIC_URL"), cfg.PublicURL, ""),
-		BehindProxy:        behindProxyOn,
-		AllowWrites:        writesOK,
-		AllowSessionSwitch: switchOK,
-		PasswordLogin:      passwordGate,
-		Logger:             logger,
-	})
+	opts := boot.Options
+	opts.Source = agents
+	dash, startErr := serve.Start(opts)
 	if startErr != nil {
 		logger.Error("web dashboard failed to start", "err", startErr)
 		os.Exit(1)
@@ -484,42 +403,6 @@ func trayTooltip(c app.Counts, herdReachable bool, socket string) string {
 		return fmt.Sprintf("Merino — %d agents idle", c.Total)
 	default:
 		return "Merino — no agents running"
-	}
-}
-
-// logLevel resolves the handler level: env > config.yml > info.
-//
-// MERINO_DEBUG stays on top because it is documented today and `just web` /
-// `just tunnel` set it — demoting it below a file would silently break the
-// dev loop. An unrecognised level in the file is reported by falling back to
-// info rather than refusing to boot; the file has already been accepted by
-// then, and a typo here should not cost you the process.
-func logLevel(fileLevel string) slog.Level {
-	if app.Env("DEBUG") != "" {
-		return slog.LevelDebug
-	}
-	switch strings.ToLower(strings.TrimSpace(fileLevel)) {
-	case "debug":
-		return slog.LevelDebug
-	case "info", "":
-		return slog.LevelInfo
-	case "warn", "warning":
-		return slog.LevelWarn
-	case "error":
-		return slog.LevelError
-	default:
-		return slog.LevelInfo
-	}
-}
-
-// logGate reports how one access gate was decided. Which rung won is worth a
-// line: "the toggle will not move" and "the toggle is off" look identical
-// from the panel, and only one of them is a config file doing its job.
-func logGate(logger *slog.Logger, cfg *config.File, name string, g config.Gate, key *bool) {
-	logger.Info(name+" gate", "enabled", g.On, "source", g.Source, "locked", g.Locked)
-	if g.Source == config.GateFlag && key != nil && cfg.Locked() && *key != g.On {
-		logger.Warn("a CLI flag overrode a read-only config.yml",
-			"gate", name, "config", *key, "effective", g.On)
 	}
 }
 

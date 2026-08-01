@@ -98,7 +98,7 @@ jobs:
           # depends on darwin:build which rebuilds WITHOUT -X main.version and
           # would overwrite bin/merino with 0.1.0-dev.
           mkdir -p bin
-          go build -tags production -trimpath -buildvcs=false             -ldflags="-w -s -X main.version=${VERSION}"             -o bin/merino .
+          go build -tags production -trimpath -buildvcs=false             -ldflags="-w -s -X main.version=${VERSION}"             -o bin/merino ./cmd/merino
 
           # Bundle only (icons + Info.plist + ad-hoc codesign).
           wails3 task darwin:create:app:bundle

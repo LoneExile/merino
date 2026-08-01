@@ -327,6 +327,12 @@ func (s *Server) routes() http.Handler {
 	// silently swallowed by the SPA fallback, fails in ways a browser gives
 	// almost no diagnostic for.
 	mux.Handle("GET /sw.js", s.public(s.handleServiceWorker))
+	// /healthz is likewise unauthenticated: a probe (Kubernetes liveness, or
+	// a human checking merinod) needs a cheap machine-readable target that
+	// does not run the /login page's insecure-transport check or render
+	// HTML. It carries no user data — see handleHealthz for what it omits
+	// and why.
+	mux.Handle("GET /healthz", s.public(s.handleHealthz))
 	mux.Handle("GET /manifest.webmanifest", s.public(s.handleManifest))
 	for _, icon := range pwaIcons {
 		mux.Handle("GET /"+icon, s.publicAsset(icon, "image/png"))

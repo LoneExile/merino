@@ -11,7 +11,9 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/LoneExile/merino/internal/app"
 	"github.com/LoneExile/merino/internal/assets"
@@ -50,6 +52,17 @@ type Options struct {
 	// URL no phone can open.
 	PublicURL string
 
+	// AuthUser and AuthPasswordFile name the operator credential
+	// explicitly. This is how a headless install admits anyone at all: a
+	// Kubernetes Secret mount is a file, and merinod deliberately ships no
+	// command that could set a password on a running daemon.
+	//
+	// The password is read from the FILE, never from a config key and never
+	// from argv. A literal password in config.yml would be copied around
+	// with the rest of the deployment.
+	AuthUser         string
+	AuthPasswordFile string
+
 	Logger *slog.Logger
 }
 
@@ -80,7 +93,7 @@ func Start(opts Options) (*Dashboard, error) {
 	)
 
 	stateDir := filepath.Dir(app.DefaultAuditPath())
-	user, pass, generated, bootErr := web.LoadOrCreateBootstrap(stateDir)
+	user, pass, generated, bootErr := credentials(opts, stateDir)
 	if bootErr != nil {
 		return nil, bootErr
 	}
@@ -270,4 +283,42 @@ func ipResolver(behindProxy bool) web.IPResolver {
 		return web.ProxiedIP
 	}
 	return web.DirectIP
+}
+
+// credentials resolves the operator identity: env > auth.passwordFile >
+// generated bootstrap file.
+//
+// env stays on top because MERINO_USER/MERINO_PASS are documented today.
+// auth.passwordFile sits above the generated file because naming one is a
+// deliberate act and the generated one is a fallback nobody chose.
+//
+// The password comes from a FILE, never a config key and never argv: a
+// Kubernetes Secret mount is a file, argv is world-readable through /proc,
+// and a literal in config.yml gets copied around with the deployment.
+func credentials(opts Options, stateDir string) (user, pass string, generated bool, err error) {
+	if u, p := app.Env("USER"), app.Env("PASS"); u != "" && p != "" {
+		return u, p, false, nil
+	}
+	if opts.AuthPasswordFile == "" {
+		return web.LoadOrCreateBootstrap(stateDir)
+	}
+
+	raw, readErr := os.ReadFile(opts.AuthPasswordFile)
+	if readErr != nil {
+		// Fatal rather than falling back to a generated password: an
+		// operator who named a file and silently got a random credential
+		// they have never seen cannot log in and has no idea why.
+		return "", "", false, fmt.Errorf("auth.passwordFile: %w", readErr)
+	}
+	// Secret mounts and `echo > file` both leave a trailing newline, which
+	// is not part of the password and would make it untypeable.
+	pass = strings.TrimRight(string(raw), "\r\n")
+	if pass == "" {
+		return "", "", false, fmt.Errorf("auth.passwordFile %s is empty", opts.AuthPasswordFile)
+	}
+	user = opts.AuthUser
+	if user == "" {
+		user = "operator"
+	}
+	return user, pass, false, nil
 }
