@@ -37,27 +37,19 @@ tasks:
     cmds:
       - wails3 dev -config ./build/config.yml -port {{.VITE_PORT}}
 
+  # Server mode (`-tags server`, Dockerfile.server) was deliberately
+  # removed: it started a second HTTP server on a hardcoded :8080 serving the
+  # dashboard SPA with no login page, while every auth gate in this project
+  # lives in internal/web. It also ran the tray animator with no menu bar and
+  # initialised a GitHub updater inside a container. The supported headless
+  # path is cmd/merinod (`go build ./cmd/merinod`), which has one gated HTTP
+  # surface. `wails3 task common:update:build-assets` may regenerate the
+  # scaffold from the upstream template — do not reintroduce it.
+  #
+  # setup:docker survives in build/Taskfile.yml: that image cross-COMPILES
+  # native binaries and is unrelated to the container that was unsafe.
+
   setup:docker:
     summary: Builds Docker image for cross-compilation (~800MB download)
     cmds:
       - task: common:setup:docker
-
-  build:server:
-    summary: Builds the application in server mode (no GUI, HTTP server only)
-    cmds:
-      - task: common:build:server
-
-  run:server:
-    summary: Runs the application in server mode
-    cmds:
-      - task: common:run:server
-
-  build:docker:
-    summary: Builds a Docker image for server mode deployment
-    cmds:
-      - task: common:build:docker
-
-  run:docker:
-    summary: Builds and runs the Docker image
-    cmds:
-      - task: common:run:docker

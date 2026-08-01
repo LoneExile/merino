@@ -121,7 +121,18 @@ func Prepare(kind Kind, f Flags) (*Boot, error) {
 	// True only when nobody asked for a bind at all — see Menubar.
 	unconfigured := kind == Menubar && f.Listen == "" && cfg.Listen == ""
 
-	stateDir := filepath.Dir(app.DefaultAuditPath())
+	// paths.stateDir relocates credentials, paired devices, VAPID keys, push
+	// subscriptions, the three gate files and the audit log. Empty keeps
+	// today's path — moving it on an existing install orphans every paired
+	// device and every push subscription SILENTLY, so it is opt-in and the
+	// default never changes.
+	//
+	// Two merinod on one host need separate values here, or they fight over
+	// all of the above.
+	stateDir := cfg.Paths.StateDir
+	if stateDir == "" {
+		stateDir = filepath.Dir(app.DefaultAuditPath())
+	}
 	gates := Gates{
 		SessionSwitch: cfg.ResolveGate(config.GateInputs{
 			FlagOn:           f.AllowSessionSwitch,
@@ -170,6 +181,7 @@ func Prepare(kind Kind, f Flags) (*Boot, error) {
 			PasswordLogin:      gates.PasswordLogin,
 			AuthUser:           cfg.Auth.User,
 			AuthPasswordFile:   cfg.Auth.PasswordFile,
+			StateDir:           stateDir,
 			Logger:             logger,
 		},
 	}, nil

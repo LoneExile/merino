@@ -136,12 +136,12 @@ func TestUnknownKeyIsRejected(t *testing.T) {
 
 func TestUnhonouredKeysAreReported(t *testing.T) {
 	isolate(t)
-	f, err := Load(write(t, "paths:\n  stateDir: /var/lib/merino\nlog:\n  format: json\n"))
+	f, err := Load(write(t, "paths:\n  auditLog: \"-\"\nlog:\n  format: json\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := strings.Join(f.Unhonoured, ",")
-	for _, want := range []string{"paths.stateDir", "log.format"} {
+	for _, want := range []string{"paths.auditLog", "log.format"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("%q should be reported as not yet honoured, got %v", want, f.Unhonoured)
 		}

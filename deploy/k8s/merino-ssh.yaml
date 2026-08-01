@@ -1,0 +1,340 @@
+# Shape C3 — the PRIMARY manifest (deploy/README.md has the full shape
+# table). The herd stays exactly where it runs today; an `autossh` sidecar
+# carries herdr's socket into this pod over `ssh -L`, and merinod opens the
+# forwarded file from a shared emptyDir. No image to build or credential for
+# herdr itself, unlike Shape C1 (merino-pod.yaml) — that is why this is the
+# one to reach for first.
+#
+# Before applying:
+#   1. Build+push the merinod image from build/docker/Dockerfile.merinod and
+#      set it below (currently a placeholder tag).
+#   2. Fill in the ConfigMap's herd SSH coordinates and publicUrl.
+#   3. Create the two Secrets — see the comments beside each for the exact
+#      `kubectl create secret` invocation.
+#   4. On the HERD host, restrict the forwarding key in
+#      ~/.ssh/authorized_keys (see the comment on the merino-ssh-key Secret
+#      below) BEFORE handing the private half to this cluster.
+#
+# ---------------------------------------------------------------------------
+# Honest limitations of C3 — stated here, not left for someone to discover
+# in production:
+#
+#   * The herd host must stay awake. A sleeping laptop is a dead SSH
+#     forward, which is a blank dashboard — C3 does not make herdr itself
+#     durable, only reachable while it's running.
+#   * Image paste is broken. web/paste.go's resolveHomeImagePath requires
+#     the pasted file to live under *merinod's* $HOME, but the agent that
+#     generated it wrote the file under *herdr's* $HOME, on a different
+#     host. Mounting a volume does not fix this under C3 the way it can
+#     under Shape B or C1 — there is no shared filesystem here, only a
+#     forwarded socket. Expect paste to 404.
+#   * Session discovery lists the wrong machine. ListSessions walks
+#     ~/.config/herdr/sessions/* — that's this POD's directory, not the
+#     herd's, because only the socket is forwarded, not the config
+#     directory. That is why `access.allowSessionSwitch: false` below is
+#     not a conservative default, it's the only correct value: switching
+#     "sessions" here would offer a list Merino cannot actually honour.
+# ---------------------------------------------------------------------------
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: merino-config
+data:
+  # Mounted read-only below (see the Deployment's volumeMounts). That is
+  # deliberate, not incidental: config.go's writability probe is what
+  # decides whether access.* are defaults the Settings panel can still
+  # override, or PINS the panel cannot move — and a ConfigMap mount is
+  # always read-only from the container's side. For a GitOps deploy, that
+  # is the point: the three gates below are exactly what this file says,
+  # and nothing in the running pod can quietly drift them.
+  config.yml: |
+    listen: "0.0.0.0:8730"
+
+    # REQUIRED. Empty autodetects a LAN address, which inside a pod is the
+    # pod's own ClusterIP — a URL no phone can open. Point this at wherever
+    # the Service below (or an Ingress in front of it) is actually reachable.
+    publicUrl: "https://merino.example.com"
+
+    # Set true only when an Ingress/TLS-terminating proxy sits in front of
+    # the Service and sets X-Forwarded-Proto — never while the Service is
+    # reachable directly, or the client-IP/secure-cookie trust is forged.
+    behindProxy: false
+
+    herdr:
+      # Not the default (~/.config/herdr/herdr.sock) — the autossh sidecar
+      # forwards the herd's socket to this path on the shared emptyDir
+      # (see the "herdr-socket" volume), and merinod only ever needs to
+      # open a file, never dial anything.
+      socket: "/run/herdr/herdr.sock"
+      # Autodetection would probe THIS pod's login shell for agent
+      # binaries — the wrong machine, since they live on the herd host.
+      # List the kinds actually installed there; empty renders an empty
+      # spawn sheet rather than a wrong one.
+      agents: []
+
+    access:
+      # Arbitrary input into live terminals; audited. Off by default here —
+      # flip to true once you've reviewed what that means for this herd.
+      allowWrites: false
+      # See the C3 limitations above: this pod's session list is not the
+      # herd's, so offering a switcher would be offering a list that lies.
+      allowSessionSwitch: false
+      # The headless admission path: with no desktop Settings sheet to flip
+      # this from, `auth.passwordFile` below is how an operator signs in at
+      # all. QR pairing (from an already-open session) still works
+      # regardless of this flag.
+      passwordLogin: true
+
+    auth:
+      user: "operator"
+      # A file, matching the merino-dashboard-password Secret's mount below
+      # — never a literal password in this ConfigMap, and there is no
+      # --password flag in this program to accidentally use instead.
+      passwordFile: "/etc/merino/secrets/password"
+
+    paths:
+      stateDir: "/var/lib/merino"
+      # "-" writes JSONL to stdout for a log collector rather than a file
+      # under stateDir, which is the container default per the plan this
+      # image was built from (macOS/systemd keep a file; the image ships
+      # "-" because a container's own log stream is already collected).
+      auditLog: "-"
+
+    log:
+      level: info
+      format: json
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: merino-ssh-key
+  # Not committed anywhere — create out of band:
+  #   kubectl create secret generic merino-ssh-key \
+  #     --from-file=id_ed25519=./merino-forward-key \
+  #     --from-file=known_hosts=./known_hosts
+  #
+  # On the HERD host's ~/.ssh/authorized_keys, this key's PUBLIC half must
+  # be restricted, not appended plain. A forwarding key otherwise grants a
+  # full interactive shell on the operator's own workstation — the exact
+  # blast radius a "read-only dashboard" deploy should never carry:
+  #
+  #   command="/bin/false",no-pty,no-agent-forwarding,no-X11-forwarding,\
+  #   permitopen="none" ssh-ed25519 AAAA... merino-forward
+  #
+  # permitopen="none" blocks -L/-R *TCP* forwarding through this key; it
+  # does not need to (and does not) block the Unix-domain-socket -L this
+  # sidecar actually uses, which OpenSSH does not gate through permitopen.
+  # command="/bin/false" is what actually matters here: it refuses any
+  # interactive or remote-command use of the key, forwarding included.
+type: Opaque
+stringData:
+  id_ed25519: |
+    # placeholder — replace via `kubectl create secret` above, do not apply
+    # this file with a real key committed inline.
+  known_hosts: |
+    # placeholder — `ssh-keyscan <herd-host>` output goes here so
+    # StrictHostKeyChecking=yes (set on the ssh invocation below) has
+    # something to check against instead of trusting on first connect.
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: merino-dashboard-password
+  # kubectl create secret generic merino-dashboard-password \
+  #   --from-literal=password='change-me-before-applying'
+type: Opaque
+stringData:
+  password: "change-me-before-applying"
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: merino-state
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      # Credentials, VAPID keys, push subscriptions, the device store, the
+      # audit log's rotation (when not "-"), and the three gate files.
+      # Small and slow-growing; sized generously rather than measured.
+      storage: 1Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: merinod
+  labels:
+    app: merinod
+spec:
+  # One merinod serves exactly one herd (see deploy/README.md) — replicas
+  # beyond 1 would not shard load across herds, they would fight over the
+  # same forwarded socket and the same stateDir.
+  replicas: 1
+  selector:
+    matchLabels:
+      app: merinod
+  template:
+    metadata:
+      labels:
+        app: merinod
+    spec:
+      securityContext:
+        # fsGroup, not just runAsUser, because merino-state is a PVC:
+        # dynamic provisioners create the volume owned by root, and fsGroup
+        # is what makes kubelet chown/chgrp it to a group merinod's uid can
+        # actually write — the "only a runAsNonRoot uid that owns the
+        # volume" the plan's §9 note assumes.
+        runAsNonRoot: true
+        fsGroup: 65532
+      containers:
+        - name: merinod
+          # Placeholder — build+push build/docker/Dockerfile.merinod and
+          # point this at that tag.
+          image: ghcr.io/loneexile/merinod:latest
+          args: ["serve"]
+          ports:
+            - name: http
+              containerPort: 8730
+          volumeMounts:
+            - name: config
+              mountPath: /etc/merino/config.yml
+              subPath: config.yml
+              readOnly: true
+            - name: dashboard-password
+              mountPath: /etc/merino/secrets
+              readOnly: true
+            - name: herdr-socket
+              mountPath: /run/herdr
+            - name: state
+              mountPath: /var/lib/merino
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            capabilities:
+              drop: ["ALL"]
+          # /healthz is unauthenticated and returns 200 EVEN WHEN the herd
+          # is unreachable (internal/web/healthz.go: "Answering 5xx here
+          # would hand a Kubernetes liveness probe a reason to restart this
+          # pod every time herdr ... is down, turning one outage into
+          # two"). These probes therefore only prove THIS process is alive
+          # and serving HTTP — they cannot and do not prove the autossh
+          # forward or the herd behind it are up. Read the response body's
+          # "status"/"herd" fields (or scrape them) for that.
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8730
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8730
+            initialDelaySeconds: 5
+            periodSeconds: 10
+        - name: autossh
+          # A stock alpine base, not a purpose-built image — none exists
+          # for this yet, so the packages are installed at container start
+          # (verified present in alpine:3.20's repos: autossh 1.4g-r3,
+          # openssh-client 9.7_p1-r5). That costs a package-index fetch on
+          # every pod start and an egress path to the alpine mirror from
+          # inside the cluster, and IS why readOnlyRootFilesystem is false
+          # here — apk needs to write /var/cache/apk. A production rollout
+          # should replace this with a small image that already has both
+          # binaries baked in and can run readOnlyRootFilesystem: true.
+          image: alpine:3.20
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -eu
+              apk add --no-cache autossh openssh-client
+              # -M 0 disables autossh's own monitoring port; ServerAlive*
+              # below does that job over the ssh connection itself instead,
+              # which is the combination autossh's own docs recommend.
+              #
+              # ServerAliveInterval + ServerAliveCountMax +
+              # ExitOnForwardFailure: without these, a stale NAT mapping
+              # (the herd host's router forgets the connection, a middlebox
+              # times it out) leaves a socket that still ACCEPTS local
+              # connections and answers NOTHING — ssh itself never notices
+              # the far end is gone, so nothing restarts it. ServerAlive*
+              # makes ssh detect the silence and exit; autossh then
+              # restarts the whole tunnel. ExitOnForwardFailure makes a
+              # forward that never bound in the first place a fast failure
+              # instead of a silently-absent socket.
+              exec autossh -M 0 -N \
+                -o ServerAliveInterval=15 \
+                -o ServerAliveCountMax=3 \
+                -o ExitOnForwardFailure=yes \
+                -o StrictHostKeyChecking=yes \
+                -o UserKnownHostsFile=/etc/merino/ssh/known_hosts \
+                -i /etc/merino/ssh/id_ed25519 \
+                -L "/run/herdr/herdr.sock:${HERD_SOCKET_PATH}" \
+                "${HERD_SSH_USER}@${HERD_SSH_HOST}" -p "${HERD_SSH_PORT}"
+          env:
+            # autossh restarts a dead ssh immediately rather than waiting
+            # out its default gate period — appropriate for a sidecar
+            # whose whole job is staying up, not for a human watching it
+            # flap.
+            - name: AUTOSSH_GATETIME
+              value: "0"
+            - name: HERD_SSH_HOST
+              value: "herd.example.com"
+            - name: HERD_SSH_PORT
+              value: "22"
+            - name: HERD_SSH_USER
+              value: "merino-forward"
+            # Wherever herdr.DefaultSocket() resolves on the HERD host —
+            # normally ~/.config/herdr/herdr.sock for that account. Not a
+            # Secret: it's a path, not a credential.
+            - name: HERD_SOCKET_PATH
+              value: "/home/herd-operator/.config/herdr/herdr.sock"
+          volumeMounts:
+            - name: ssh-key
+              mountPath: /etc/merino/ssh
+              readOnly: true
+            - name: herdr-socket
+              mountPath: /run/herdr
+          securityContext:
+            allowPrivilegeEscalation: false
+      volumes:
+        - name: config
+          configMap:
+            name: merino-config
+        - name: dashboard-password
+          secret:
+            secretName: merino-dashboard-password
+        - name: ssh-key
+          secret:
+            secretName: merino-ssh-key
+            defaultMode: 0400
+        # Shared between the two containers: autossh writes the forwarded
+        # socket here, merinod opens it from the other side. emptyDir, not
+        # a PVC — it holds nothing that needs to survive a pod restart
+        # (the socket is meaningless without a live ssh connection anyway).
+        - name: herdr-socket
+          emptyDir: {}
+        - name: state
+          persistentVolumeClaim:
+            claimName: merino-state
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: merinod
+spec:
+  selector:
+    app: merinod
+  ports:
+    - name: http
+      port: 8730
+      targetPort: 8730

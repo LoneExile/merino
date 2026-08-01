@@ -223,6 +223,76 @@ Then point the tunnel's public hostname at whichever origin you chose. The
 `tunnel` and `tunnel-loopback` recipes in the justfile wrap both shapes for
 development; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Headless
+
+`merinod` is Merino without the menu bar: the same dashboard, the same login
+wall, the same phone UI, run as a background service. It is a single static
+binary with no macOS dependency, so it runs under systemd, Docker or
+Kubernetes.
+
+```bash
+go build ./cmd/merinod
+./merinod                       # serves on 0.0.0.0:8730 against ~/.config/herdr/herdr.sock
+./merinod config init           # write a commented config.yml
+./merinod config show           # what it actually resolved, and from which rung
+```
+
+### The one constraint that shapes every deployment
+
+**herdr never listens on a port.** It has a unix socket and nothing else, so
+there is no host to dial. The requirement is not "reach herdr over the
+network" — it is *put a socket file where merinod can open it*.
+
+| Shape | What it is | Verdict |
+| --- | --- | --- |
+| **systemd** | herdr + merinod on one Linux host, same user | Simplest. Everything works. |
+| **Docker** | container with `~/.config/herdr` bind-mounted | Works. Mount the whole directory, not the bare socket — herdr recreates the socket when it restarts. |
+| **SSH forward** | herd stays put; `ssh -L` carries the socket into the pod | The Kubernetes answer, and the only one that reaches a herd behind NAT. |
+| **socat relay** | bridge the socket over TCP | **Don't.** herdr's socket API can spawn agents and type into live panes. The unix socket *was* the access control; a bare TCP port has none. |
+
+Manifests and a systemd unit are in [deploy/](deploy/), with the trade-offs of
+each spelled out.
+
+### Signing in, headless
+
+There is no Settings sheet, so there is no "Pair phone" button — and
+deliberately no CLI substitute for one. Pairing tokens and device grants live
+in the server's memory, so a separate process writing those files would report
+success and change nothing. Instead, name a password file:
+
+```yaml
+access:
+  passwordLogin: true
+auth:
+  user: "operator"
+  passwordFile: "/run/secrets/merino-password"   # a Kubernetes Secret is a file
+```
+
+The password is read from the file, never from a config key and never from a
+flag: argv is world-readable and lands in shell history.
+
+### Two things that will bite you
+
+**Set `publicUrl` in a container.** Left empty, Merino autodetects a LAN
+address — which inside a container is the *container's* address, a URL no
+phone can open.
+
+**Make the state directory a volume.** It holds paired devices, the Web Push
+VAPID keypair and push subscriptions. Losing it signs out every phone, and
+push then fails *silently*: every browser holds a subscription signed by a key
+you no longer have, and nothing errors.
+
+### One dashboard, one herd
+
+A merinod serves exactly one herd. Several machines behind one dashboard is
+not supported: herdr pane IDs are workspace-scoped and sequential, so two
+herds both have a `w1:p1` within minutes of each other and one host's pane
+would overwrite the other's.
+
+Running one merinod per herd works today, but give each its own `listen` port
+**and** its own `paths.stateDir` — otherwise they fight over the same
+credentials, device store and gate files.
+
 ## Troubleshooting
 
 **The menu bar panel opens in the middle of the screen.** Fixed in current builds; update.

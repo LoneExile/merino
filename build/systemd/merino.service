@@ -1,0 +1,57 @@
+# Shape A: herdr and merinod on the same Linux host, as the SAME user. This
+# is the only shape where the socket, session discovery, paste and spawn all
+# just work with zero configuration — see deploy/README.md's shape table.
+#
+# --user, not a system-wide unit under /etc/systemd/system, and deliberately
+# so: the herdr socket lives at that user's own $HOME/.config/herdr/herdr.sock
+# (internal/herdr/client.go's DefaultSocket), and so does
+# ~/.config/herdr/sessions/* that session discovery walks. A system unit
+# would run as `root` (or whatever User= names) and need that account's own
+# $HOME to line up with the herdr operator's — extra configuration for no
+# benefit, when a --user unit already inherits the right $HOME by construction
+# and needs none of it.
+#
+# Install:
+#   mkdir -p ~/.config/systemd/user
+#   cp merino.service ~/.config/systemd/user/
+#   systemctl --user enable --now merino
+#   loginctl enable-linger $USER   # keep it running after you log out
+#
+# merinod finds config.yml on its own search path (--config >
+# $MERINO_CONFIG > $XDG_CONFIG_HOME/merino/config.yml > /etc/merino/config.yml
+# > built-in defaults); nothing here needs to name it explicitly unless you
+# want to override that search.
+
+[Unit]
+Description=Merino dashboard for herdr, headless
+Documentation=https://github.com/LoneExile/merino
+# Not "network.target": the herdr socket is a local file, not a network
+# service, so this unit has nothing to wait on the network stack for.
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/merinod serve
+Restart=on-failure
+RestartSec=5
+
+# StateDirectory expands to %h/.local/state/merino under --user (systemd's
+# own XDG_STATE_HOME convention) and creates it with the unit's own
+# credentials. This is the same directory config.yml's paths.stateDir
+# defaults to on Linux, and the same one that must never move without a
+# plan: it holds credentials, VAPID keys, push subscriptions and the
+# device store, and relocating it silently unpairs every phone.
+StateDirectory=merino
+
+# Hardening. Conservative rather than exhaustive: merinod needs to open the
+# herdr unix socket under $HOME, write StateDirectory, and bind a TCP port,
+# so anything stricter than this (e.g. ProtectHome=yes, which would also
+# hide the herdr socket) breaks the one thing this unit exists to do.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+ReadWritePaths=%h/.local/state/merino
+
+[Install]
+WantedBy=default.target
