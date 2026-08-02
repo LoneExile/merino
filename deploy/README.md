@@ -38,8 +38,15 @@ curl -fsSL https://raw.githubusercontent.com/LoneExile/merino/main/scripts/insta
 `MERINOD_BIN_DIR` and `MERINOD_VERSION` override where and which. Building it
 yourself works too — `go build ./cmd/merinod`.
 
-For Kubernetes you need a container image, and **none is published yet**, so
-build and push your own:
+For Kubernetes you need a container image. Releases publish one as
+`ghcr.io/loneexile/merinod:<tag>` for linux/amd64 and linux/arm64 — but only
+from the first release tagged after that workflow landed, so check
+[Releases](https://github.com/LoneExile/merino/releases) and the Packages tab
+first. Pre-release tags publish their own version and deliberately do not move
+`latest`, so pin a version rather than pulling `latest`.
+
+If there is no image yet, or you would rather own the artefact, build and push
+your own:
 
 ```bash
 docker build -f build/docker/Dockerfile.merinod -t <registry>/merinod:v1 .

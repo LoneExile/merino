@@ -14,7 +14,7 @@
   <a href="https://github.com/LoneExile/merino/releases/latest"><img src="https://img.shields.io/github/v/release/LoneExile/merino?display_name=tag&sort=semver" alt="Release" /></a>
   <a href="https://github.com/LoneExile/merino/blob/main/LICENSE"><img src="https://img.shields.io/github/license/LoneExile/merino" alt="License" /></a>
   <a href="https://github.com/LoneExile/merino/stargazers"><img src="https://img.shields.io/github/stars/LoneExile/merino?style=social" alt="Stars" /></a>
-  <img src="https://img.shields.io/badge/platform-macOS-black" alt="macOS" />
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-black" alt="macOS and Linux" />
 </p>
 
 ---
@@ -49,7 +49,9 @@ wherever you are.
 
 ## Install
 
-macOS on Apple Silicon, with [herdr](https://herdr.dev) already running.
+Needs [herdr](https://herdr.dev) already running.
+
+**macOS** — the menu bar app, on Apple Silicon.
 
 ```bash
 brew tap LoneExile/merino
@@ -59,6 +61,17 @@ brew install --cask merino
 
 Builds are ad-hoc signed — no Developer ID, no notarization — so every install
 path clears the quarantine bit for you.
+
+**Linux** — [`merinod`](#headless), the same dashboard with no menu bar, run
+as a background service.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/LoneExile/merino/main/scripts/install-merinod.sh | bash
+```
+
+Verifies the download against the release checksums and installs to
+`/usr/local/bin`, or `~/.local/bin` without root. `MERINOD_BIN_DIR` and
+`MERINOD_VERSION` override where and which.
 
 <details>
 <summary>Other ways in</summary>
@@ -128,16 +141,15 @@ interrupt. On by default in the menu bar app, and every write lands in
 ## Headless
 
 `merinod` is the same dashboard with no menu bar — a static Linux binary for
-systemd, Docker or Kubernetes.
+systemd, Docker or Kubernetes. Install it with the script
+[above](#install), grab `merinod-linux-{amd64,arm64}` from
+[Releases](https://github.com/LoneExile/merino/releases/latest), or build it:
+`go build ./cmd/merinod`.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/LoneExile/merino/main/scripts/install-merinod.sh | bash
-```
-
-Or grab `merinod-linux-{amd64,arm64}` from
-[Releases](https://github.com/LoneExile/merino/releases/latest), or
-`go build ./cmd/merinod`. On macOS use the menu bar app — it serves the same
-dashboard.
+From the first release tagged after the image workflow landed, releases also
+publish a container image, `ghcr.io/loneexile/merinod` — check
+[Releases](https://github.com/LoneExile/merino/releases) and the repo's
+Packages tab before depending on it.
 
 Two things decide every deployment: herdr has no network port, only a unix
 socket, so merinod opens a *file* rather than connecting to anything; and it
