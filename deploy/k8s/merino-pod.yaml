@@ -81,6 +81,10 @@ kind: PersistentVolumeClaim
 metadata:
   name: merino-state-c1
 spec:
+  # SET THIS — same note as merino-ssh.yaml. Omitting it needs the cluster to
+  # have a default StorageClass; with none, the PVC sits Pending and the pod
+  # never schedules, and nothing in the events names storage as the cause.
+  storageClassName: REPLACE-ME
   accessModes: ["ReadWriteOnce"]
   resources:
     requests:

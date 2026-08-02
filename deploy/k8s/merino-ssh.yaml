@@ -169,6 +169,18 @@ kind: PersistentVolumeClaim
 metadata:
   name: merino-state
 spec:
+  # SET THIS. Omitting it relies on the cluster having a default
+  # StorageClass, and plenty do not — including the one this manifest was
+  # tested on. The failure is silent and misleading: the PVC sits Pending
+  # with "no persistent volumes available for this claim and no storage
+  # class is set", the pod sits Pending with no node and no container
+  # events, and nothing anywhere names storage as the cause.
+  #
+  #   kubectl get storageclass          # pick one
+  #
+  # ReadWriteOnce because merinod is single-replica by construction: two
+  # would fight over the device store and the gate files.
+  storageClassName: REPLACE-ME
   accessModes: ["ReadWriteOnce"]
   resources:
     requests:
@@ -276,6 +288,45 @@ spec:
             - |
               set -eu
               apk add --no-cache autossh openssh-client
+              # ssh refuses a private key any group or other can read, and a
+              # Secret volume cannot be made private enough on its own: the
+              # defaultMode: 0400 below is silently widened to 0440 by the
+              # pod's own fsGroup, which the kubelet applies to every mounted
+              # volume. The two hardening settings cancel out, and the only
+              # symptom is
+              #     Load key "...": bad permissions
+              #     Permission denied (publickey,password).
+              # with an empty socket directory and a merinod that reports the
+              # herd unreachable forever. Observed on a real cluster.
+              #
+              # Copying to a private path is immune to that, and to the uid
+              # and mount-mode differences between this stock-alpine sidecar
+              # and the baked image that should replace it. With
+              # readOnlyRootFilesystem: true, give /tmp an emptyDir.
+              install -m 0600 /etc/merino/ssh/id_ed25519 /tmp/id_ed25519
+              # The forwarded socket is created by THIS container, and
+              # merinod runs as a DIFFERENT uid (65532) next door. OpenSSH
+              # wraps the bind in umask(0177), so the socket is always 0600
+              # owned by the ssh process's uid — umask here cannot widen it,
+              # which was the first thing tried and it did not work.
+              #
+              # merinod then gets "connect: permission denied" forever while
+              # the pod reports 2/2 Ready, because /healthz reports THIS
+              # PROCESS, not the herd. Observed on a real cluster.
+              #
+              # The real fix is a sidecar image that already has autossh and
+              # openssh-client baked in, running as 65532 like merinod: same
+              # uid, no permission gap, and no apk-needs-root override above.
+              # Until that image exists, re-mode the socket after ssh creates
+              # it. Continuously, not once: autossh recreates the socket every
+              # time it restarts the tunnel, and each new one is 0600 again.
+              #
+              # The GROUP is already correct — the shared emptyDir carries the
+              # pod's fsGroup, so anything created in it is gid 65532.
+              ( while :; do
+                  [ -S /run/herdr/herdr.sock ] && chmod 0660 /run/herdr/herdr.sock 2>/dev/null || true
+                  sleep 5
+                done ) &
               # -M 0 disables autossh's own monitoring port; ServerAlive*
               # below does that job over the ssh connection itself instead,
               # which is the combination autossh's own docs recommend.
@@ -296,7 +347,7 @@ spec:
                 -o ExitOnForwardFailure=yes \
                 -o StrictHostKeyChecking=yes \
                 -o UserKnownHostsFile=/etc/merino/ssh/known_hosts \
-                -i /etc/merino/ssh/id_ed25519 \
+                -i /tmp/id_ed25519 \
                 -L "/run/herdr/herdr.sock:${HERD_SOCKET_PATH}" \
                 "${HERD_SSH_USER}@${HERD_SSH_HOST}" -p "${HERD_SSH_PORT}"
           env:
