@@ -127,12 +127,17 @@ interrupt. On by default in the menu bar app, and every write lands in
 
 ## Headless
 
-`merinod` is the same dashboard with no menu bar — a static binary for
+`merinod` is the same dashboard with no menu bar — a static Linux binary for
 systemd, Docker or Kubernetes.
 
 ```bash
-go build ./cmd/merinod && ./merinod
+curl -fsSL https://raw.githubusercontent.com/LoneExile/merino/main/scripts/install-merinod.sh | bash
 ```
+
+Or grab `merinod-linux-{amd64,arm64}` from
+[Releases](https://github.com/LoneExile/merino/releases/latest), or
+`go build ./cmd/merinod`. On macOS use the menu bar app — it serves the same
+dashboard.
 
 Two things decide every deployment: herdr has no network port, only a unix
 socket, so merinod opens a *file* rather than connecting to anything; and it

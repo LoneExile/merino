@@ -27,12 +27,23 @@ Prefer systemd whenever it is available. It is the only layout where paste,
 session discovery and spawning all work without qualification, because herdr
 and merinod share a machine and a user.
 
-Before anything else, build the binary or the image — **nothing is published
-yet**, so there is no `docker pull` shortcut:
+Get the binary first. Releases carry `merinod-linux-amd64` and
+`merinod-linux-arm64`, and the installer picks the right one, verifies it
+against the release checksums, and drops it in your PATH:
 
 ```bash
-go build ./cmd/merinod                                    # a single static binary
-docker build -f build/docker/Dockerfile.merinod -t merinod:local .
+curl -fsSL https://raw.githubusercontent.com/LoneExile/merino/main/scripts/install-merinod.sh | bash
+```
+
+`MERINOD_BIN_DIR` and `MERINOD_VERSION` override where and which. Building it
+yourself works too — `go build ./cmd/merinod`.
+
+For Kubernetes you need a container image, and **none is published yet**, so
+build and push your own:
+
+```bash
+docker build -f build/docker/Dockerfile.merinod -t <registry>/merinod:v1 .
+docker push <registry>/merinod:v1
 ```
 
 ---
@@ -42,7 +53,8 @@ docker build -f build/docker/Dockerfile.merinod -t merinod:local .
 Runs merinod as your own user, next to herdr.
 
 ```bash
-go build -o ~/.local/bin/merinod ./cmd/merinod
+# merinod already on PATH from the installer above; otherwise:
+#   go build -o ~/.local/bin/merinod ./cmd/merinod
 merinod config init                       # writes ~/.config/merino/config.yml
 $EDITOR ~/.config/merino/config.yml       # at minimum, see "Signing in" below
 
