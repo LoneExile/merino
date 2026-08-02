@@ -11,9 +11,7 @@ services:
     # `build:` block and uncomment the pinned `image:` below. They can also
     # coexist: with both, `image:` names what `docker compose build` tags.
     #
-    # INTERIM PIN — v0.3.0-rc.1 is a release candidate. Move to the first
-    # stable tag once one is cut.
-    # image: ghcr.io/loneexile/merinod:v0.3.0-rc.1
+    # image: ghcr.io/loneexile/merinod:v0.3.0
     build:
       context: ../
       dockerfile: build/docker/Dockerfile.merinod

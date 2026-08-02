@@ -140,16 +140,14 @@ spec:
             # This image does not exist yet — these are the settings a real
             # one MUST satisfy.
         - name: merinod
-          # INTERIM PIN — this is a release candidate, not a stable release.
-          # Change it to the first stable tag (ghcr.io/loneexile/merinod:v0.3.0)
-          # as soon as one is cut. Pinned rather than `latest` on purpose: an
-          # unpinned tag moves the daemon under you on redeploy.
+          # Pinned deliberately: an unpinned `latest` moves the daemon
+          # under you on redeploy.
           #
           # Multi-arch (linux/amd64, linux/arm64), pullable without
           # credentials. To build your own instead:
           #   docker build -f build/docker/Dockerfile.merinod -t <registry>/merinod:<tag> .
           #   docker push <registry>/merinod:<tag>
-          image: ghcr.io/loneexile/merinod:v0.3.0-rc.1
+          image: ghcr.io/loneexile/merinod:v0.3.0
           args: ["serve"]
           ports:
             - name: http
