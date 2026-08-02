@@ -164,12 +164,8 @@ supported path.
 
 ## Signing in
 
-There is no Settings sheet, so there is no "Pair phone" button — and no CLI
-substitute for one. Pairing tickets and device grants live in the running
-server's memory, so a separate command writing those files would report
-success and change nothing.
-
-Name a password file instead:
+You need a first sign-in before you can pair anything, because minting a QR
+is an operator action and a phone is not an operator. Name a password file:
 
 ```yaml
 access:
@@ -182,6 +178,20 @@ auth:
 The password is read from the file. There is no `--password` flag and no
 password key in the config: argv is world-readable and a literal in
 `config.yml` travels with the deployment.
+
+### Pairing a phone
+
+Sign in with that password, then **Settings → Pairing → Show pair QR**. The
+dashboard mints a one-shot ticket and the server renders the QR, so this
+works with no menu bar and no desktop — the same flow the Mac app uses,
+driven from the browser.
+
+`publicUrl` must be right before you scan anything: the QR encodes it, and a
+container that guesses gets its own bridge address, which no phone can open.
+
+Paired phones cannot mint. The server refuses `/api/pairing/mint` from a
+device session, so a lost phone cannot issue itself a replacement — revoking
+it under **Paired devices** is final.
 
 ## Two settings people miss
 
