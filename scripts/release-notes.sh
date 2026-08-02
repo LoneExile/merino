@@ -39,36 +39,18 @@ BODY=$(
   ' "$FILE"
 )
 
-# A pre-release has no section of its own, by design — cliff.toml ignores
-# hyphenated tags so their commits stay with the stable release they lead to.
-# What a candidate ships is exactly what is pending, so read that instead.
-# The guard below still holds: pending-but-empty is as wrong as missing.
-case "$VERSION" in
-  *-*)
-    if [ -z "$BODY" ]; then
-      BODY=$(
-        awk '
-          index($0, "## Unreleased") == 1 { grab = 1; next }
-          grab && /^## / { exit }
-          grab {
-            if ($0 ~ /^[[:space:]]*$/) { if (started) pending = pending "\n"; next }
-            if (started) printf "%s", pending
-            pending = ""
-            started = 1
-            print
-          }
-        ' "$FILE"
-      )
-      if [ -n "$BODY" ]; then
-        BODY="> Pre-release ${TAG}. Not served by \`/releases/latest\` and the
-> Homebrew cask is not bumped — install it by explicit version.
-
-${BODY}"
-      fi
-    fi
-    ;;
-esac
-
+# Pre-releases are not special here. `just changelog v0.3.0-rc.2` writes a
+# section for the candidate like any other tag, and cutting the stable
+# release afterwards regenerates the file and removes it again — cliff.toml
+# ignores hyphenated tags, so those commits come back under the stable
+# version rather than being stranded in a candidate's section.
+#
+# An earlier version of this fell back to the pending "## Unreleased" block
+# when a candidate had no section. That block is a snapshot: it goes stale
+# the moment anything lands after it was written, and it did — a candidate
+# cut that way would have published notes missing the two most recent
+# changes, silently and plausibly. Wrong notes are the same failure as empty
+# ones, which is what this whole script exists to prevent. So: no fallback.
 if [ -z "$BODY" ]; then
   echo "no section for ${VERSION} in ${FILE} — run: just changelog ${TAG}" >&2
   exit 1
