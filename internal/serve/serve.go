@@ -63,6 +63,15 @@ type Options struct {
 	AuthUser         string
 	AuthPasswordFile string
 
+	// StateDir holds credentials, paired devices, VAPID keys, push
+	// subscriptions, the three gate files and the audit log. Empty means the
+	// platform default; Prepare resolves paths.stateDir into it.
+	//
+	// Moving it on an existing install orphans every paired device and every
+	// push subscription SILENTLY — the phone simply stops being signed in —
+	// so nothing here ever changes it on the operator's behalf.
+	StateDir string
+
 	Logger *slog.Logger
 }
 
@@ -92,7 +101,16 @@ func Start(opts Options) (*Dashboard, error) {
 		logger             = opts.Logger
 	)
 
-	stateDir := filepath.Dir(app.DefaultAuditPath())
+	// Empty means the platform default, which is what every caller that has
+	// not been through Prepare passes. Prepare resolves paths.stateDir.
+	stateDir := opts.StateDir
+	if stateDir == "" {
+		stateDir = filepath.Dir(app.DefaultAuditPath())
+	}
+	// The audit log follows the state directory rather than staying at the
+	// platform default: two daemons pointed at separate stateDirs must not
+	// interleave their write records into one file.
+	auditPath := filepath.Join(stateDir, "audit.jsonl")
 	user, pass, generated, bootErr := credentials(opts, stateDir)
 	if bootErr != nil {
 		return nil, bootErr
@@ -124,12 +142,12 @@ func Start(opts Options) (*Dashboard, error) {
 		writer web.Writer
 		audit  *app.Audit
 	)
-	if a, auditErr := app.NewAudit(app.DefaultAuditPath()); auditErr != nil {
+	if a, auditErr := app.NewAudit(auditPath); auditErr != nil {
 		if allowWrites {
 			return nil, auditErr
 		}
 		logger.Warn("could not open audit log; push subscriptions will not be recorded",
-			"path", app.DefaultAuditPath(), "err", auditErr)
+			"path", auditPath, "err", auditErr)
 	} else {
 		audit = a
 	}
@@ -140,7 +158,7 @@ func Start(opts Options) (*Dashboard, error) {
 		writer = w
 		if allowWrites {
 			logger.Warn("web dashboard can write to your agents",
-				"audit", app.DefaultAuditPath(),
+				"audit", auditPath,
 				"note", "approvals, keys and interrupts are accepted from any signed-in browser")
 		} else {
 			logger.Info("web dashboard writes available but off",

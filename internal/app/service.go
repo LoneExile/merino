@@ -211,9 +211,38 @@ func (s *AgentsService) runLifecycle(ctx context.Context, client *herdr.Client, 
 			herdr.GlobalSub(herdr.SubWorkspaceClosed),
 		},
 		OnReady: func() {
+			// Handshake when we have not had a successful one yet, rather
+			// than reusing whatever connMeta happens to hold. The stream
+			// becoming ready proves the socket is reachable NOW, which is
+			// not the same as having agreed a protocol version — and on the
+			// path where startSession's own handshake failed (a forwarded
+			// socket that only became usable after boot, which is the normal
+			// case for an ssh sidecar) the cache is empty. Reporting
+			// Connected with version "" and protocol 0 tells the dashboard
+			// the herd is fine while nothing has ever answered a ping.
 			ver, proto := s.connMeta()
+			if ver == "" || proto == 0 {
+				if ping, err := client.CheckCompatible(ctx); err == nil {
+					ver, proto = ping.Version, ping.Protocol
+					s.log.Info("connected to herdr", "version", ver, "protocol", proto)
+				} else {
+					// Reachable but not usable: say so instead of claiming
+					// a working herd.
+					s.log.Warn("herdr handshake failed on reconnect", "err", err)
+					s.setConn(Conn{Socket: client.Socket(), Error: err.Error()})
+					return
+				}
+			}
 			s.setConn(Conn{Connected: true, Version: ver, Protocol: proto, Socket: client.Socket()})
-			if panes, err := client.ListPanes(ctx); err == nil && s.store.Replace(panes) {
+			// A failure here used to be dropped on the floor by `err == nil &&`,
+			// which left the dashboard showing a connected herd with zero
+			// agents and nothing anywhere explaining why. The reconcile loop
+			// is the safety net, so this stays non-fatal — but it is logged.
+			panes, err := client.ListPanes(ctx)
+			if err != nil {
+				s.log.Warn("initial pane.list after reconnect failed; "+
+					"the agent list stays stale until the next reconcile", "err", err)
+			} else if s.store.Replace(panes) {
 				s.changed()
 			}
 			subs.Sync(s.store.AgentPaneIDs())

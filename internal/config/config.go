@@ -293,9 +293,6 @@ func writable(path string) bool {
 // be told, not left to discover it.
 func (f *File) unhonoured() []string {
 	var out []string
-	if f.Paths.StateDir != "" {
-		out = append(out, "paths.stateDir")
-	}
 	if f.Paths.AuditLog != "" {
 		out = append(out, "paths.auditLog")
 	}

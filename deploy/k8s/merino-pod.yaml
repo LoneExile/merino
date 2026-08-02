@@ -1,0 +1,213 @@
+# herdr-in-the-pod — a documented alternative, NOT the primary manifest. Use
+# deploy/k8s/merino-ssh.yaml (the SSH-forward layout) unless you specifically need
+# everything self-contained in one pod (e.g. a KubeVirt/ephemeral herd with
+# no existing host to forward from).
+#
+# Why this ships only as a documented alternative and not the primary path:
+# the `herdr` container image below (herdr-with-agents in the comment) DOES
+# NOT EXIST. Building it means baking `herdr server` PLUS every agent CLI
+# (omp, claude, codex, ...) an operator wants to spawn into one image, AND
+# credentialing each of those CLIs inside the cluster — API keys, OAuth
+# tokens, whatever each one needs to run — which is a materially bigger
+# undertaking than restricting one SSH key. This manifest lays out a
+# valid shape in full, so building that image is the only missing piece
+# rather than also having to design the pod topology from scratch.
+#
+# What IS real: the shared-emptyDir wiring between the two containers. Both
+# read/write the same socket file because they mount the same volume — the
+# same pattern deploy/compose.yaml (Docker) and merino-ssh.yaml (the SSH-forward layout)
+# use, just with herdr itself as the other end instead of a bind mount or an
+# ssh forward.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: merino-config-c1
+data:
+  config.yml: |
+    listen: "0.0.0.0:8730"
+    publicUrl: "https://merino.example.com"
+    behindProxy: false
+
+    herdr:
+      # herdr's own default is ~/.config/herdr/herdr.sock; the herdr
+      # container below is mounted so that resolves to this same path on
+      # the shared emptyDir, so this line is naming what already happens
+      # rather than overriding it — kept explicit for readability.
+      socket: "/run/herdr/herdr.sock"
+      # Unlike the SSH-forward layout, autodetection here would actually be correct — both
+      # containers are the same pod, so Merino's login shell and herdr's
+      # agent binaries could, in principle, be the same image. Left
+      # explicit anyway until the herdr-with-agents image exists and its
+      # real agent set is known.
+      agents: []
+
+    access:
+      allowWrites: false
+      # Session discovery walks ~/.config/herdr/sessions/* INSIDE THIS POD,
+      # which here actually is the herd's own directory here,
+      # since herdr runs in the same pod. Still left false by default; flip
+      # deliberately once this shape is actually running something.
+      allowSessionSwitch: false
+      passwordLogin: true
+
+    auth:
+      user: "operator"
+      passwordFile: "/etc/merino/secrets/password"
+
+    paths:
+      stateDir: "/var/lib/merino"
+      auditLog: "-"
+
+    log:
+      level: info
+      format: json
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: merino-dashboard-password-c1
+  # kubectl create secret generic merino-dashboard-password-c1 \
+  #   --from-literal=password='change-me-before-applying'
+type: Opaque
+stringData:
+  password: "change-me-before-applying"
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: merino-state-c1
+spec:
+  # SET THIS — same note as merino-ssh.yaml. Omitting it needs the cluster to
+  # have a default StorageClass; with none, the PVC sits Pending and the pod
+  # never schedules, and nothing in the events names storage as the cause.
+  storageClassName: REPLACE-ME
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: merino-c1
+  labels:
+    app: merino-c1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: merino-c1
+  template:
+    metadata:
+      labels:
+        app: merino-c1
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        fsGroup: 65532
+        # Required by the PodSecurity "restricted" profile — a cluster
+        # enforcing "restricted" rejects the pod outright without it. Set at
+        # pod level so both containers inherit it.
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        # DOES NOT EXIST — see the header comment. Placeholder for an image
+        # that runs `herdr server` plus whatever agent CLIs it should be
+        # able to spawn, all credentialed for this cluster.
+        - name: herdr
+          image: ghcr.io/example/herdr-with-agents:latest
+          command: ["herdr", "server"]
+          volumeMounts:
+            - name: herdr-socket
+              # Wherever this image's $HOME resolves the default socket to
+              # — adjust to match whatever user the herdr-with-agents image
+              # actually runs as.
+              mountPath: /root/.config/herdr
+            - name: state
+              mountPath: /var/lib/herdr
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            # Not readOnlyRootFilesystem: herdr spawns agent processes that
+            # write into the workspace, so this container legitimately needs
+            # a writable filesystem — unlike merinod, which does not.
+            #
+            # This image does not exist yet — these are the settings a real
+            # one MUST satisfy.
+        - name: merinod
+          # Build and push this first; no image is published yet.
+          #   docker build -f build/docker/Dockerfile.merinod -t <your-registry>/merinod:<tag> .
+          #   docker push <your-registry>/merinod:<tag>
+          image: REPLACE-ME/merinod:latest
+          args: ["serve"]
+          ports:
+            - name: http
+              containerPort: 8730
+          volumeMounts:
+            - name: config
+              mountPath: /etc/merino/config.yml
+              subPath: config.yml
+              readOnly: true
+            - name: dashboard-password
+              mountPath: /etc/merino/secrets
+              readOnly: true
+            - name: herdr-socket
+              mountPath: /run/herdr
+            - name: state
+              mountPath: /var/lib/merino
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            capabilities:
+              drop: ["ALL"]
+          # Same caveat as everywhere else: 200 even when herdr is unreachable, so this
+          # only proves merinod itself is alive, not the herdr container
+          # beside it.
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8730
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8730
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      volumes:
+        - name: config
+          configMap:
+            name: merino-config-c1
+        - name: dashboard-password
+          secret:
+            secretName: merino-dashboard-password-c1
+        # Both containers mount this; herdr creates herdr.sock in it, and
+        # merinod opens that same file from its own mount point below —
+        # the only wiring this layout needs that the SSH-forward one gets from the tunnel instead.
+        - name: herdr-socket
+          emptyDir: {}
+        - name: state
+          persistentVolumeClaim:
+            claimName: merino-state-c1
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: merino-c1
+spec:
+  selector:
+    app: merino-c1
+  ports:
+    - name: http
+      port: 8730
+      targetPort: 8730

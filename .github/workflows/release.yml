@@ -135,6 +135,34 @@ jobs:
           cp "dist/merino-${VERSION}-darwin-${ARCH_LABEL}" \
             "dist/merino-darwin-${ARCH_LABEL}"
 
+          # merinod — the headless daemon. Without these, installing it means
+          # having a Go toolchain, which is not an install method.
+          #
+          # Cross-compiled here rather than in a Linux job because the
+          # frontend is already built in this one and merinod embeds it, and
+          # CGO_ENABLED=0 makes each target a static binary with no libc to
+          # match.
+          #
+          # Linux only, deliberately. On darwin the build pulls in
+          # internal/app/service_wails.go, which needs Wails' pkg/mac and
+          # therefore cgo, so a CGO_ENABLED=0 darwin build does not compile at
+          # all. macOS is served by the menu bar app, which runs the same
+          # dashboard — anyone who genuinely wants the daemon on a Mac can
+          # `go build ./cmd/merinod` with cgo on.
+          for target in linux/amd64 linux/arm64; do
+            goos="${target%/*}"
+            goarch="${target#*/}"
+            out="dist/merinod-${VERSION}-${goos}-${goarch}"
+            CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
+              go build -trimpath -buildvcs=false \
+                -ldflags="-w -s -X main.version=${VERSION}" \
+                -o "$out" ./cmd/merinod
+            chmod +x "$out"
+            # Stable name so scripts/install-merinod.sh can fetch from
+            # /releases/latest/download/ without knowing the version.
+            cp "$out" "dist/merinod-${goos}-${goarch}"
+          done
+
           (cd dist && shasum -a 256 * > SHA256SUMS)
           ls -la dist
           cat dist/SHA256SUMS

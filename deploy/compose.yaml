@@ -1,0 +1,69 @@
+# Docker: merinod in a container, herdr still on the host — see
+# deploy/README.md for the full shape table and its honest tradeoffs.
+#
+# Build first: `docker build -f build/docker/Dockerfile.merinod -t merinod:local .`
+# (context is the repo root — the Dockerfile COPYs cmd/, internal/ and
+# frontend/ relative to it), then `docker compose -f deploy/compose.yaml up`.
+
+services:
+  merinod:
+    build:
+      context: ../
+      dockerfile: build/docker/Dockerfile.merinod
+    # Swap for `image: ghcr.io/loneexile/merinod:vX.Y.Z` once a published tag
+    # exists; `build:` and `image:` can coexist, with `image:` naming what
+    # `docker compose build` tags the result as.
+    ports:
+      - "8730:8730"
+    environment:
+      # REQUIRED. Empty means Merino autodetects a LAN address, which inside
+      # a container is the container's own address — a URL no phone can
+      # open. Set it to whatever this host is reachable at from the browser
+      # that will scan the pairing QR.
+      MERINO_PUBLIC_URL: "http://192.168.1.50:8730"
+      # Optional: a static operator login. Unset, merinod falls back to a
+      # generated bootstrap credential written under the state volume
+      # instead — see `docker compose logs merinod` on first boot.
+      # MERINO_USER: "operator"
+      # MERINO_PASS: "change-me"
+    volumes:
+      # The WHOLE ~/.config/herdr directory, read-only — not the bare
+      # herdr.sock file. herdr recreates that socket file (new inode) every
+      # time it restarts; a bind mount of the file alone keeps pointing at
+      # the old, now-dead inode until the container itself is recreated,
+      # which looks like herdr silently going offline. Mounting the parent
+      # directory means the container always sees whatever socket currently
+      # lives there. `:ro` because merinod only ever opens the socket as a
+      # client — it has no reason to write into herdr's config directory.
+      #
+      # This also happens to be what session discovery needs:
+      # ~/.config/herdr/sessions/* lives beside herdr.sock, and mounting only
+      # the socket file would silently break `access.allowSessionSwitch`.
+      - "${HOME}/.config/herdr:/home/nonroot/.config/herdr:ro"
+      # Named volume for /var/lib/merino: credentials, VAPID keys, push
+      # subscriptions, paired devices, gate state. Losing it breaks Web Push
+      # silently and unpairs every phone — it must survive `docker compose
+      # down` (a named volume does; the container's writable layer would
+      # not), so it is never bound to a bare bind mount here.
+      - "merino-state:/var/lib/merino"
+    restart: unless-stopped
+    # This fails by default: the image's distroless base runs as uid 65532,
+    # and herdr's socket is srw------- owned by whoever runs herdr. Those
+    # are not the same uid, so merinod logs
+    #   dial herdr socket ...: connect: permission denied
+    # and keeps serving a healthy-looking dashboard with the herd reported
+    # unreachable — /healthz is 200 the whole time, because it reports THIS
+    # PROCESS, not the herd.
+    #
+    # Set this to the socket's owner. `ls -l ~/.config/herdr/herdr.sock`.
+    #   user: "${UID}:${GID}"
+    #
+    # The named volume needs the same attention and is a separate problem:
+    # Docker creates it owned by root on first use, so a nonroot container
+    # cannot write its state there. Either chown it once
+    #   docker compose run --user root --entrypoint sh merinod \
+    #     -c 'chown 65532:65532 /var/lib/merino'
+    # or point paths.stateDir at a host directory you have already chowned.
+
+volumes:
+  merino-state:

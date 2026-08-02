@@ -33,6 +33,7 @@ esac
 need() { command -v "$1" >/dev/null 2>&1 || { echo "error: need $1" >&2; exit 1; }; }
 need curl
 need ditto
+need shasum
 need xattr
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/merino-install.XXXXXX")"
@@ -53,6 +54,29 @@ URL="https://github.com/${REPO}/releases/download/${TAG}/${ASSET}"
 
 echo "→ Downloading ${ASSET} (${TAG})…"
 curl -fsSL --progress-bar -o "$TMP/$ASSET" "$URL"
+
+# Verify against the release's own SHA256SUMS before unpacking. Gatekeeper
+# will not vouch for this bundle — it is ad-hoc signed and the next step
+# strips the quarantine bit — so this checksum is the only thing standing
+# between a corrupted or swapped download and /Applications.
+SUMS_URL="https://github.com/${REPO}/releases/download/${TAG}/SHA256SUMS"
+if ! curl -fsSL -o "$TMP/SHA256SUMS" "$SUMS_URL"; then
+  echo "error: could not fetch SHA256SUMS for ${TAG} — refusing to install unverified" >&2
+  exit 1
+fi
+WANT="$(awk -v a="$ASSET" '$2 == a || $2 == "*"a {print $1}' "$TMP/SHA256SUMS" | head -1)"
+if [[ -z "$WANT" ]]; then
+  echo "error: ${ASSET} is not listed in SHA256SUMS — refusing to install" >&2
+  exit 1
+fi
+GOT="$(shasum -a 256 "$TMP/$ASSET" | awk '{print $1}')"
+if [[ "$WANT" != "$GOT" ]]; then
+  echo "error: checksum mismatch for ${ASSET}" >&2
+  echo "  expected ${WANT}" >&2
+  echo "  got      ${GOT}" >&2
+  exit 1
+fi
+echo "→ Checksum OK."
 
 echo "→ Unpacking…"
 ditto -x -k "$TMP/$ASSET" "$TMP/out"

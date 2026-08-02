@@ -16,7 +16,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"runtime"
 	"sync/atomic"
 	"time"
@@ -182,7 +181,7 @@ func main() {
 	passProvider = dash.Password
 	devices = dash.Devices
 
-	desk = desktop.NewSettings(nil, "dev.apinant.merino", version, "LoneExile/merino", pairing, devices, filepath.Dir(app.DefaultAuditPath()), webAddr, passProvider)
+	desk = desktop.NewSettings(nil, "dev.apinant.merino", version, "LoneExile/merino", pairing, devices, boot.StateDir, webAddr, passProvider)
 	desk.SetWebServer(srv)
 	// Re-apply the gates after the server exists so a disk toggle and a CLI
 	// flag cannot drift from the live switchOn bit (phone canSwitch reads

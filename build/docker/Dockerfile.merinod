@@ -1,0 +1,117 @@
+# syntax=docker/dockerfile:1
+
+# Builds ./cmd/merinod ONLY. This image never links Wails — that is what lets
+# it run headless in the first place (main.go: "It links no Wails packages at
+# all"). Do not add cmd/merino here; that binary is darwin-only and would not
+# cross-compile for this image's Linux targets anyway.
+
+# ---- frontend -----------------------------------------------------------
+# merinod serves the same dashboard as the desktop app via a Go //go:embed
+# from internal/assets/dist (internal/assets/assets.go), which is gitignored
+# and produced by `npm run build` in frontend/ (vite.config.ts writes it
+# there directly — //go:embed cannot reach outside its own package
+# directory, so the frontend build output has to land inside internal/assets
+# for either binary to embed it).
+#
+# That directory is built HERE, in an earlier stage, rather than required
+# prebuilt on the host. Two reasons:
+#   1. A build that requires the caller to have already run `npm run build`
+#      and merely copies whatever it finds is exactly the footgun this
+#      Dockerfile exists to avoid: forget the step, and `docker build`
+#      succeeds anyway, producing a binary with an empty embed and no UI —
+#      silently. Building it here means a missing/broken frontend fails the
+#      `docker build` loudly, in this stage, instead of shipping quietly.
+#   2. It makes the image reproducible from source alone — `docker build .`
+#      is a complete build, not "docker build after you remembered to run
+#      npm build first", which matters for a release pipeline running on a
+#      fresh checkout.
+# Built with --platform=$BUILDPLATFORM: this is a static-asset build, not a
+# native binary, so cross-arch emulation buys nothing and only slows a
+# multi-arch buildx run down.
+FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS frontend
+WORKDIR /src/frontend
+# package.json + package-lock.json before the rest of the source so an
+# unrelated source change does not invalidate the npm ci layer.
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+# Writes to ../internal/assets/dist per vite.config.ts (outDir is relative
+# to frontend/, i.e. WORKDIR here) — nothing to redirect.
+RUN npm run build
+
+# ---- go build -------------------------------------------------------------
+# Also --platform=$BUILDPLATFORM: the Go toolchain itself doesn't need to be
+# the target arch, only its output does. Cross-compiling via GOARCH from a
+# single host-native toolchain instance is faster than running the whole
+# build under QEMU, and is the standard buildx pattern for Go.
+FROM --platform=$BUILDPLATFORM golang:1.25-bookworm AS build
+ARG TARGETOS
+ARG TARGETARCH
+WORKDIR /src
+
+# go.mod/go.sum before the source copy so `go mod download` is cached across
+# builds that only touch .go files.
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Deliberately NOT `go mod tidy` here (the earlier Wails-scaffold Dockerfile
+# in this repo's history did). Running it at build time can rewrite go.mod
+# to whatever the CI runner's Go/module cache happens to resolve, so the
+# binary is no longer provably built from the go.mod/go.sum that were
+# reviewed and committed. `go mod download` only fetches what go.sum already
+# pins.
+COPY cmd/ cmd/
+COPY internal/ internal/
+
+# Overlays the frontend stage's output onto the embed path COPY above just
+# created empty (internal/assets/dist is gitignored, so `COPY internal/
+# internal/` never sees it).
+COPY --from=frontend /src/internal/assets/dist internal/assets/dist
+
+# CGO_ENABLED=0 for a statically linked binary the distroless static base
+# can run with no libc. -trimpath drops build-machine paths from the binary;
+# -s -w strip debug info, cutting the linked size measurably for an image
+# that ships no debugger anyway. VERSION defaults to the same "0.0.0-dev"
+# main.go falls back to when unset, so an unversioned build still reports
+# something.
+ARG VERSION=0.0.0-dev
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" \
+    -o /out/merinod ./cmd/merinod
+
+# ---- runtime ----------------------------------------------------------
+# distroless static + :nonroot: no shell, no package manager, no libc, and
+# the image already runs as uid/gid 65532 rather than root. That is most of
+# this binary's attack surface removed for free — merinod needs nothing a
+# shell would give it.
+#
+# No --platform pin on this final stage: left to default to the target
+# platform of the overall `docker buildx build --platform=...` invocation,
+# so each arch in a multi-arch manifest pulls the matching distroless base
+# rather than all of them pulling $BUILDPLATFORM's.
+FROM gcr.io/distroless/static-debian12:nonroot AS final
+
+# HEALTHCHECK is deliberately omitted. HEALTHCHECK's exec form still needs a
+# binary present in the image to run as the check — curl, wget, or the
+# app itself exposing a health subcommand — and this base has none of
+# those (no shell either, so a shell pipeline is not an option). merinod has
+# no `merinod healthcheck` subcommand. Shipping a HEALTHCHECK that can never
+# actually execute would look like a health check while silently never
+# running one; the honest state is "no in-image health check", left to the
+# orchestrator's own probe against GET /healthz (see deploy/k8s/*.yaml,
+# which uses httpGet liveness/readiness probes for exactly this reason).
+
+COPY --from=build /out/merinod /usr/local/bin/merinod
+
+# State: credentials, VAPID keys, push subscriptions, paired devices, gate
+# state (config.yml `paths.stateDir`'s doc comment). Losing this on
+# container restart breaks Web Push silently and unpairs every device — it
+# MUST be a volume in any real deployment, not left on the container's
+# writable layer.
+VOLUME ["/var/lib/merino"]
+
+EXPOSE 8730
+
+USER nonroot:nonroot
+
+ENTRYPOINT ["/usr/local/bin/merinod"]
