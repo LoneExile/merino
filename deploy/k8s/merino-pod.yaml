@@ -106,6 +106,10 @@ spec:
       securityContext:
         runAsNonRoot: true
         fsGroup: 65532
+        # PodSecurity "restricted" requires this; a real apiserver warned
+        # without it. Set at pod level so both containers inherit it.
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         # DOES NOT EXIST — see the header comment. Placeholder for an image
         # that runs `herdr server` plus whatever agent CLIs it should be
@@ -121,6 +125,17 @@ spec:
               mountPath: /root/.config/herdr
             - name: state
               mountPath: /var/lib/herdr
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            # Not readOnlyRootFilesystem: herdr spawns agent processes that
+            # write into the workspace, so this container legitimately needs
+            # a writable filesystem — unlike merinod, which does not.
+            #
+            # A hypothetical image cannot be verified, so these are the
+            # settings a real one MUST satisfy, written down rather than
+            # discovered when somebody finally builds it.
         - name: merinod
           image: ghcr.io/loneexile/merinod:latest
           args: ["serve"]

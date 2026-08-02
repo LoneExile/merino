@@ -121,13 +121,27 @@ metadata:
   # blast radius a "read-only dashboard" deploy should never carry:
   #
   #   command="/bin/false",no-pty,no-agent-forwarding,no-X11-forwarding,\
-  #   permitopen="none" ssh-ed25519 AAAA... merino-forward
+  #   no-user-rc ssh-ed25519 AAAA... merino-forward
   #
-  # permitopen="none" blocks -L/-R *TCP* forwarding through this key; it
-  # does not need to (and does not) block the Unix-domain-socket -L this
-  # sidecar actually uses, which OpenSSH does not gate through permitopen.
-  # command="/bin/false" is what actually matters here: it refuses any
-  # interactive or remote-command use of the key, forwarding included.
+  # command="/bin/false" is what does the work: it refuses any interactive
+  # or remote-command use of the key while leaving forwarding intact.
+  # Verified against a real sshd (OpenSSH 9.x): with this line, `ssh <host>
+  # echo hi` fails and `ssh -L <sock>:<herd.sock> <host>` succeeds.
+  #
+  # Do NOT add permitopen="none" here, however tempting it reads. `none` is
+  # a value of the sshd_config PermitOpen *directive*, not of the
+  # authorized_keys permitopen *option*, which takes host:port. sshd treats
+  # the malformed option as a bad key line and rejects the key OUTRIGHT —
+  # authentication then falls through to password and the tunnel never
+  # comes up. Confirmed the hard way: adding it produced
+  # "Permission denied (publickey,password)", and removing it restored the
+  # forward immediately.
+  #
+  # Worth knowing rather than assuming: permitopen governs TCP forwarding
+  # only. OpenSSH has no authorized_keys option that restricts WHICH unix
+  # socket a key may forward, so this key can reach any unix socket the
+  # account can. Give it its own low-privilege account on the herd host if
+  # that matters.
 type: Opaque
 stringData:
   id_ed25519: |
@@ -191,6 +205,12 @@ spec:
         # volume" the plan's §9 note assumes.
         runAsNonRoot: true
         fsGroup: 65532
+        # Required by the PodSecurity "restricted" profile. A real apiserver
+        # warned on this manifest without it; a cluster that ENFORCES
+        # restricted rejects the pod outright rather than warning. Set at pod
+        # level so both containers inherit it.
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: merinod
           # Placeholder — build+push build/docker/Dockerfile.merinod and
@@ -305,6 +325,25 @@ spec:
               mountPath: /run/herdr
           securityContext:
             allowPrivilegeEscalation: false
+            # autossh needs no capabilities: it opens an outbound TCP
+            # connection and a unix socket, both unprivileged. Dropping ALL
+            # is also what PodSecurity "restricted" requires.
+            capabilities:
+              drop: ["ALL"]
+            # Root, and a writable root filesystem, ONLY because this
+            # container installs its own packages at startup: `apk add`
+            # needs both. The pod-level runAsNonRoot: true is overridden
+            # here deliberately — without this override kubelet refuses to
+            # start the container at all, because alpine's default user is
+            # root and the pod says non-root. Demonstrated, not assumed.
+            #
+            # This is the concrete cost of the stock-alpine shortcut above,
+            # and the reason to replace it with an image that already has
+            # autossh and openssh-client baked in: that image runs as 65532
+            # with readOnlyRootFilesystem: true and needs neither override.
+            runAsNonRoot: false
+            runAsUser: 0
+            readOnlyRootFilesystem: false
       volumes:
         - name: config
           configMap:

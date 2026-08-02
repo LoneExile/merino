@@ -142,3 +142,22 @@ func PreferLANBase(listenAddr string) string {
 	}
 	return "http://127.0.0.1:8730"
 }
+
+// defaultPairBase is the origin a pairing QR should encode.
+//
+// PublicBaseURL wins whenever it is set, because autodetection answers "which
+// of MY interfaces looks most like a LAN address" — and inside a container
+// that is the container's own address (172.17.x.x on a default bridge), a URL
+// no phone can open. Found on a real Docker host: with publicUrl configured,
+// the session payload still advertised the bridge address here while
+// Pairing.Mint was already encoding the configured one, so the UI and the
+// minted ticket disagreed.
+//
+// Falling back to the LAN guess keeps the zero-config Mac path unchanged:
+// nobody sets publicUrl there, and the guess is right on a laptop.
+func (s *Server) defaultPairBase() string {
+	if s.cfg.PublicBaseURL != "" {
+		return s.cfg.PublicBaseURL
+	}
+	return PreferLANBase(s.cfg.Addr)
+}

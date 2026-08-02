@@ -471,7 +471,7 @@ func (s *Server) handleSession(w http.ResponseWriter, _ *http.Request, id Identi
 		"firstRunPending":  FirstRunPending(s.stateDir()),
 		"oidcEnabled":      OIDCFromEnv().Enabled() && s.cfg.PublicBaseURL != "",
 		"accessOrigins":    origins,
-		"defaultPairBase":  PreferLANBase(s.cfg.Addr),
+		"defaultPairBase":  s.defaultPairBase(),
 		"passwordLoginEnabled": func() bool {
 			if pp, ok := s.cfg.Provider.(*PasswordProvider); ok {
 				return pp.PasswordLogin()
