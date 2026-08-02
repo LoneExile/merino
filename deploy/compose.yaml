@@ -7,12 +7,16 @@
 
 services:
   merinod:
+    # Published images exist now — to run one instead of building, delete the
+    # `build:` block and uncomment the pinned `image:` below. They can also
+    # coexist: with both, `image:` names what `docker compose build` tags.
+    #
+    # INTERIM PIN — v0.3.0-rc.1 is a release candidate. Move to the first
+    # stable tag once one is cut.
+    # image: ghcr.io/loneexile/merinod:v0.3.0-rc.1
     build:
       context: ../
       dockerfile: build/docker/Dockerfile.merinod
-    # Swap for `image: ghcr.io/loneexile/merinod:vX.Y.Z` once a published tag
-    # exists; `build:` and `image:` can coexist, with `image:` naming what
-    # `docker compose build` tags the result as.
     ports:
       - "8730:8730"
     environment:

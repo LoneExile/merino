@@ -39,14 +39,19 @@ curl -fsSL https://raw.githubusercontent.com/LoneExile/merino/main/scripts/insta
 yourself works too — `go build ./cmd/merinod`.
 
 For Kubernetes you need a container image. Releases publish one as
-`ghcr.io/loneexile/merinod:<tag>` for linux/amd64 and linux/arm64 — but only
-from the first release tagged after that workflow landed, so check
-[Releases](https://github.com/LoneExile/merino/releases) and the Packages tab
-first. Pre-release tags publish their own version and deliberately do not move
-`latest`, so pin a version rather than pulling `latest`.
+`ghcr.io/loneexile/merinod:<tag>`, multi-arch for linux/amd64 and
+linux/arm64, pullable without credentials:
 
-If there is no image yet, or you would rather own the artefact, build and push
-your own:
+```bash
+docker pull ghcr.io/loneexile/merinod:v0.3.0-rc.1
+```
+
+The manifests here are pinned to that tag. It is a **release candidate** —
+move to the first stable tag once one is cut. Pin whatever you use: a
+pre-release publishes only its own version and never moves `latest`, so
+`latest` follows stable releases and will shift under an unpinned redeploy.
+
+To own the artefact instead, build and push your own:
 
 ```bash
 docker build -f build/docker/Dockerfile.merinod -t <registry>/merinod:v1 .

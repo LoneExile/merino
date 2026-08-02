@@ -152,10 +152,9 @@ systemd, Docker or Kubernetes. Install it with the script
 [Releases](https://github.com/LoneExile/merino/releases/latest), or build it:
 `go build ./cmd/merinod`.
 
-From the first release tagged after the image workflow landed, releases also
-publish a container image, `ghcr.io/loneexile/merinod` — check
-[Releases](https://github.com/LoneExile/merino/releases) and the repo's
-Packages tab before depending on it.
+Releases also publish a multi-arch container image,
+`ghcr.io/loneexile/merinod`, for linux/amd64 and linux/arm64. Pin a version:
+`latest` follows stable releases only, so a pre-release never moves it.
 
 Two things decide every deployment: herdr has no network port, only a unix
 socket, so merinod opens a *file* rather than connecting to anything; and it
