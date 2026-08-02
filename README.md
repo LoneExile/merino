@@ -156,6 +156,14 @@ Releases also publish a multi-arch container image,
 `ghcr.io/loneexile/merinod`, for linux/amd64 and linux/arm64. Pin a version:
 `latest` follows stable releases only, so a pre-release never moves it.
 
+Pair a phone from the dashboard's **Settings → Pairing**, or from a shell —
+`merinod qr` draws the code in the terminal, which over SSH beats finding a
+browser:
+
+```
+ssh myserver merinod qr
+```
+
 Two things decide every deployment: herdr has no network port, only a unix
 socket, so merinod opens a *file* rather than connecting to anything; and it
 must run as the **user that owns that socket**, or the agent list stays empty

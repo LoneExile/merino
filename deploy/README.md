@@ -186,6 +186,22 @@ dashboard mints a one-shot ticket and the server renders the QR, so this
 works with no menu bar and no desktop — the same flow the Mac app uses,
 driven from the browser.
 
+From a shell on the host, without opening the dashboard at all:
+
+```bash
+merinod qr                 # draws the QR right in the terminal
+merinod qr --url           # just the link, for piping
+```
+
+It signs in to the **running** daemon and asks it to mint, because a ticket
+lives in that process's memory until it is redeemed — nothing else can create
+one. So the daemon must be up, and password sign-in must be on, exactly as
+for the browser. It introduces no second way in on purpose: a local token
+file would be a parallel trust boundary guarding the same privilege.
+
+Over SSH this is usually the fastest route: `ssh host merinod qr` and point a
+phone at the terminal.
+
 `publicUrl` must be right before you scan anything: the QR encodes it, and a
 container that guesses gets its own bridge address, which no phone can open.
 
