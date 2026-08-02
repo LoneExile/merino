@@ -6,6 +6,48 @@ background daemon. It must be able to **open** herdr's unix socket
 `ssh -L` forward. herdr never listens on a network port, so there is nothing
 to dial remotely — only a socket *file* to reach.
 
+## The constraint that decides every deployment: uid
+
+A unix socket is a file with an owner and a mode, and herdr's is `srw-------`
+— owner only. **merinod must run as the uid that owns the socket.** Not a
+group, not root-by-default, not "close enough". Every shape below is really
+just a different arrangement of that fact.
+
+This was the most common failure while testing these files on real hosts, and
+it is quiet: merinod stays up, serves a perfectly healthy dashboard, returns
+200 from `/healthz`, and reports the herd unreachable forever.
+
+```
+dial herdr socket /herd/herdr.sock: connect: permission denied
+```
+
+- **Docker (Shape B).** The image runs as uid 65532. If herdr runs as root —
+  or as anyone else — pass `--user <uid>:<gid>` matching the socket's owner.
+  `ls -l ~/.config/herdr/herdr.sock` tells you which.
+- **SSH forward (Shape C3).** The socket inside the pod is created by the
+  *sidecar*, not by herdr, so its owner is the sidecar's uid. OpenSSH wraps
+  its bind in `umask(0177)`, so it is always `0600` and no umask you set can
+  widen it — that was tried, and it does not work. Either run the sidecar as
+  the same uid as merinod (what a baked autossh image buys you), or re-mode
+  the socket after ssh creates it, which is what the manifest does today.
+- **systemd (Shape A).** A `--user` unit runs as the account that owns the
+  socket, which is exactly why it is the shape with nothing to explain.
+
+## Two more things the manifests get wrong by default
+
+Both were found by applying these files to a real cluster, and both fail
+silently rather than loudly.
+
+- **Set `storageClassName` on the PVC.** Omitting it needs the cluster to
+  have a default StorageClass. Plenty do not. The PVC then sits `Pending`
+  forever, the pod sits `Pending` with no node and no container events, and
+  nothing anywhere names storage as the cause.
+- **Do not trust `defaultMode: 0400` to protect the SSH key.** The pod's own
+  `fsGroup` widens every mounted volume, so the key lands `0440` and ssh
+  refuses it as group-readable — `Load key: bad permissions`, then
+  `Permission denied (publickey,password)`, then an empty socket directory.
+  The manifest copies the key to a private path before use instead.
+
 ## Shapes
 
 | Shape | What | Verdict |

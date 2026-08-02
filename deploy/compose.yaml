@@ -47,17 +47,24 @@ services:
       # not), so it is never bound to a bare bind mount here.
       - "merino-state:/var/lib/merino"
     restart: unless-stopped
-    # NOT independently verified: the image's distroless base runs as uid
-    # 65532 (nonroot), and a host ~/.config/herdr directory created by herdr
-    # under a normal user account is typically mode 0700 owned by that
-    # user's own uid — which will usually NOT be 65532. If merinod logs a
-    # permission error opening the socket, override the container's user to
-    # match the host uid that owns ~/.config/herdr, e.g.:
+    # VERIFIED on a real Docker host, and it fails by default: the image's
+    # distroless base runs as uid 65532, and herdr's socket is srw-------
+    # owned by whoever runs herdr. Those are not the same uid, so merinod
+    # logs
+    #   dial herdr socket ...: connect: permission denied
+    # and then keeps serving a perfectly healthy-looking dashboard with the
+    # herd reported unreachable — /healthz is 200 the whole time, because it
+    # reports THIS PROCESS, not the herd.
+    #
+    # Set this to the socket's owner. `ls -l ~/.config/herdr/herdr.sock`.
     #   user: "${UID}:${GID}"
-    # (only works for the bind-mounted socket path; it does not affect
-    # ownership of the `merino-state` named volume, which Docker creates
-    # owned by root on first use and may need the same override, or a
-    # one-off `docker compose run --user root merinod chown ...`.)
+    #
+    # The named volume needs the same attention and is a separate problem:
+    # Docker creates it owned by root on first use, so a nonroot container
+    # cannot write its state there. Either chown it once
+    #   docker compose run --user root --entrypoint sh merinod \
+    #     -c 'chown 65532:65532 /var/lib/merino'
+    # or point paths.stateDir at a host directory you have already chowned.
 
 volumes:
   merino-state:

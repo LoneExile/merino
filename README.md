@@ -246,9 +246,15 @@ network" — it is *put a socket file where merinod can open it*.
 | Shape | What it is | Verdict |
 | --- | --- | --- |
 | **systemd** | herdr + merinod on one Linux host, same user | Simplest. Everything works. |
-| **Docker** | container with `~/.config/herdr` bind-mounted | Works. Mount the whole directory, not the bare socket — herdr recreates the socket when it restarts. |
+| **Docker** | container with `~/.config/herdr` bind-mounted | Works. Mount the whole directory, not the bare socket — herdr recreates the socket when it restarts. Run the container as the socket's owner (`--user`). |
 | **SSH forward** | herd stays put; `ssh -L` carries the socket into the pod | The Kubernetes answer, and the only one that reaches a herd behind NAT. |
 | **socat relay** | bridge the socket over TCP | **Don't.** herdr's socket API can spawn agents and type into live panes. The unix socket *was* the access control; a bare TCP port has none. |
+
+There is a second half to that constraint, and it is the one that actually
+bites: a socket is a file with an owner, and herdr's is `srw-------`.
+**merinod has to run as the uid that owns it.** Get that wrong and nothing
+looks broken — the dashboard serves, `/healthz` returns 200, and the herd is
+reported unreachable forever.
 
 Manifests and a systemd unit are in [deploy/](deploy/), with the trade-offs of
 each spelled out.
