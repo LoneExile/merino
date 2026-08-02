@@ -54,13 +54,8 @@ Needs [herdr](https://herdr.dev) already running.
 **macOS** — the menu bar app, on Apple Silicon.
 
 ```bash
-brew tap LoneExile/merino
-brew trust LoneExile/merino
-brew install --cask merino
+curl -fsSL https://raw.githubusercontent.com/LoneExile/merino/main/scripts/install.sh | bash
 ```
-
-Builds are ad-hoc signed — no Developer ID, no notarization — so every install
-path clears the quarantine bit for you.
 
 **Linux** — [`merinod`](#headless), the same dashboard with no menu bar, run
 as a background service.
@@ -69,21 +64,28 @@ as a background service.
 curl -fsSL https://raw.githubusercontent.com/LoneExile/merino/main/scripts/install-merinod.sh | bash
 ```
 
-Verifies the download against the release checksums and installs to
-`/usr/local/bin`, or `~/.local/bin` without root. `MERINOD_BIN_DIR` and
-`MERINOD_VERSION` override where and which.
+Both verify what they download and put it somewhere sensible —
+`/Applications` and `/usr/local/bin` respectively, overridable with
+`MERINO_APP_DIR` and `MERINOD_BIN_DIR`. macOS builds are ad-hoc signed (no
+Developer ID, no notarization), so the installer clears the quarantine bit
+for you.
 
 <details>
 <summary>Other ways in</summary>
 
-**Script** — installs to `/Applications`, strips quarantine, opens it.
-Override with `MERINO_APP_DIR`.
+**Homebrew** (macOS)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/LoneExile/merino/main/scripts/install.sh | bash
+brew tap LoneExile/merino
+brew trust LoneExile/merino          # third-party tap
+brew install --cask merino
 ```
 
-**Manual** — grab `Merino-*-macos-arm64.zip` from
+Upgrade with `brew update && brew upgrade --cask merino`. No
+`--no-quarantine` needed — the cask's postflight strips it, and Homebrew 6
+rejects the flag outright.
+
+**Manual** (macOS) — grab `Merino-*-macos-arm64.zip` from
 [Releases](https://github.com/LoneExile/merino/releases/latest), drag it to
 `/Applications`, then:
 
@@ -95,7 +97,11 @@ open /Applications/Merino.app
 If macOS still refuses, right-click → **Open**, or
 **System Settings → Privacy & Security → Open Anyway**.
 
-Intel needs a source build — see [CONTRIBUTING.md](CONTRIBUTING.md).
+**Manual** (Linux) — `merinod-linux-{amd64,arm64}` from the same releases,
+verified against `SHA256SUMS`.
+
+**From source** — `go build ./cmd/merinod` for the daemon; Intel Macs need a
+source build of the app, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 </details>
 
