@@ -459,6 +459,11 @@ async function httpClient(): Promise<Client> {
 
     ...(session.canManageDevices
       ? {
+          // Headless has no menu bar to mint from, so the browser does it.
+          // Deliberately inside the canManageDevices block: the server sets
+          // that false for a device subject, so a paired phone cannot mint
+          // another phone — pairing stays something an operator does.
+          mintPairing: () => postJSON<PairingTicket>("/api/pairing/mint", {}),
           listDevices: () => getJSON<DeviceList>("/api/devices"),
           revokeDevice: (id: string) => postJSON("/api/devices/revoke", { id }),
           revokeAllDevices: async () => {

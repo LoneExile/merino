@@ -147,6 +147,20 @@ func (s *Server) handlePairingMint(w http.ResponseWriter, r *http.Request, id Id
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "pairing disabled"})
 		return
 	}
+	// authed() proves only that the caller is signed in, and a paired phone
+	// is signed in. Minting is device MANAGEMENT: /api/session already tells
+	// a device subject canManageDevices=false, and the device routes enforce
+	// that, but this one never did — so a phone could quietly mint itself
+	// successors. Revoking a lost phone would not have stopped it, which is
+	// the entire point of being able to revoke one.
+	//
+	// This was reachable before the dashboard offered a button for it: any
+	// authenticated client could POST here.
+	if IsDeviceSubject(id.Subject) {
+		s.audit(r, id, "pairing_mint", "", "", false, "paired devices cannot mint pairings")
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "paired devices cannot mint pairings"})
+		return
+	}
 	ticket, err := s.pairing.Mint()
 	if err != nil {
 		s.log.Warn("pairing mint failed", "err", err, "user", id.Name)

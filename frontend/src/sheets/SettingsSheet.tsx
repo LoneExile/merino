@@ -98,8 +98,8 @@ export function SettingsSheet({
     {
       id: "pairing",
       label: "Pairing",
-      visible: (isDesktop && Boolean(client?.mintPairing || onOpenPair)) || Boolean(client?.listDevices),
-      render: () => <PairingTab client={client} onOpenPair={onOpenPair} isDesktop={isDesktop} />,
+      visible: Boolean(client?.mintPairing || client?.listDevices),
+      render: () => <PairingTab client={client} onOpenPair={onOpenPair} />,
     },
     {
       id: "access",

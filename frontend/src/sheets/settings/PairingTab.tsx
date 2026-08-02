@@ -10,16 +10,20 @@ import { displayDeviceName } from "../names";
 export interface PairingTabProps {
   client: Client | null;
   onOpenPair?: () => void;
-  isDesktop: boolean;
 }
 
-export function PairingTab({ client, onOpenPair, isDesktop }: PairingTabProps) {
+export function PairingTab({ client, onOpenPair }: PairingTabProps) {
   const [devices, setDevices] = useState<PairedDevice[]>([]);
   const [devBusy, setDevBusy] = useState(false);
   const [devErr, setDevErr] = useState<string | null>(null);
   const [panicArmed, setPanicArmed] = useState(false);
 
-  const showPair = isDesktop && Boolean(client?.mintPairing || onOpenPair);
+  // Was gated on isDesktop, which hid minting from the headless dashboard
+  // even though merinod serves /api/pairing/mint and returns a rendered QR.
+  // Gate on the capability instead: a paired phone has no mintPairing (the
+  // server withholds canManageDevices from a device subject), so it still
+  // cannot mint another phone.
+  const showPair = Boolean(client?.mintPairing && onOpenPair);
   const showDevices = Boolean(client?.listDevices);
 
   const refreshDevices = useCallback(() => {
