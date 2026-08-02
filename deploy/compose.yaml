@@ -30,6 +30,13 @@ services:
       # instead — see `docker compose logs merinod` on first boot.
       # MERINO_USER: "operator"
       # MERINO_PASS: "change-me"
+      # REQUIRED, both of them. merinod otherwise resolves its socket and
+      # state from $HOME, and Docker sets HOME=/ for any uid without a passwd
+      # entry — which is every `user:` override below. That combination is
+      # how this file used to fail on boot with
+      #   mkdir /Library: permission denied
+      HERDR_SOCK: "/run/herdr/herdr.sock"
+      XDG_STATE_HOME: "/var/lib"
     volumes:
       # The WHOLE ~/.config/herdr directory, read-only — not the bare
       # herdr.sock file. herdr recreates that socket file (new inode) every
@@ -43,31 +50,54 @@ services:
       # This also happens to be what session discovery needs:
       # ~/.config/herdr/sessions/* lives beside herdr.sock, and mounting only
       # the socket file would silently break `access.allowSessionSwitch`.
-      - "${HOME}/.config/herdr:/home/nonroot/.config/herdr:ro"
+      #
+      # Mounted at /run/herdr rather than under the container's $HOME, with
+      # HERDR_SOCK naming it above. Mounting into $HOME/.config leaves that
+      # parent owned by root, and the `user:` override below then cannot
+      # read its own config directory — the daemon exits with
+      #   config: read /home/nonroot/.config/merino/config.yml: permission denied
+      # Tested; this layout is the one that works.
+      - "${HOME}/.config/herdr:/run/herdr:ro"
       # Named volume for /var/lib/merino: credentials, VAPID keys, push
       # subscriptions, paired devices, gate state. Losing it breaks Web Push
       # silently and unpairs every phone — it must survive `docker compose
       # down` (a named volume does; the container's writable layer would
       # not), so it is never bound to a bare bind mount here.
+      #
+      # XDG_STATE_HOME above is what actually points merinod here. Without
+      # it the daemon follows $HOME, this volume receives nothing, and the
+      # state it is meant to preserve is discarded on every recreate.
       - "merino-state:/var/lib/merino"
     restart: unless-stopped
-    # This fails by default: the image's distroless base runs as uid 65532,
-    # and herdr's socket is srw------- owned by whoever runs herdr. Those
-    # are not the same uid, so merinod logs
+    # REQUIRED in practice. The image's distroless base runs as uid 65532,
+    # and herdr's socket is srw------- owned by whoever runs herdr. Those are
+    # not the same uid, so merinod logs
     #   dial herdr socket ...: connect: permission denied
     # and keeps serving a healthy-looking dashboard with the herd reported
     # unreachable — /healthz is 200 the whole time, because it reports THIS
     # PROCESS, not the herd.
     #
-    # Set this to the socket's owner. `ls -l ~/.config/herdr/herdr.sock`.
-    #   user: "${UID}:${GID}"
+    # Set it to the socket's owner: `ls -l ~/.config/herdr/herdr.sock`. Note
+    # that ${UID} is a shell variable, not an exported one, so compose reads
+    # it as empty unless you put UID and GID in a .env file beside this one
+    # or write the numbers literally.
+    #   user: "1000:1000"
     #
     # The named volume needs the same attention and is a separate problem:
     # Docker creates it owned by root on first use, so a nonroot container
-    # cannot write its state there. Either chown it once
-    #   docker compose run --user root --entrypoint sh merinod \
-    #     -c 'chown 65532:65532 /var/lib/merino'
-    # or point paths.stateDir at a host directory you have already chowned.
+    # cannot write its state there and the daemon exits with
+    #   bootstrap: write: open /var/lib/merino/bootstrap-creds.json: permission denied
+    #
+    # Chown it once, to the same uid you set above — not to 65532, which is
+    # the image default this override replaces. It takes a second image
+    # because this one is distroless: it has no shell and no chown, so
+    # `docker compose run --entrypoint sh` fails with
+    # `exec: "sh": executable file not found`.
+    #
+    #   docker run --rm -v <project>_merino-state:/state alpine:3.20 \
+    #     chown 1000:1000 /state
+    #
+    # `docker volume ls | grep merino-state` gives the prefixed name.
 
 volumes:
   merino-state:

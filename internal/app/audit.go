@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"time"
 )
@@ -48,13 +49,40 @@ type AuditEntry struct {
 
 const auditDetailMax = 200
 
-// DefaultAuditPath returns the conventional log location.
+// DefaultAuditPath returns the conventional log location. Its parent is also
+// the state directory — bootstrap credentials, device grants and push
+// subscriptions sit beside this file — so this one function decides where a
+// deployment keeps everything that must survive a restart.
+//
+// macOS keeps ~/Library/Logs/merino and must: the menu bar app has shipped
+// with it since the beginning, and moving it unpairs every phone.
+//
+// Everywhere else follows the XDG spec, which is what the daemon's own
+// `config init` output has always claimed. It did not, until merinod was
+// tested on Linux: the macOS layout was unconditional, so a Linux host got a
+// ~/Library/Logs directory, and a container got something worse. Docker sets
+// HOME=/ for a uid with no passwd entry — which is every `--user 1000:1000`
+// override, the very thing our own compose file tells operators to do — so
+// the path became /Library/Logs/merino and the daemon died on boot with
+// "mkdir /Library: permission denied". merinod has never had a stable
+// release, so nothing is migrated by fixing it now.
 func DefaultAuditPath() string {
+	if runtime.GOOS != "darwin" {
+		// Absolute only. A relative XDG_STATE_HOME is invalid per the spec,
+		// and honouring one would scatter state through the working
+		// directory.
+		if base := os.Getenv("XDG_STATE_HOME"); filepath.IsAbs(base) {
+			return filepath.Join(base, "merino", "audit.jsonl")
+		}
+	}
 	home, err := os.UserHomeDir()
-	if err != nil {
+	if err != nil || home == "" {
 		return "merino-audit.jsonl"
 	}
-	return filepath.Join(home, "Library", "Logs", "merino", "audit.jsonl")
+	if runtime.GOOS == "darwin" {
+		return filepath.Join(home, "Library", "Logs", "merino", "audit.jsonl")
+	}
+	return filepath.Join(home, ".local", "state", "merino", "audit.jsonl")
 }
 
 // NewAudit opens the log, creating parent directories as needed.
