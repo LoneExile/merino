@@ -83,15 +83,23 @@ jobs:
       # Must be GOOS=linux scoped. On darwin this same command prints 22,
       # because internal/app/service_wails.go is compiled in — that file is
       # the one sanctioned Wails surface of package app.
-      - name: Dashboard stays portable
+      - name: Headless daemon is Wails-free
         run: |
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o /tmp/merinod ./cmd/merinod
           GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build \
             ./internal/app/... ./internal/assets/... ./internal/config/... \
             ./internal/herdr/... ./internal/serve/... ./internal/web/...
-          reached=$(GOOS=linux GOARCH=amd64 go list -deps ./internal/serve/... ./internal/web/... | grep 'wailsapp/wails' || true)
+          reached=$(GOOS=linux GOARCH=amd64 go list -deps ./cmd/merinod ./internal/serve/... ./internal/web/... \
+            | grep 'wailsapp/wails' || true)
           if [ -n "$reached" ]; then
             echo "::error::the headless boot path reaches Wails on linux:"; echo "$reached"; exit 1
           fi
+
+      # The menubar half must keep building for its only platform. `go build
+      # ./...` above covers it on the runner, but naming the binary is what
+      # catches a cmd/merino that stops being a main package.
+      - name: Menubar binary builds
+        run: go build -o /tmp/merino ./cmd/merino
 
       - name: Go test
         # Tests requiring a live herdr socket skip automatically when none is
@@ -99,7 +107,7 @@ jobs:
         run: go test ./... -count=1 -race
 
       - name: Package binary
-        run: go build -o bin/merino .
+        run: go build -o bin/merino ./cmd/merino
 
       # v6 is the first major whose action.yml declares `using: node24`; v5
       # declares node20, which the runner now force-upgrades with a

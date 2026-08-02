@@ -35,7 +35,7 @@ frontend:
 
 # Go binary with the current frontend embedded.
 build: frontend
-    go build -o {{binary}} .
+    go build -o {{binary}} ./cmd/merino
 
 # Build the macOS .app bundle
 package: frontend
@@ -159,7 +159,7 @@ gate: fmt typecheck checks
     go vet ./...
     go test ./... -race -count=1
     cd frontend && npm run build
-    go build -o {{binary}} .
+    go build -o {{binary}} ./cmd/merino
     @echo "gate ok"
 
 # --- release ---------------------------------------------------------------

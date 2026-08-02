@@ -53,9 +53,12 @@ for (const [payload, want] of Object.entries(TRAY_MENU)) {
 // The other half of the contract, read from the Go source rather than
 // restated here. The table above is hand-copied, so on its own it proves only
 // that uiOpen.ts agrees with itself: renaming openUI("spawn") to openUI("new")
-// in main.go would leave every assertion above green while the tray item
-// silently opened nothing.
-const mainGo = readFileSync(new URL("../../../main.go", import.meta.url), "utf8");
+// in cmd/merino/main.go would leave every assertion above green while the
+// tray item silently opened nothing.
+//
+// The path moved when the menubar became one of two entry points; the check
+// failing loudly on the move is the check doing its job.
+const mainGo = readFileSync(new URL("../../../cmd/merino/main.go", import.meta.url), "utf8");
 const emitted = [...mainGo.matchAll(/openUI\("([^"]+)"\)/g)].map((m) => m[1]);
 
 check("main.go emits deep links at all", emitted.length > 0, `found ${emitted.length}`);
