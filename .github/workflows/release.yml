@@ -26,6 +26,10 @@ jobs:
     runs-on: macos-latest
     permissions:
       contents: write # creates the GitHub Release and uploads assets
+    outputs:
+      # The Homebrew job below needs this to keep the cask off a release
+      # candidate; job outputs are the only way across the job boundary.
+      prerelease: ${{ steps.ver.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -46,9 +50,23 @@ jobs:
           TAG="${INPUT_TAG:-$GITHUB_REF_NAME}"
           TAG="${TAG#refs/tags/}"
           VERSION="${TAG#v}"
+          # Semver says anything after a hyphen is a pre-release: v0.3.0-rc.1.
+          # This decides two things that must not be got wrong, because both
+          # reach people who never asked for a release candidate:
+          #
+          #   GitHub's /releases/latest serves the newest release that is NOT
+          #   flagged pre-release, and both install scripts resolve exactly
+          #   that. An unflagged RC becomes what every `| bash` hands out.
+          #
+          #   The Homebrew cask bump below would move the tap to the RC.
+          case "$VERSION" in
+            *-*) prerelease=true ;;
+            *)   prerelease=false ;;
+          esac
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Building Merino $TAG ($VERSION)"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+          echo "Building Merino $TAG ($VERSION), prerelease=$prerelease"
 
       - uses: actions/setup-go@v6
         with:
@@ -201,6 +219,13 @@ jobs:
           tag_name: ${{ steps.ver.outputs.tag }}
           name: Merino ${{ steps.ver.outputs.tag }}
           body: ${{ steps.notes.outputs.body }}
+          # Defaults to false, which would have published v0.3.0-rc.1 as an
+          # ordinary release. GitHub then serves it from /releases/latest,
+          # which is precisely what both install scripts resolve — so an
+          # unflagged candidate becomes what every `| bash` installs. The
+          # action's own docs: "Drafts and prereleases cannot be set as
+          # latest", so this one field is the whole guard.
+          prerelease: ${{ steps.ver.outputs.prerelease }}
           files: |
             dist/*
           fail_on_unmatched_files: true
@@ -221,6 +246,10 @@ jobs:
   bump-homebrew:
     name: Bump Homebrew cask
     needs: macos
+    # A release candidate must not move the tap. `brew upgrade --cask merino`
+    # is an unpinned pull: whoever runs it gets whatever the cask points at,
+    # and nobody typing that is asking to test a candidate. Stable tags only.
+    if: needs.macos.outputs.prerelease != 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Skip without token

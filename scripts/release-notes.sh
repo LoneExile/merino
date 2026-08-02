@@ -39,6 +39,36 @@ BODY=$(
   ' "$FILE"
 )
 
+# A pre-release has no section of its own, by design — cliff.toml ignores
+# hyphenated tags so their commits stay with the stable release they lead to.
+# What a candidate ships is exactly what is pending, so read that instead.
+# The guard below still holds: pending-but-empty is as wrong as missing.
+case "$VERSION" in
+  *-*)
+    if [ -z "$BODY" ]; then
+      BODY=$(
+        awk '
+          index($0, "## Unreleased") == 1 { grab = 1; next }
+          grab && /^## / { exit }
+          grab {
+            if ($0 ~ /^[[:space:]]*$/) { if (started) pending = pending "\n"; next }
+            if (started) printf "%s", pending
+            pending = ""
+            started = 1
+            print
+          }
+        ' "$FILE"
+      )
+      if [ -n "$BODY" ]; then
+        BODY="> Pre-release ${TAG}. Not served by \`/releases/latest\` and the
+> Homebrew cask is not bumped — install it by explicit version.
+
+${BODY}"
+      fi
+    fi
+    ;;
+esac
+
 if [ -z "$BODY" ]; then
   echo "no section for ${VERSION} in ${FILE} — run: just changelog ${TAG}" >&2
   exit 1
