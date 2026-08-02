@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/LoneExile/merino/internal/herdr"
-	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 // EventAgentsChanged is emitted to the frontend whenever the agent projection
@@ -116,7 +115,7 @@ func NewAgentsService(
 // AttachBlockedNotifier registers fn for agent blocked-edge side effects
 // (Web Push). Package function — not a method — so Wails does not bind it
 // into the desktop webview JS surface. Call once from main before
-// ServiceStartup; nil is fine for tests.
+// Start; nil is fine for tests.
 func AttachBlockedNotifier(s *AgentsService, fn func(Agent)) {
 	if s == nil {
 		return
@@ -127,9 +126,15 @@ func AttachBlockedNotifier(s *AgentsService, fn func(Agent)) {
 // ServiceName identifies the service in Wails logs.
 func (s *AgentsService) ServiceName() string { return "AgentsService" }
 
-// ServiceStartup boots the client and background streams. The context lives
-// for the lifetime of the application.
-func (s *AgentsService) ServiceStartup(ctx context.Context, _ application.ServiceOptions) error {
+// Start boots the client and background streams. The context lives for the
+// lifetime of the application.
+//
+// Named Start rather than carrying the Wails lifecycle signature
+// (ServiceStartup(ctx, application.ServiceOptions)): that one desktop type in
+// one signature was the entire reason package app — and therefore
+// internal/web, which is on the read path of the dashboard — pulled 22 Wails
+// packages into every build. service_wails.go adapts it back for the menubar.
+func (s *AgentsService) Start(ctx context.Context) error {
 	s.ctx = ctx
 	s.startSession(ctx, s.client)
 	return nil
@@ -140,7 +145,7 @@ func (s *AgentsService) ServiceStartup(ctx context.Context, _ application.Servic
 // initial pane.list, the per-pane status subscription, the global lifecycle
 // stream, and the safety-net reconcile.
 //
-// Pulled out of ServiceStartup so SwitchSession can repeat exactly this
+// Pulled out of Start so SwitchSession can repeat exactly this
 // sequence for a new client without duplicating it. The background
 // goroutines run under a child of parent, retained as bgCancel, so a later
 // switch can retire this generation before starting the next one.
