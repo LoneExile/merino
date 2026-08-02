@@ -19,19 +19,10 @@
 
 ---
 
-## Why Merino
-
-[herdr](https://herdr.dev) runs coding agents in terminal panes. Merino is the **instrument panel**:
-
-- Live agent list, blocked first
-- Streaming pane output, in colour
-- Approve, type, and interrupt when you enable writes
-- Start a new agent in any workspace, without going back to the Mac
-- Phone dashboard over LAN, Tailscale, or a Cloudflare Tunnel
-- Installs to your phone's home screen as a PWA, with push when an agent blocks
-- One-shot QR pairing with revocable, per-device access
-
-## Screenshots
+[herdr](https://herdr.dev) runs coding agents in terminal panes. Merino is the
+instrument panel: a live agent list with blocked ones first, streaming pane
+output in colour, and a phone dashboard so you can answer an agent from
+wherever you are.
 
 <table>
   <tr>
@@ -56,244 +47,126 @@
   </tr>
 </table>
 
-## Requirements
-
-- macOS on **Apple Silicon** (prebuilt binaries; Intel needs a source build)
-- [herdr](https://herdr.dev) running — Merino is a view onto it, not a replacement
-
 ## Install
 
-Builds are **ad-hoc signed** (no Apple Developer ID or notarization yet), so every path below clears the Gatekeeper quarantine bit for you.
+macOS on Apple Silicon, with [herdr](https://herdr.dev) already running.
 
-### One-liner
+```bash
+brew tap LoneExile/merino
+brew trust LoneExile/merino
+brew install --cask merino
+```
+
+Builds are ad-hoc signed — no Developer ID, no notarization — so every install
+path clears the quarantine bit for you.
+
+<details>
+<summary>Other ways in</summary>
+
+**Script** — installs to `/Applications`, strips quarantine, opens it.
+Override with `MERINO_APP_DIR`.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/LoneExile/merino/main/scripts/install.sh | bash
 ```
 
-Downloads the latest [release](https://github.com/LoneExile/merino/releases/latest), installs **Merino.app** into `/Applications`, strips quarantine, and opens it. Override the location with `MERINO_APP_DIR=~/Applications`.
-
-### Homebrew
-
-```bash
-brew tap LoneExile/merino
-brew trust LoneExile/merino          # third-party tap
-brew install --cask merino
-```
-
-Upgrade with `brew update && brew upgrade --cask merino`.
-
-No `--no-quarantine` needed, and Homebrew 6 rejects it outright: the cask's own
-postflight strips the quarantine bit after install.
-
-### Manual
-
-1. Download **Merino-\*-macos-arm64.zip** from [Releases](https://github.com/LoneExile/merino/releases/latest)
-2. Unzip and drag **merino.app** into `/Applications`
-3. Clear quarantine and open:
+**Manual** — grab `Merino-*-macos-arm64.zip` from
+[Releases](https://github.com/LoneExile/merino/releases/latest), drag it to
+`/Applications`, then:
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/Merino.app 2>/dev/null || \
-  xattr -dr com.apple.quarantine /Applications/merino.app
-open /Applications/Merino.app 2>/dev/null || open /Applications/merino.app
+xattr -dr com.apple.quarantine /Applications/Merino.app
+open /Applications/Merino.app
 ```
 
-If macOS still says *“Apple could not verify…”*, use **System Settings → Privacy & Security → Open Anyway**, or right-click the app and choose **Open**.
+If macOS still refuses, right-click → **Open**, or
+**System Settings → Privacy & Security → Open Anyway**.
+
+Intel needs a source build — see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+</details>
 
 ## Quick start
 
-1. Open **Merino**. A sheep appears in your menu bar.
-2. **Left-click** it for the panel; **right-click** for the menu.
-3. Right-click → **Pair phone…**, then scan the QR on your phone.
+1. Open Merino. A sheep appears in your menu bar.
+2. Left-click for the panel, right-click for the menu.
+3. Right-click → **Pair phone…** and scan the QR.
 
-The sheep reports the herd without you looking at it: it **jumps** when an agent is blocked, **walks** when one is working, and stands still when nothing needs you.
+The sheep reports the herd without you looking: it **jumps** when an agent is
+blocked, **walks** when one is working, stands still when nothing needs you.
 
-### Start a new agent
+**+** in the panel starts a new agent in any workspace — only agents actually
+installed on your Mac are offered.
 
-Click **+** in the panel (or right-click → **New agent…**), pick a workspace and an agent, and it opens as soon as it is ready. Only agents actually installed on your Mac are offered.
+## From your phone
 
-## Signing in from a phone
+Same Wi-Fi or Tailscale works with no configuration; **Pair phone…** lists
+every address your Mac answers on. For anything outside your network, use a
+tunnel — **do not forward port 8730**, it is plain HTTP and the dashboard can
+type into live terminals.
 
-**QR pairing is the way in.** Each phone gets its own grant, which you can revoke without touching anything else.
+Add it to your home screen for push notifications. On iPhone that is the only
+way to get them.
 
-Username/password sign-in is **off by default** — a password that a whole LAN, or the public internet, can attempt is the weakest door this app has. Turn it on deliberately in **Settings → Access** if you need it (for example to sign in from a browser you cannot pair with a QR).
-
-Lost a phone? **Settings → Pairing → Panic revoke all phones**.
-
-**How long you stay signed in.** A paired phone stays signed in while you keep
-using it, and is signed out after **12 hours idle** or **7 days** since
-pairing, whichever comes first. Quitting Merino signs every device out
-immediately — the keys that sign sessions live in memory only, so a stolen
-session cannot outlive the app. After any of those, scan a new QR.
+→ [Phone access](docs/phone-access.md): Cloudflare Tunnel, pairing and session
+lifetime, PWA install.
 
 ## Settings
 
-Everything is in the panel under **Settings**, grouped by intent:
-
-| Tab | What lives there |
+| Tab | |
 | --- | --- |
-| **Pairing** | Show the pairing QR, see paired devices, revoke one or all |
-| **Access** | Phone writes, session switch, password sign-in, phone password |
+| **Pairing** | Pairing QR, paired devices, revoke one or all |
+| **Access** | Phone writes, session switch, password sign-in |
 | **Display** | Theme, line wrap, terminal font size |
 | **System** | Launch at login, updates, notification alerts |
-| **About** | Who you are signed in as, transport, keyboard shortcuts |
+| **About** | Identity, transport, keyboard shortcuts |
 
-**Phone writes** decides whether a paired phone can answer asks, type, and interrupt agents. It is on by default in the menu bar app. Every write is recorded in the audit log at `~/Library/Logs/merino/audit.jsonl`. Reload the phone dashboard after changing it.
-
-## Install it on your phone
-
-The dashboard is a PWA. Adding it to the home screen gets you a standalone
-window with no browser chrome, the Merino icon in your app grid, and on iPhone
-it is the only way to receive push notifications.
-
-- **iPhone / iPad**: Safari, then **Share → Add to Home Screen**. Safari tabs
-  never receive push, so for alerts this is required rather than cosmetic.
-- **Android**: Chrome offers **Install app** in the address bar or the ⋮ menu.
-
-It is not an offline app, and does not pretend to be. The service worker caches
-the app shell so it opens instantly and rides out a flaky connection, but every
-agent, every line of pane output and every keystroke comes from your Mac live.
-With the Mac asleep you get the shell and an empty herd.
-
-## Notifications
-
-Enable them in **Settings → System** to be told the moment an agent needs you, even with the app closed.
-
-On iPhone this requires [installing the dashboard to your Home Screen](#install-it-on-your-phone) first. Safari tabs do not receive push.
-
-## Reaching it from your phone
-
-Merino serves the dashboard on port **8730** and listens on your whole network
-by default, so nothing needs configuring for the two common cases:
-
-- **Same Wi‑Fi** — pair with the QR and you are done.
-- **Tailscale** — the pairing sheet lists your Tailscale address alongside the
-  LAN one. Pick that and the phone works from anywhere on your tailnet.
-
-Both are in **Pair phone…**, which shows every address your Mac can be reached
-at and mints a one-shot code for the one you choose.
-
-Do not simply forward port 8730 from your router. It is plain HTTP, and the
-dashboard can type into live terminals. For access from outside your network,
-use a tunnel.
-
-Your data (audit log, device grants, keys) stays under
-`~/Library/Logs/merino/`.
-
-### Cloudflare Tunnel
-
-A [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)
-gives you real HTTPS on a hostname you own, with no inbound port open anywhere:
-the connector dials out to Cloudflare, so your router keeps saying no to
-everything.
-
-This is the one part of Merino that needs the command line. A bundle launched
-from Finder, Homebrew or login items is given no arguments and inherits no
-shell environment, so neither setting below can reach the installed app.
-
-| Setting | Why |
-| --- | --- |
-| `--behind-proxy` | Marks session cookies Secure, and trusts the proxy's client-IP header so the login throttle counts the phone rather than the tunnel. |
-| `MERINO_PUBLIC_URL` | Points the pairing QR at the public origin. Without it Merino advertises the LAN address it can see, which your phone cannot open from outside. |
-
-Where to bind depends on where `cloudflared` runs.
-
-**Connector on the same Mac**: bind loopback, and nothing else can reach the
-origin at all.
-
-```bash
-MERINO_PUBLIC_URL=https://merino.example.com \
-  merino --listen 127.0.0.1:8730 --behind-proxy
-```
-
-**Connector in Docker or a VM**: it cannot reach the host's loopback, so bind
-the LAN interface.
-
-```bash
-MERINO_PUBLIC_URL=https://merino.example.com \
-  merino --listen 0.0.0.0:8730 --behind-proxy
-```
-
-The second shape has a trade-off worth stating: with a LAN bind, another
-machine on your network can spoof `X-Forwarded-For` or `CF-Connecting-IP` and
-dilute the login throttle. That is acceptable on a home LAN behind a firewall.
-It is not a reason to let port 8730 past that firewall.
-
-Then point the tunnel's public hostname at whichever origin you chose. The
-`tunnel` and `tunnel-loopback` recipes in the justfile wrap both shapes for
-development; see [CONTRIBUTING.md](CONTRIBUTING.md).
+**Phone writes** decides whether a paired phone can answer asks, type and
+interrupt. On by default in the menu bar app, and every write lands in
+`~/Library/Logs/merino/audit.jsonl`. Reload the phone after changing it.
 
 ## Headless
 
-`merinod` is Merino without the menu bar: the same dashboard, the same login
-wall, the same phone UI, run as a background service. It is a single static
-binary with no macOS dependency, so it runs under systemd, Docker or
-Kubernetes.
+`merinod` is the same dashboard with no menu bar — a static binary for
+systemd, Docker or Kubernetes.
 
 ```bash
-go build ./cmd/merinod
-./merinod                  # serves on 0.0.0.0:8730 against ~/.config/herdr/herdr.sock
-./merinod config init      # write a commented config.yml
-./merinod config show      # the settings actually in effect, and where each came from
+go build ./cmd/merinod && ./merinod
 ```
 
-Two rules shape every deployment.
+Two things decide every deployment: herdr has no network port, only a unix
+socket, so merinod opens a *file* rather than connecting to anything; and it
+must run as the **user that owns that socket**, or the agent list stays empty
+while everything else looks healthy.
 
-**herdr has no network port.** It listens on a unix socket and nothing else,
-so merinod does not connect to herdr — it opens a file. Running them on one
-host is simplest; a container can mount the socket's directory; and for
-Kubernetes an SSH forward carries the socket into the pod, which is also the
-only option that reaches a herd behind NAT.
+→ [deploy/](deploy/): systemd, Docker and Kubernetes, with manifests.
 
-**merinod must run as the user that owns the socket.** herdr's socket is
-`srw-------`. Get this wrong and nothing looks broken — the dashboard serves,
-sign-in works, `/healthz` returns 200 — but the agent list stays empty.
+## More
 
-Setup for each layout, and what to do when it misbehaves, is in
-**[deploy/](deploy/)**.
+- [Troubleshooting](docs/troubleshooting.md)
+- [Contributing](CONTRIBUTING.md) — build, architecture, dev loop
+- [Changelog](CHANGELOG.md)
 
-One thing worth knowing before you plan around it: there is no "Pair phone"
-command. Pairing tickets live in the running server's memory, so a separate
-process cannot mint one. Headless installs sign in with a password file
-(`auth.passwordFile`) instead. And a merinod serves exactly one herd — run one
-per herd, each with its own port and state directory.
-
-## Troubleshooting
-
-**The menu bar panel opens in the middle of the screen.** Fixed in current builds; update.
-
-**The phone shows “read-only”.** Turn on **Settings → Access → Allow phone writes**, then reload the phone dashboard.
-
-**The login page says password sign-in is disabled.** That is the default. Pair with a QR, or enable it in **Settings → Access**.
-
-**The public URL returns `530` but the Mac app is running.** No connector is registered, so Cloudflare fails before the request ever reaches your Mac. The problem is the tunnel, not Merino: check the connector is running. If it lives in Docker, check the container is up.
-
-**The public URL returns `502`.** The opposite: the connector is up and Cloudflare reached it, but it could not reach Merino. Almost always the origin bind. A connector in Docker cannot reach the Mac's loopback, so `--listen 127.0.0.1:8730` is unreachable to it; use `0.0.0.0:8730`. See [Cloudflare Tunnel](#cloudflare-tunnel).
-
-**Signed in over a tunnel, but the QR still shows a LAN address.** `MERINO_PUBLIC_URL` is unset, so Merino is advertising the address it can see rather than the one your phone uses.
-
-**An agent is missing from the New agent list.** Merino offers only agents it can find in your login shell. If `command -v <agent>` works in a normal terminal but the agent is missing here, reopen Settings — the list is cached briefly.
-
-## Uninstall
+<details>
+<summary>Uninstall</summary>
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/LoneExile/merino/main/scripts/uninstall.sh | bash
 ```
 
-Add `-s -- --keep-state` to keep paired devices and settings, or `-s -- --dry-run` to preview. Manually:
+`-s -- --keep-state` keeps paired devices and settings; `-s -- --dry-run`
+previews. By hand:
 
 ```bash
 osascript -e 'quit app "Merino"' 2>/dev/null || true
-rm -rf /Applications/Merino.app /Applications/merino.app   # or: brew uninstall --cask merino
+rm -rf /Applications/Merino.app          # or: brew uninstall --cask merino
 rm -rf ~/Library/Logs/merino ~/Library/Caches/merino
-rm -f ~/Library/Preferences/dev.apinant.merino.plist
+rm -f  ~/Library/Preferences/dev.apinant.merino.plist
 ```
 
-This does not remove [herdr](https://herdr.dev).
+Leaves [herdr](https://herdr.dev) alone.
 
-## Contributing
-
-Build instructions, architecture, and the development loop are in [CONTRIBUTING.md](CONTRIBUTING.md).
+</details>
 
 ## License
 
