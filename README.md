@@ -232,72 +232,31 @@ Kubernetes.
 
 ```bash
 go build ./cmd/merinod
-./merinod                       # serves on 0.0.0.0:8730 against ~/.config/herdr/herdr.sock
-./merinod config init           # write a commented config.yml
-./merinod config show           # what it actually resolved, and from which rung
+./merinod                  # serves on 0.0.0.0:8730 against ~/.config/herdr/herdr.sock
+./merinod config init      # write a commented config.yml
+./merinod config show      # the settings actually in effect, and where each came from
 ```
 
-### The one constraint that shapes every deployment
+Two rules shape every deployment.
 
-**herdr never listens on a port.** It has a unix socket and nothing else, so
-there is no host to dial. The requirement is not "reach herdr over the
-network" — it is *put a socket file where merinod can open it*.
+**herdr has no network port.** It listens on a unix socket and nothing else,
+so merinod does not connect to herdr — it opens a file. Running them on one
+host is simplest; a container can mount the socket's directory; and for
+Kubernetes an SSH forward carries the socket into the pod, which is also the
+only option that reaches a herd behind NAT.
 
-| Shape | What it is | Verdict |
-| --- | --- | --- |
-| **systemd** | herdr + merinod on one Linux host, same user | Simplest. Everything works. |
-| **Docker** | container with `~/.config/herdr` bind-mounted | Works. Mount the whole directory, not the bare socket — herdr recreates the socket when it restarts. Run the container as the socket's owner (`--user`). |
-| **SSH forward** | herd stays put; `ssh -L` carries the socket into the pod | The Kubernetes answer, and the only one that reaches a herd behind NAT. |
-| **socat relay** | bridge the socket over TCP | **Don't.** herdr's socket API can spawn agents and type into live panes. The unix socket *was* the access control; a bare TCP port has none. |
+**merinod must run as the user that owns the socket.** herdr's socket is
+`srw-------`. Get this wrong and nothing looks broken — the dashboard serves,
+sign-in works, `/healthz` returns 200 — but the agent list stays empty.
 
-There is a second half to that constraint, and it is the one that actually
-bites: a socket is a file with an owner, and herdr's is `srw-------`.
-**merinod has to run as the uid that owns it.** Get that wrong and nothing
-looks broken — the dashboard serves, `/healthz` returns 200, and the herd is
-reported unreachable forever.
+Setup for each layout, and what to do when it misbehaves, is in
+**[deploy/](deploy/)**.
 
-Manifests and a systemd unit are in [deploy/](deploy/), with the trade-offs of
-each spelled out.
-
-### Signing in, headless
-
-There is no Settings sheet, so there is no "Pair phone" button — and
-deliberately no CLI substitute for one. Pairing tokens and device grants live
-in the server's memory, so a separate process writing those files would report
-success and change nothing. Instead, name a password file:
-
-```yaml
-access:
-  passwordLogin: true
-auth:
-  user: "operator"
-  passwordFile: "/run/secrets/merino-password"   # a Kubernetes Secret is a file
-```
-
-The password is read from the file, never from a config key and never from a
-flag: argv is world-readable and lands in shell history.
-
-### Two things that will bite you
-
-**Set `publicUrl` in a container.** Left empty, Merino autodetects a LAN
-address — which inside a container is the *container's* address, a URL no
-phone can open.
-
-**Make the state directory a volume.** It holds paired devices, the Web Push
-VAPID keypair and push subscriptions. Losing it signs out every phone, and
-push then fails *silently*: every browser holds a subscription signed by a key
-you no longer have, and nothing errors.
-
-### One dashboard, one herd
-
-A merinod serves exactly one herd. Several machines behind one dashboard is
-not supported: herdr pane IDs are workspace-scoped and sequential, so two
-herds both have a `w1:p1` within minutes of each other and one host's pane
-would overwrite the other's.
-
-Running one merinod per herd works today, but give each its own `listen` port
-**and** its own `paths.stateDir` — otherwise they fight over the same
-credentials, device store and gate files.
+One thing worth knowing before you plan around it: there is no "Pair phone"
+command. Pairing tickets live in the running server's memory, so a separate
+process cannot mint one. Headless installs sign in with a password file
+(`auth.passwordFile`) instead. And a merinod serves exactly one herd — run one
+per herd, each with its own port and state directory.
 
 ## Troubleshooting
 

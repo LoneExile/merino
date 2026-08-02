@@ -1,8 +1,8 @@
-# Shape C3 — the PRIMARY manifest (deploy/README.md has the full shape
+# The SSH-forward layout — the primary Kubernetes manifest (deploy/README.md has the full shape
 # table). The herd stays exactly where it runs today; an `autossh` sidecar
 # carries herdr's socket into this pod over `ssh -L`, and merinod opens the
 # forwarded file from a shared emptyDir. No image to build or credential for
-# herdr itself, unlike Shape C1 (merino-pod.yaml) — that is why this is the
+# herdr itself, unlike herdr-in-the-pod (merino-pod.yaml) — that is why this is the
 # one to reach for first.
 #
 # Before applying:
@@ -16,17 +16,17 @@
 #      below) BEFORE handing the private half to this cluster.
 #
 # ---------------------------------------------------------------------------
-# Honest limitations of C3 — stated here, not left for someone to discover
+# Limitations of this layout — stated here, not left for someone to discover
 # in production:
 #
 #   * The herd host must stay awake. A sleeping laptop is a dead SSH
-#     forward, which is a blank dashboard — C3 does not make herdr itself
+#     forward, which is a blank dashboard — this does not make herdr itself
 #     durable, only reachable while it's running.
 #   * Image paste is broken. web/paste.go's resolveHomeImagePath requires
 #     the pasted file to live under *merinod's* $HOME, but the agent that
 #     generated it wrote the file under *herdr's* $HOME, on a different
-#     host. Mounting a volume does not fix this under C3 the way it can
-#     under Shape B or C1 — there is no shared filesystem here, only a
+#     host. Mounting a volume does not fix this here the way it can
+#     with Docker or herdr-in-the-pod — there is no shared filesystem here, only a
 #     forwarded socket. Expect paste to 404.
 #   * Session discovery lists the wrong machine. ListSessions walks
 #     ~/.config/herdr/sessions/* — that's this POD's directory, not the
@@ -77,7 +77,7 @@ data:
       # Arbitrary input into live terminals; audited. Off by default here —
       # flip to true once you've reviewed what that means for this herd.
       allowWrites: false
-      # See the C3 limitations above: this pod's session list is not the
+      # See the limitations at the top of this file: this pod's session list is not the
       # herd's, so offering a switcher would be offering a list that lies.
       allowSessionSwitch: false
       # The headless admission path: with no desktop Settings sheet to flip
@@ -95,10 +95,10 @@ data:
 
     paths:
       stateDir: "/var/lib/merino"
-      # "-" writes JSONL to stdout for a log collector rather than a file
-      # under stateDir, which is the container default per the plan this
-      # image was built from (macOS/systemd keep a file; the image ships
-      # "-" because a container's own log stream is already collected).
+      # "-" writes JSONL to stdout for a log collector instead of a file
+      # under stateDir. macOS/systemd builds default to a file; this image
+      # defaults to "-" because the container's own log stream is already
+      # collected.
       auditLog: "-"
 
     log:
@@ -115,33 +115,29 @@ metadata:
   #     --from-file=id_ed25519=./merino-forward-key \
   #     --from-file=known_hosts=./known_hosts
   #
-  # On the HERD host's ~/.ssh/authorized_keys, this key's PUBLIC half must
-  # be restricted, not appended plain. A forwarding key otherwise grants a
-  # full interactive shell on the operator's own workstation — the exact
-  # blast radius a "read-only dashboard" deploy should never carry:
+  # On the HERD host's ~/.ssh/authorized_keys, restrict this key's PUBLIC
+  # half — do not append it plain. An unrestricted forwarding key grants a
+  # full interactive shell on the operator's own workstation, the exact
+  # blast radius a "read-only dashboard" deploy must not carry:
   #
   #   command="/bin/false",no-pty,no-agent-forwarding,no-X11-forwarding,\
   #   no-user-rc ssh-ed25519 AAAA... merino-forward
   #
-  # command="/bin/false" is what does the work: it refuses any interactive
-  # or remote-command use of the key while leaving forwarding intact.
-  # Verified against a real sshd (OpenSSH 9.x): with this line, `ssh <host>
-  # echo hi` fails and `ssh -L <sock>:<herd.sock> <host>` succeeds.
+  # command="/bin/false" refuses any interactive or remote-command use of
+  # the key while leaving forwarding intact: `ssh <host> echo hi` fails,
+  # `ssh -L <sock>:<herd.sock> <host>` succeeds.
   #
-  # Do NOT add permitopen="none" here, however tempting it reads. `none` is
-  # a value of the sshd_config PermitOpen *directive*, not of the
-  # authorized_keys permitopen *option*, which takes host:port. sshd treats
-  # the malformed option as a bad key line and rejects the key OUTRIGHT —
-  # authentication then falls through to password and the tunnel never
-  # comes up. Confirmed the hard way: adding it produced
-  # "Permission denied (publickey,password)", and removing it restored the
-  # forward immediately.
+  # Do not add permitopen="none". `none` is a value of the sshd_config
+  # PermitOpen *directive*, not the authorized_keys permitopen *option*
+  # (which takes host:port). sshd treats the malformed option as a bad key
+  # line and rejects the key outright, so authentication falls through to
+  # password and the tunnel never comes up — symptom:
+  # "Permission denied (publickey,password)".
   #
-  # Worth knowing rather than assuming: permitopen governs TCP forwarding
-  # only. OpenSSH has no authorized_keys option that restricts WHICH unix
-  # socket a key may forward, so this key can reach any unix socket the
-  # account can. Give it its own low-privilege account on the herd host if
-  # that matters.
+  # permitopen only governs TCP forwarding. OpenSSH has no authorized_keys
+  # option restricting WHICH unix socket a key may forward, so this key can
+  # reach any unix socket the account can — give it its own low-privilege
+  # account on the herd host.
 type: Opaque
 stringData:
   id_ed25519: |
@@ -170,11 +166,10 @@ metadata:
   name: merino-state
 spec:
   # SET THIS. Omitting it relies on the cluster having a default
-  # StorageClass, and plenty do not — including the one this manifest was
-  # tested on. The failure is silent and misleading: the PVC sits Pending
-  # with "no persistent volumes available for this claim and no storage
-  # class is set", the pod sits Pending with no node and no container
-  # events, and nothing anywhere names storage as the cause.
+  # StorageClass, and plenty do not. Symptom: the PVC sits Pending with
+  # "no persistent volumes available for this claim and no storage class
+  # is set", the pod sits Pending with no node and no container events,
+  # and nothing anywhere names storage as the cause.
   #
   #   kubectl get storageclass          # pick one
   #
@@ -213,21 +208,20 @@ spec:
         # fsGroup, not just runAsUser, because merino-state is a PVC:
         # dynamic provisioners create the volume owned by root, and fsGroup
         # is what makes kubelet chown/chgrp it to a group merinod's uid can
-        # actually write — the "only a runAsNonRoot uid that owns the
-        # volume" the plan's §9 note assumes.
+        # actually write.
         runAsNonRoot: true
         fsGroup: 65532
-        # Required by the PodSecurity "restricted" profile. A real apiserver
-        # warned on this manifest without it; a cluster that ENFORCES
-        # restricted rejects the pod outright rather than warning. Set at pod
-        # level so both containers inherit it.
+        # Required by the PodSecurity "restricted" profile — a cluster
+        # enforcing "restricted" rejects the pod outright without it (one
+        # merely warns). Set at pod level so both containers inherit it.
         seccompProfile:
           type: RuntimeDefault
       containers:
         - name: merinod
-          # Placeholder — build+push build/docker/Dockerfile.merinod and
-          # point this at that tag.
-          image: ghcr.io/loneexile/merinod:latest
+          # Build and push this first; no image is published yet.
+          #   docker build -f build/docker/Dockerfile.merinod -t <your-registry>/merinod:<tag> .
+          #   docker push <your-registry>/merinod:<tag>
+          image: REPLACE-ME/merinod:latest
           args: ["serve"]
           ports:
             - name: http
@@ -273,31 +267,29 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 10
         - name: autossh
-          # A stock alpine base, not a purpose-built image — none exists
-          # for this yet, so the packages are installed at container start
-          # (verified present in alpine:3.20's repos: autossh 1.4g-r3,
-          # openssh-client 9.7_p1-r5). That costs a package-index fetch on
-          # every pod start and an egress path to the alpine mirror from
-          # inside the cluster, and IS why readOnlyRootFilesystem is false
-          # here — apk needs to write /var/cache/apk. A production rollout
-          # should replace this with a small image that already has both
-          # binaries baked in and can run readOnlyRootFilesystem: true.
+          # A stock alpine base, not a purpose-built image — none exists yet,
+          # so autossh and openssh-client (alpine:3.20: autossh 1.4g-r3,
+          # openssh-client 9.7_p1-r5) install at container start. That needs
+          # a package-index fetch and cluster egress to the alpine mirror on
+          # every pod start, and is why readOnlyRootFilesystem is false below
+          # — apk needs to write /var/cache/apk. Replace this with a small
+          # image that has both binaries baked in; it can run as 65532 with
+          # readOnlyRootFilesystem: true and needs neither concession.
           image: alpine:3.20
           command: ["sh", "-c"]
           args:
             - |
               set -eu
               apk add --no-cache autossh openssh-client
-              # ssh refuses a private key any group or other can read, and a
+              # ssh refuses a private key any group or other can read. A
               # Secret volume cannot be made private enough on its own: the
-              # defaultMode: 0400 below is silently widened to 0440 by the
-              # pod's own fsGroup, which the kubelet applies to every mounted
-              # volume. The two hardening settings cancel out, and the only
-              # symptom is
+              # defaultMode: 0400 below is widened to 0440 by the pod's own
+              # fsGroup, which kubelet applies to every mounted volume. The
+              # two settings cancel out. Symptom:
               #     Load key "...": bad permissions
               #     Permission denied (publickey,password).
-              # with an empty socket directory and a merinod that reports the
-              # herd unreachable forever. Observed on a real cluster.
+              # with an empty socket directory and merinod reporting the herd
+              # unreachable forever.
               #
               # Copying to a private path is immune to that, and to the uid
               # and mount-mode differences between this stock-alpine sidecar
@@ -307,22 +299,22 @@ spec:
               # The forwarded socket is created by THIS container, and
               # merinod runs as a DIFFERENT uid (65532) next door. OpenSSH
               # wraps the bind in umask(0177), so the socket is always 0600
-              # owned by the ssh process's uid — umask here cannot widen it,
-              # which was the first thing tried and it did not work.
+              # owned by the ssh process's uid — umask alone cannot widen it.
               #
-              # merinod then gets "connect: permission denied" forever while
-              # the pod reports 2/2 Ready, because /healthz reports THIS
-              # PROCESS, not the herd. Observed on a real cluster.
+              # Without re-moding, merinod gets "connect: permission denied"
+              # forever while the pod reports 2/2 Ready, because /healthz
+              # reports THIS PROCESS, not the herd.
               #
-              # The real fix is a sidecar image that already has autossh and
-              # openssh-client baked in, running as 65532 like merinod: same
-              # uid, no permission gap, and no apk-needs-root override above.
-              # Until that image exists, re-mode the socket after ssh creates
-              # it. Continuously, not once: autossh recreates the socket every
-              # time it restarts the tunnel, and each new one is 0600 again.
+              # The real fix is a sidecar image with autossh and
+              # openssh-client already baked in, running as 65532 like
+              # merinod: same uid, no permission gap, no apk-needs-root
+              # override above. Until that image exists, re-mode the socket
+              # continuously after ssh creates it — autossh recreates the
+              # socket every time it restarts the tunnel, and each new one
+              # is 0600 again.
               #
-              # The GROUP is already correct — the shared emptyDir carries the
-              # pod's fsGroup, so anything created in it is gid 65532.
+              # The GROUP is already correct — the shared emptyDir carries
+              # the pod's fsGroup, so anything created in it is gid 65532.
               ( while :; do
                   [ -S /run/herdr/herdr.sock ] && chmod 0660 /run/herdr/herdr.sock 2>/dev/null || true
                   sleep 5
@@ -381,17 +373,12 @@ spec:
             # is also what PodSecurity "restricted" requires.
             capabilities:
               drop: ["ALL"]
-            # Root, and a writable root filesystem, ONLY because this
-            # container installs its own packages at startup: `apk add`
-            # needs both. The pod-level runAsNonRoot: true is overridden
-            # here deliberately — without this override kubelet refuses to
-            # start the container at all, because alpine's default user is
-            # root and the pod says non-root. Demonstrated, not assumed.
-            #
-            # This is the concrete cost of the stock-alpine shortcut above,
-            # and the reason to replace it with an image that already has
-            # autossh and openssh-client baked in: that image runs as 65532
-            # with readOnlyRootFilesystem: true and needs neither override.
+            # This container installs its packages at startup, and `apk add`
+            # needs root and a writable filesystem — hence the overrides
+            # below. Without them kubelet refuses to start the container,
+            # because alpine's default user is root while the pod requires
+            # non-root. A sidecar image with autossh and openssh-client
+            # already baked in runs as 65532 and needs neither override.
             runAsNonRoot: false
             runAsUser: 0
             readOnlyRootFilesystem: false

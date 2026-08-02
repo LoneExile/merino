@@ -1,4 +1,4 @@
-# Shape B: merinod in a container, herdr still on the host — see
+# Docker: merinod in a container, herdr still on the host — see
 # deploy/README.md for the full shape table and its honest tradeoffs.
 #
 # Build first: `docker build -f build/docker/Dockerfile.merinod -t merinod:local .`
@@ -47,14 +47,13 @@ services:
       # not), so it is never bound to a bare bind mount here.
       - "merino-state:/var/lib/merino"
     restart: unless-stopped
-    # VERIFIED on a real Docker host, and it fails by default: the image's
-    # distroless base runs as uid 65532, and herdr's socket is srw-------
-    # owned by whoever runs herdr. Those are not the same uid, so merinod
-    # logs
+    # This fails by default: the image's distroless base runs as uid 65532,
+    # and herdr's socket is srw------- owned by whoever runs herdr. Those
+    # are not the same uid, so merinod logs
     #   dial herdr socket ...: connect: permission denied
-    # and then keeps serving a perfectly healthy-looking dashboard with the
-    # herd reported unreachable — /healthz is 200 the whole time, because it
-    # reports THIS PROCESS, not the herd.
+    # and keeps serving a healthy-looking dashboard with the herd reported
+    # unreachable — /healthz is 200 the whole time, because it reports THIS
+    # PROCESS, not the herd.
     #
     # Set this to the socket's owner. `ls -l ~/.config/herdr/herdr.sock`.
     #   user: "${UID}:${GID}"

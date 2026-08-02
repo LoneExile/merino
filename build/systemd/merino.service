@@ -1,4 +1,4 @@
-# Shape A: herdr and merinod on the same Linux host, as the SAME user. This
+# herdr and merinod on the same Linux host, as the SAME user. This
 # is the only shape where the socket, session discovery, paste and spawn all
 # just work with zero configuration — see deploy/README.md's shape table.
 #

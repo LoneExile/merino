@@ -1,95 +1,225 @@
-# Deploying `merinod`
+# Running `merinod`
 
-`merinod` is Merino without a desktop — the same dashboard, run as a
-background daemon. It must be able to **open** herdr's unix socket
-(`~/.config/herdr/herdr.sock` by default): same host, a bind mount, or an
-`ssh -L` forward. herdr never listens on a network port, so there is nothing
-to dial remotely — only a socket *file* to reach.
+`merinod` is Merino without the menu bar: the same dashboard, the same login
+wall, the same phone UI, run as a background service on Linux.
 
-## The constraint that decides every deployment: uid
+Everything here assumes one rule. **herdr has no network port.** It listens on
+a unix socket — `~/.config/herdr/herdr.sock` — and nothing else. So merinod
+does not connect to herdr over a network; it opens a file. Every layout below
+is a different way of putting that file within reach.
 
-A unix socket is a file with an owner and a mode, and herdr's is `srw-------`
-— owner only. **merinod must run as the uid that owns the socket.** Not a
-group, not root-by-default, not "close enough". Every shape below is really
-just a different arrangement of that fact.
+And a second rule that follows from the first: a socket is a file with an
+owner, and herdr's is `srw-------`. **merinod has to run as the user that owns
+it.** Get this wrong and nothing looks broken — the dashboard serves, sign-in
+works, `/healthz` says 200 — but the agent list stays empty forever.
 
-This was the most common failure while testing these files on real hosts, and
-it is quiet: merinod stays up, serves a perfectly healthy dashboard, returns
-200 from `/healthz`, and reports the herd unreachable forever.
+---
+
+## Which layout do you want?
+
+| Your situation | Use |
+| --- | --- |
+| herdr runs on a Linux box, and merinod can too | [systemd](#systemd) |
+| herdr runs on a Linux box, you want merinod in a container | [Docker](#docker) |
+| herdr runs somewhere else (a laptop, a workstation, behind NAT) and merinod runs in Kubernetes | [Kubernetes](#kubernetes) |
+
+Prefer systemd whenever it is available. It is the only layout where paste,
+session discovery and spawning all work without qualification, because herdr
+and merinod share a machine and a user.
+
+Before anything else, build the binary or the image — **nothing is published
+yet**, so there is no `docker pull` shortcut:
+
+```bash
+go build ./cmd/merinod                                    # a single static binary
+docker build -f build/docker/Dockerfile.merinod -t merinod:local .
+```
+
+---
+
+## systemd
+
+Runs merinod as your own user, next to herdr.
+
+```bash
+go build -o ~/.local/bin/merinod ./cmd/merinod
+merinod config init                       # writes ~/.config/merino/config.yml
+$EDITOR ~/.config/merino/config.yml       # at minimum, see "Signing in" below
+
+mkdir -p ~/.config/systemd/user
+cp build/systemd/merino.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now merino
+systemctl --user status merino
+```
+
+A `--user` unit, not a system one, because the socket lives in your home
+directory and belongs to you.
+
+To survive logout, enable lingering: `sudo loginctl enable-linger $USER`.
+
+---
+
+## Docker
+
+herdr stays on the host; merinod runs in a container that mounts herdr's
+config directory.
+
+```bash
+docker compose -f deploy/compose.yaml up -d
+```
+
+Two things to set before that works:
+
+**Run as the socket's owner.** The image runs as uid 65532. Check who owns the
+socket and match it:
+
+```bash
+ls -l ~/.config/herdr/herdr.sock      # -> srw------- 1 you you
+```
+
+then uncomment `user: "${UID}:${GID}"` in `compose.yaml`.
+
+**Mount the whole directory, not the socket file.** `compose.yaml` already
+does. herdr replaces the socket file whenever it restarts, and a bind mount of
+the old file keeps pointing at something that no longer exists.
+
+---
+
+## Kubernetes
+
+herdr stays wherever it is. An `autossh` sidecar carries its socket into the
+pod over SSH, and merinod opens the forwarded socket.
+
+This is the only layout that reaches a herd behind NAT, and the SSH key is
+what authenticates it.
+
+```bash
+# 1. Build and push an image your cluster can pull.
+docker build -f build/docker/Dockerfile.merinod -t <registry>/merinod:v1 .
+docker push <registry>/merinod:v1
+
+# 2. A key for the tunnel, restricted on the herd host.
+ssh-keygen -t ed25519 -N '' -f ./merino-forward -C merino-forward
+ssh-keyscan -t ed25519 <herd-host> > ./known_hosts
+
+# On the herd host, prefix the public key in ~/.ssh/authorized_keys with:
+#   command="/bin/false",no-pty,no-agent-forwarding,no-X11-forwarding,no-user-rc
+# That refuses any shell while still allowing the forward.
+
+kubectl create secret generic merino-ssh-key \
+  --from-file=id_ed25519=./merino-forward \
+  --from-file=known_hosts=./known_hosts
+kubectl create secret generic merino-dashboard-password --from-literal=password='...'
+
+# 3. Fill in every REPLACE-ME in the manifest, then apply.
+kubectl apply -f deploy/k8s/merino-ssh.yaml
+```
+
+`grep REPLACE-ME deploy/k8s/merino-ssh.yaml` lists what you must set: the
+image, the StorageClass, and the herd's SSH host and user.
+
+### What does not work in this layout
+
+- **Image paste.** Merino resolves pasted image paths under its own `$HOME`;
+  the agent reads them on the herd's host. Different filesystems.
+- **Session switching.** Merino lists sessions from its own
+  `~/.config/herdr/sessions/`, which in the pod is empty. Leave
+  `access.allowSessionSwitch: false`.
+- **A sleeping herd host.** The tunnel needs the far end awake. A closed
+  laptop is a blank dashboard.
+
+### The alternative: herdr in the pod
+
+`k8s/merino-pod.yaml` runs `herdr server` and merinod in one pod, sharing the
+socket through an `emptyDir` — no SSH, nothing to keep awake. It needs a herdr
+image with your agent CLIs installed and credentialed, and no such image
+exists yet, so it ships as a documented starting point rather than a
+supported path.
+
+---
+
+## Signing in
+
+There is no Settings sheet, so there is no "Pair phone" button — and no CLI
+substitute for one. Pairing tickets and device grants live in the running
+server's memory, so a separate command writing those files would report
+success and change nothing.
+
+Name a password file instead:
+
+```yaml
+access:
+  passwordLogin: true
+auth:
+  user: "operator"
+  passwordFile: "/run/secrets/merino-password"   # a Kubernetes Secret is a file
+```
+
+The password is read from the file. There is no `--password` flag and no
+password key in the config: argv is world-readable and a literal in
+`config.yml` travels with the deployment.
+
+## Two settings people miss
+
+**`publicUrl`** — required anywhere merinod cannot see the address your phone
+will use. Left empty it guesses from its own network interfaces, which inside
+a container is the container's own address: a URL nothing can open.
+
+**`paths.stateDir`** — must be a volume. It holds paired devices, the Web Push
+keypair and push subscriptions. Losing it signs out every phone, and push then
+fails *silently*: each browser holds a subscription signed by a key you no
+longer have, and nothing reports an error.
+
+## One dashboard, one herd
+
+A merinod serves exactly one herd. Pointing one at two is not supported:
+herdr numbers panes per workspace, so every herd has a `w1:p1` and the two
+would collide — at best a confusing list, at worst a keystroke delivered to
+the wrong machine.
+
+Run one merinod per herd. Give each its own `listen` port **and** its own
+`paths.stateDir`, or they will fight over the same credentials, device store
+and access-gate files.
+
+---
+
+## When it does not work
+
+**The agent list is empty but everything looks healthy.**
+Almost always the socket's owner. Check the logs:
 
 ```
-dial herdr socket /herd/herdr.sock: connect: permission denied
+dial herdr socket ...: connect: permission denied
 ```
 
-- **Docker (Shape B).** The image runs as uid 65532. If herdr runs as root —
-  or as anyone else — pass `--user <uid>:<gid>` matching the socket's owner.
-  `ls -l ~/.config/herdr/herdr.sock` tells you which.
-- **SSH forward (Shape C3).** The socket inside the pod is created by the
-  *sidecar*, not by herdr, so its owner is the sidecar's uid. OpenSSH wraps
-  its bind in `umask(0177)`, so it is always `0600` and no umask you set can
-  widen it — that was tried, and it does not work. Either run the sidecar as
-  the same uid as merinod (what a baked autossh image buys you), or re-mode
-  the socket after ssh creates it, which is what the manifest does today.
-- **systemd (Shape A).** A `--user` unit runs as the account that owns the
-  socket, which is exactly why it is the shape with nothing to explain.
+Run merinod as the user that owns `herdr.sock`. `/healthz` reports 200 through
+all of this because it describes the merinod process, not the herd.
 
-## Two more things the manifests get wrong by default
+**`Load key: bad permissions`, then `Permission denied (publickey,password)`.**
+The SSH key is group-readable. Kubernetes widens a Secret's file mode to match
+the pod's `fsGroup`, which defeats `defaultMode: 0400`. The manifest copies
+the key to a private path before use; if you have changed that, put it back.
 
-Both were found by applying these files to a real cluster, and both fail
-silently rather than loudly.
+**The pod never schedules and the PVC sits `Pending`.**
+No StorageClass. Nothing in the events will say so. `kubectl get storageclass`,
+then set `storageClassName`.
 
-- **Set `storageClassName` on the PVC.** Omitting it needs the cluster to
-  have a default StorageClass. Plenty do not. The PVC then sits `Pending`
-  forever, the pod sits `Pending` with no node and no container events, and
-  nothing anywhere names storage as the cause.
-- **Do not trust `defaultMode: 0400` to protect the SSH key.** The pod's own
-  `fsGroup` widens every mounted volume, so the key lands `0440` and ssh
-  refuses it as group-readable — `Load key: bad permissions`, then
-  `Permission denied (publickey,password)`, then an empty socket directory.
-  The manifest copies the key to a private path before use instead.
+**The QR code points somewhere unreachable.**
+`publicUrl` is unset, so merinod advertised a guess from its own interfaces.
 
-## Shapes
+**The tunnel comes up, then stops carrying traffic.**
+A dropped connection the far end never noticed. The manifest sets
+`ServerAliveInterval`, `ServerAliveCountMax` and `ExitOnForwardFailure` so ssh
+gives up and autossh rebuilds it; if you have trimmed those, restore them.
 
-| Shape | What | Verdict |
-| --- | --- | --- |
-| **A · systemd** (`build/systemd/merino.service`) | herdr and merinod on the same Linux host, same user | Simplest. Everything works: socket, session discovery, paste, spawn. |
-| **B · Docker** (`compose.yaml`) | merinod container, `~/.config/herdr` bind-mounted read-only | Works. Mount the whole directory, never the bare socket file. |
-| **C3 · SSH forward** (`k8s/merino-ssh.yaml`) | herd stays put; an `autossh` sidecar carries the socket into the pod | **Primary Kubernetes path.** No image to build for herdr itself, works through NAT, authenticated by a restricted SSH key. Paste and session-switching are broken under this shape — see the manifest's own comments. |
-| **C1 · one pod** (`k8s/merino-pod.yaml`) | `herdr server` + merinod in one pod, sharing an `emptyDir` for the socket | Valid, but only once you've built and credentialed a `herdr` + agent-CLIs image — one does not exist yet. Documented alternative, not the default. |
+## Do not bridge the socket over TCP
 
-Pick A whenever the option exists at all. Reach for B when herdr's host
-should stay bare-metal but merinod should live in a container. C3 is the
-Kubernetes default; C1 is what to build toward once a herdr image exists.
+It is tempting to put `socat` in front of the socket and reach it over the
+network. Do not.
 
-### Do not use a `socat` relay
-
-A tempting fifth shape is a two-pod `socat` bridge: unix socket → TCP →
-unix socket, no SSH involved. **Do not do this.** herdr's socket is its
-entire control API — spawning agents, typing into live panes, everything
-Merino itself can do — and the socket file's permissions are the only
-access control in front of it today. Bridging it over plain TCP publishes
-that whole API, unauthenticated, on the pod network: anything that can
-reach the relay pod can act as an authenticated Merino client. `ssh -L`
-(Shape C3) forwards the same bytes but authenticates the far end with a key
-first; `socat` forwards them to anyone who asks.
-
-## One `merinod` serves exactly one herd
-
-This is a real limitation operators will hit, not a hypothetical one.
-herdr's pane IDs are workspace-scoped and sequential — `w1:p1` on *every*
-herdr server, independently. Point one `merinod` at two herds and their
-IDs collide: one host's pane can silently overwrite the other's in
-Merino's in-memory store, and a write routed by pane ID could type into
-the wrong machine's terminal. Several hosts behind one unified dashboard is
-a genuinely bigger feature (composite `herdID + paneID` identity through
-the store, routes, audit and push), not something this deploy layer can
-paper over.
-
-**The answer today is one `merinod` per herd** — which works, at the cost
-of a separate login and a separate device-pairing per herd. Each instance
-needs its **own** `listen` port and its **own** `paths.stateDir` (or
-`MERINO_CONFIG` pointing at a distinct `config.yml`): two instances sharing
-either will fight over `bootstrap-creds.json`, the paired-device store, and
-the three access-gate files, non-deterministically. There is no
-coordination between instances to prevent this — it is entirely on the
-operator to give each one a distinct port and a distinct state directory.
+herdr's socket is its entire control API — it can spawn agents and type into
+live panes — and the socket file's permissions are the only thing guarding it.
+Publishing that over plain TCP hands the whole API to anything that can reach
+the port. SSH forwarding carries the same bytes but authenticates the far end
+with a key first.

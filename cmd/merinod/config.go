@@ -172,18 +172,20 @@ herdr:
   # on a port, so there is nothing to dial over the network.
   socket: ""
 
-  # Which agent kinds the spawn sheet may offer. Empty means autodetect, which
-  # probes Merino's OWN login shell — right on a workstation, wrong the moment
-  # herdr lives elsewhere. Under an ssh-forwarded socket that is always.
+  # Which agents the dashboard offers when starting a new one. Empty means
+  # detect them, by looking at what is installed for the user Merino runs as
+  # — correct when Merino and herdr share a machine, wrong when they do not,
+  # which includes every ssh-forwarded setup. List them here in that case.
   # Valid: omp pi claude codex gemini cursor opencode copilot grok amp droid
   #        kimi kiro kilo cline devin agy hermes maki mastracode qodercli
   agents: []
 
-# The only three keys that collide with the Settings panel's own toggles.
+# The three keys the macOS Settings panel can also change.
 #
-# If THIS FILE is writable, they are defaults and the panel wins.
-# If it is read-only (a ConfigMap, -v ...:ro, readOnlyRootFilesystem), they
-# pin and the panel is told it cannot change them. Merino never writes here.
+# If this file is writable, they are starting values and the panel wins.
+# If it is read-only — a ConfigMap, a :ro mount, readOnlyRootFilesystem —
+# they are fixed, and the panel shows them as locked. Merino never writes
+# to this file either way.
 access:
   allowWrites: false          # arbitrary input into live terminals; audited
   allowSessionSwitch: false   # changes which agents every browser sees
@@ -202,9 +204,13 @@ paths:
   #   Linux      $XDG_STATE_HOME/merino
   #   Container  MUST be a volume
   stateDir: ""
-  auditLog: ""   # "-" writes JSONL to stdout for a log collector
+
+  # Not implemented yet. The audit log is written inside stateDir.
+  # auditLog: "-"
 
 log:
   level: info    # debug | info | warn | error
-  format: text   # text | json
+
+  # Not implemented yet. Logs are text.
+  # format: json
 `
