@@ -43,13 +43,12 @@ For Kubernetes you need a container image. Releases publish one as
 linux/arm64, pullable without credentials:
 
 ```bash
-docker pull ghcr.io/loneexile/merinod:v0.3.0-rc.1
+docker pull ghcr.io/loneexile/merinod:v0.3.0
 ```
 
-The manifests here are pinned to that tag. It is a **release candidate** —
-move to the first stable tag once one is cut. Pin whatever you use: a
-pre-release publishes only its own version and never moves `latest`, so
-`latest` follows stable releases and will shift under an unpinned redeploy.
+The manifests here are pinned to that tag. Pin whatever you use: `latest`
+follows stable releases and will shift under an unpinned redeploy, and a
+pre-release publishes only its own version without ever moving it.
 
 To own the artefact instead, build and push your own:
 
