@@ -83,7 +83,12 @@ tasks:
       - "**/*"
       - exclude: node_modules/**/*
     generates:
-      - dist/**/*
+      # vite writes outside `dir: frontend` now (build.outDir is
+      # ../internal/assets/dist, because //go:embed cannot reach upward out
+      # of its package). A stale `dist/**/*` here would fingerprint a
+      # directory that no longer appears, so Task's checksum cache would
+      # either rebuild every run or skip when it should not.
+      - ../internal/assets/dist/**/*
     deps:
       - task: install:frontend:deps
       - task: generate:bindings
