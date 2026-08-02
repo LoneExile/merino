@@ -303,6 +303,19 @@ func ipResolver(behindProxy bool) web.IPResolver {
 	return web.DirectIP
 }
 
+// Credentials resolves the operator identity a running daemon accepts, for
+// entry points that must authenticate TO it rather than be it — `merinod qr`
+// signs in over loopback to ask the live process for a pairing ticket.
+//
+// Exported as a thin wrapper over the same resolver the daemon uses, rather
+// than reimplemented in cmd/: two copies of an env > file > bootstrap
+// precedence chain would drift the first time one gained a source, and the
+// symptom would be a CLI that cannot log into its own daemon.
+func Credentials(b *Boot) (user, pass string, err error) {
+	u, p, _, err := credentials(b.Options, b.StateDir)
+	return u, p, err
+}
+
 // credentials resolves the operator identity: env > auth.passwordFile >
 // generated bootstrap file.
 //

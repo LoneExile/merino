@@ -66,6 +66,7 @@ func root() *cobra.Command {
 	cmd.AddCommand(
 		serveCmd(),
 		configCmd(),
+		qrCmd(),
 		versionCmd(),
 	)
 	return cmd
