@@ -54,6 +54,16 @@ filter_unconventional = true
 protect_breaking_commits = true
 split_commits = false
 tag_pattern = "v[0-9]*"
+# Pre-release tags get no section of their own. Semver: anything after a
+# hyphen is a pre-release, so v0.3.0-rc.1 is a candidate for v0.3.0, not a
+# release anyone upgrades to — its changes belong in the 0.3.0 section.
+#
+# Without this, cutting an RC splits the history in two: the rc tag takes
+# every commit since the last stable, and the stable release that follows
+# gets whatever landed after it — usually nothing. scripts/release-notes.sh
+# refuses to publish an empty section, so the real release would fail at the
+# last step, after the build, with the fix being a hand edit.
+ignore_tags = "v[0-9]+\\.[0-9]+\\.[0-9]+-"
 topo_order = false
 sort_commits = "oldest"
 
