@@ -67,6 +67,23 @@ export default function App() {
   // "whichever tab the user was last in".
   const [tabRequest, setTabRequest] = useState<TabRequest | null>(null);
   const [renaming, setRenaming] = useState<Agent | null>(null);
+  // Reply drafts, one per pane, for the duration of the session. The pane
+  // view is keyed on the pane id, so going back or switching panes would
+  // otherwise throw away half-typed replies; the composer reports its text
+  // on unmount and gets it back as the initial value on remount. In-memory
+  // only — a draft survives navigation, not an app restart.
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const saveDraft = useCallback((paneId: string, text: string) => {
+    setDrafts((d) => {
+      if (!text) {
+        if (!(paneId in d)) return d;
+        const next = { ...d };
+        delete next[paneId];
+        return next;
+      }
+      return { ...d, [paneId]: text };
+    });
+  }, []);
   // First-run pairing: open Pair phone once. Drop ?pair=1 from the URL so a
   // later full reload (e.g. session switch) does not re-open this sheet.
   useEffect(() => {
@@ -379,6 +396,8 @@ export default function App() {
           termFont={termFont}
           onBack={() => setOpenPane(null)}
           onRename={(a) => setRenaming(a)}
+          draft={drafts[current.paneId]}
+          onDraftChange={saveDraft}
         />
       ) : (
         <main className="board">
