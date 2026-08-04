@@ -16,8 +16,20 @@ import {
   SettingsSheet,
 } from "./sheets";
 import { nextTabRequest, parseUiOpen, type TabRequest } from "./uiOpen";
+import { isAuthDead } from "./client";
+import { ReconnectSplash } from "./ReconnectSplash";
 
 type Overlay = "settings" | "sessions" | "palette" | "pair" | "spawn" | null;
+
+/**
+ * The reconnect splash is a web-transport feature: only the browser/PWA has
+ * a push stream that can drop and auto-reconnect. The desktop panel's Wails
+ * events never drop, and its boot-failure path must keep the raw error
+ * banner visible.
+ */
+const isWebMode =
+  typeof document !== "undefined" &&
+  document.querySelector('meta[name="herdr-mode"]')?.getAttribute("content") === "web";
 
 /**
  * How long to keep waiting for a freshly spawned pane to appear in the agent
@@ -59,6 +71,32 @@ export default function App() {
     }, wait);
     return () => window.clearTimeout(t);
   }, [ready]);
+
+  // Reconnect sheep splash: after boot, the push transport dropped (phone
+  // slept, network blip, server restart) and the list on screen is stale.
+  // Web transport only — see isWebMode above. Auth-dead navigates to /login
+  // and must not sit under a "Reconnecting" veil.
+  //
+  // "Was ever live" is the gate: a client that NEVER connected (offline PWA
+  // start, server down at boot) is not reconnecting — it is failing to start,
+  // and the raw error banner must stay visible rather than hide behind a
+  // "Reconnecting" veil. Once the transport has been live at least once, any
+  // drop is a genuine reconnect and wears the logo.
+  const everLive = useRef(false);
+  if (live) everLive.current = true;
+  const reconnectVisible = isWebMode && everLive.current && ready && !live && !isAuthDead();
+  // Fade on the way out like the boot splash: keep it mounted briefly after
+  // live returns so the reveal reads as intentional, not a blink.
+  const [reconnectShown, setReconnectShown] = useState(false);
+  useEffect(() => {
+    if (reconnectVisible) {
+      setReconnectShown(true);
+      return;
+    }
+    if (!reconnectShown) return;
+    const t = window.setTimeout(() => setReconnectShown(false), 400);
+    return () => window.clearTimeout(t);
+  }, [reconnectVisible, reconnectShown]);
 
   const [openPane, setOpenPane] = useState<string | null>(null);
   const [overlay, setOverlay] = useState<Overlay>(null);
@@ -135,9 +173,7 @@ export default function App() {
   // Tray context menu → open Settings / Pair phone (desktop only).
   useEffect(() => {
     if (typeof document === "undefined") return;
-    const isWeb =
-      document.querySelector('meta[name="herdr-mode"]')?.getAttribute("content") === "web";
-    if (isWeb) return;
+    if (isWebMode) return;
     let off: (() => void) | undefined;
     let cancelled = false;
     void import("@wailsio/runtime")
@@ -561,6 +597,8 @@ export default function App() {
       {renaming && client && (
         <RenameSheet client={client} agent={renaming} onClose={() => setRenaming(null)} />
       )}
+
+      {reconnectShown && <ReconnectSplash done={!reconnectVisible} />}
     </div>
   );
 }
