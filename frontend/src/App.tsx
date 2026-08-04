@@ -76,7 +76,15 @@ export default function App() {
   // slept, network blip, server restart) and the list on screen is stale.
   // Web transport only — see isWebMode above. Auth-dead navigates to /login
   // and must not sit under a "Reconnecting" veil.
-  const reconnectVisible = isWebMode && ready && !live && !isAuthDead();
+  //
+  // "Was ever live" is the gate: a client that NEVER connected (offline PWA
+  // start, server down at boot) is not reconnecting — it is failing to start,
+  // and the raw error banner must stay visible rather than hide behind a
+  // "Reconnecting" veil. Once the transport has been live at least once, any
+  // drop is a genuine reconnect and wears the logo.
+  const everLive = useRef(false);
+  if (live) everLive.current = true;
+  const reconnectVisible = isWebMode && everLive.current && ready && !live && !isAuthDead();
   // Fade on the way out like the boot splash: keep it mounted briefly after
   // live returns so the reveal reads as intentional, not a blink.
   const [reconnectShown, setReconnectShown] = useState(false);
