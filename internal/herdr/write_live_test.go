@@ -143,7 +143,6 @@ func TestLiveAllowlistedKeysAreAccepted(t *testing.T) {
 		"esc", "escape", "Escape",
 		"Up", "Down", "Left", "Right",
 		"Ctrl+c", "C-c", "ctrl+c",
-		"Ctrl+l", "ctrl+l",
 	}
 	for _, k := range keys {
 		if err := c.SendKeys(ctx, p.paneID, k); err != nil {

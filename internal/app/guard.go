@@ -49,11 +49,6 @@ var safeResponses = map[string]struct{}{
 // Ctrl+d and Ctrl+z are accepted by herdr but deliberately excluded here:
 // EOF and SIGTSTP can destroy or wedge an agent session, whereas Ctrl+c is the
 // intended, recoverable interrupt.
-//
-// Ctrl+l (form feed, the terminal clear-screen) IS included — it is the
-// standard "clear" every TUI and shell handles, and the phone dashboard's
-// Clear screen action sends it. Verified accepted by herdr 0.8.0 as "Ctrl+l"
-// and "ctrl+l"; "C-l" and "Clear" are rejected, so they are not listed.
 var safeKeys = map[string]struct{}{
 	"y": {}, "n": {}, "a": {},
 	"Enter": {}, "enter": {},
@@ -63,7 +58,6 @@ var safeKeys = map[string]struct{}{
 	"esc": {}, "escape": {}, "Escape": {},
 	"Up": {}, "Down": {}, "Left": {}, "Right": {},
 	"Ctrl+c": {}, "C-c": {}, "ctrl+c": {},
-	"Ctrl+l": {}, "ctrl+l": {},
 }
 
 // InterruptKey is the canonical interrupt sent by Interrupt().
