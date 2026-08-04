@@ -37,7 +37,7 @@ var safeResponses = map[string]struct{}{
 	"exit (cancel subagents)": {},
 }
 
-// safeKeys are key names verified to be accepted by herdr 0.7.5 pane.send_keys.
+// safeKeys are key names verified to be accepted by herdr 0.8.0 pane.send_keys.
 //
 // Verified empirically against a live server, because the key vocabulary is
 // not in the API schema and the CLI documents only the Escape aliases.

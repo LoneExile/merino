@@ -1,6 +1,6 @@
 // Package herdr is a client for the herdr terminal-multiplexer socket API.
 //
-// Wire protocol (verified against herdr 0.7.5, protocol 17):
+// Wire protocol (verified against herdr 0.8.0, protocol 19):
 //
 //   - Transport is a unix socket, default ~/.config/herdr/herdr.sock.
 //   - Messages are newline-delimited JSON: {"id","method","params"}.
@@ -21,7 +21,7 @@ import (
 // Protocol is the herdr socket API protocol version this client is written
 // against. Client.Ping compares it to the server and refuses a mismatch
 // rather than misbehaving against an unknown wire format.
-const Protocol = 17
+const Protocol = 19
 
 // AgentStatus is the OBSERVED lifecycle state of an agent, as reported by the
 // server on pane.agent_status_changed and in PaneInfo.
@@ -144,7 +144,8 @@ const (
 
 	// Closing a tab or workspace destroys its panes but emits NO pane.closed
 	// event — only tab_closed / workspace_closed. Verified against herdr
-	// 0.7.5. Subscribe to these or panes leak in local state forever.
+	// 0.8.0 (TestLiveTabCloseEmitsNoPaneClosed). Subscribe to these or panes
+	// leak in local state forever.
 	SubTabClosed       SubKind = "tab.closed"
 	SubWorkspaceClosed SubKind = "workspace.closed"
 )
@@ -166,7 +167,7 @@ const (
 //   - Per-pane subscriptions deliver DOTTED names (schema:
 //     subscription_event.SubscriptionEventKind), e.g. "pane.agent_status_changed".
 //
-// Verified against a running herdr 0.7.5.
+// Verified against a running herdr 0.8.0.
 type EventKind string
 
 // Delivered by global subscriptions.
