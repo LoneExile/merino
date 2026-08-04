@@ -94,8 +94,8 @@ web-lan port="8730" user="lex": build
 #   just tunnel
 #
 # This host's cloudflared runs in Docker and dials the Mac LAN IP
-# (10.0.10.122:8730), so we MUST bind 0.0.0.0 — loopback-only yields CF 502
-# ("dial tcp 10.0.10.122:8730: connection refused").
+# (<home-lan-ip>:8730), so we MUST bind 0.0.0.0 — loopback-only yields CF 502
+# ("dial tcp <home-lan-ip>:8730: connection refused").
 #
 # Trade-off: --behind-proxy + LAN bind means a LAN peer could spoof
 # X-Forwarded-For / CF-Connecting-IP and dilute the login throttle. Acceptable
