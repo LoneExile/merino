@@ -224,6 +224,9 @@ export function PaneView({ client, agent, readOnly = false, wrap, termFont, onBa
   // Mirrors Composer's own canWrite. The header control must not offer to
   // enlarge a writing surface that this transport cannot write with.
   const canCompose = Boolean(client.sendText) && !readOnly;
+  // Same gate as the composer's key toolbar: the pane actions menu must not
+  // offer Clear screen on a transport that cannot press keys.
+  const canKeys = Boolean(client.sendKeys) && !readOnly;
   const { text, loaded, degraded, error, loadingMore, canLoadMore, loadMore } = usePaneStream(
     client,
     agent.paneId,
@@ -543,6 +546,20 @@ export function PaneView({ client, agent, readOnly = false, wrap, termFont, onBa
                       }}
                     >
                       Rename…
+                    </button>
+                  )}
+                  {canKeys && (
+                    <button
+                      role="menuitem"
+                      onClick={() => {
+                        setMenu(false);
+                        // Ctrl+l (form feed) is the terminal-standard clear
+                        // screen every TUI and shell handles. The server-side
+                        // allowlist pins the exact spellings herdr accepts.
+                        void client.sendKeys?.(agent.paneId, ["Ctrl+l"]);
+                      }}
+                    >
+                      Clear screen
                     </button>
                   )}
                   {client.interrupt && (
