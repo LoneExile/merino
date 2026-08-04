@@ -14,6 +14,7 @@
   <a href="https://github.com/LoneExile/merino/releases/latest"><img src="https://img.shields.io/github/v/release/LoneExile/merino?display_name=tag&sort=semver" alt="Release" /></a>
   <a href="https://github.com/LoneExile/merino/blob/main/LICENSE"><img src="https://img.shields.io/github/license/LoneExile/merino" alt="License" /></a>
   <a href="https://github.com/LoneExile/merino/stargazers"><img src="https://img.shields.io/github/stars/LoneExile/merino?style=social" alt="Stars" /></a>
+  <a href="https://github.com/sponsors/LoneExile"><img src="https://img.shields.io/github/sponsors/LoneExile?style=social" alt="Sponsors" /></a>
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-black" alt="macOS and Linux" />
 </p>
 
@@ -197,6 +198,12 @@ rm -f  ~/Library/Preferences/dev.apinant.merino.plist
 Leaves [herdr](https://herdr.dev) alone.
 
 </details>
+
+## Sponsor
+
+Merino is free and open source. If the sheep keeps your agents out of
+trouble, [sponsor the work](https://github.com/sponsors/LoneExile) on GitHub
+Sponsors.
 
 ## License
 

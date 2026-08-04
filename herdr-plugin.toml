@@ -1,6 +1,6 @@
 id = "herdr.merino"
 name = "Herdr Merino"
-version = "0.3.1"
-min_herdr_version = "0.7.0"
+version = "0.3.2"
+min_herdr_version = "0.8.0"
 description = "Remote tunnel dashboard for Herdr agents"
 platforms = ["macos", "linux"]
