@@ -145,6 +145,14 @@ func TestLoginRedirectsAuthenticatedUsersHome(t *testing.T) {
 	if loc := rr.Header().Get("Location"); loc != "/" {
 		t.Fatalf("GET /login Location=%q, want /", loc)
 	}
+
+	// The QR redemption path must survive the redirect: /login?token=… is how
+	// a revoked device re-pairs, and bouncing it would drop the one-shot
+	// token before it is consumed.
+	tok := getWithCookie(t, s, c, "/login?token=definitely-bogus")
+	if tok.Code == http.StatusSeeOther && tok.Header().Get("Location") == "/" {
+		t.Fatalf("GET /login?token=… with a session was bounced; the token never reached the pairing handler")
+	}
 }
 
 func login(t *testing.T, s *Server, user, pass string) *http.Cookie {
