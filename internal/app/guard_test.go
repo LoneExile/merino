@@ -48,7 +48,7 @@ func TestCheckResponseAllowlist(t *testing.T) {
 }
 
 // The allowlist must contain only key names herdr actually accepts. "BSpace"
-// looks plausible but is rejected by herdr 0.7.5, so it must not appear here.
+// looks plausible but is rejected by herdr 0.8.0, so it must not appear here.
 func TestCheckKeysAllowlist(t *testing.T) {
 	g := guardWith("p1")
 
