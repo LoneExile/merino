@@ -127,6 +127,26 @@ func TestUnauthenticatedAccess(t *testing.T) {
 	}
 }
 
+// The mirror of TestUnauthenticatedAccess: a session holder navigating to the
+// login page — PWA swipe-back, a stale tab, a deep link — must be sent home,
+// not shown a form they no longer need. Sign-in leaves /login in the browser
+// back stack, and without this the gesture forces a pointless re-login.
+func TestLoginRedirectsAuthenticatedUsersHome(t *testing.T) {
+	s := testServer(t, &fakeSource{}, nil)
+	c := login(t, s, "alice", "correct-horse")
+	if c == nil {
+		t.Fatal("login failed")
+	}
+
+	rr := getWithCookie(t, s, c, "/login")
+	if rr.Code != http.StatusSeeOther {
+		t.Fatalf("GET /login with a valid session = %d, want 303", rr.Code)
+	}
+	if loc := rr.Header().Get("Location"); loc != "/" {
+		t.Fatalf("GET /login Location=%q, want /", loc)
+	}
+}
+
 func login(t *testing.T, s *Server, user, pass string) *http.Cookie {
 	t.Helper()
 	form := url.Values{"username": {user}, "password": {pass}}
