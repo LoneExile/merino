@@ -84,8 +84,17 @@ commit_parsers = [
   { message = "^build", skip = true },
 ]
 
-# No commit_preprocessors on purpose. They run BEFORE parsing, so stripping
-# the "fix(tray):" prefix here would leave nothing for conventional_commits
-# to match and every commit would be skipped as unparseable. With conventional
-# parsing on, `commit.message` in the template is already the bare
-# description, which is what the body above renders.
+commit_preprocessors = [
+  # The squash subject of #28 describes the iframe embeds that GitHub's README
+  # renderer escapes; they were reverted before merge. The merged commit cannot
+  # be amended (main is protected), so rewrite the message here — keeping the
+  # "docs:" prefix, so conventional parsing still sees a Documentation commit.
+  { pattern = "^docs: use GitHub's official sponsor button and card embeds \\(#28\\)", replace = "docs: branded GitHub Sponsors badge in README (#28)" },
+]
+
+# Preprocessors run BEFORE parsing, so stripping a type prefix here would leave
+# nothing for conventional_commits to match and every such commit would be
+# skipped as unparseable. With conventional parsing on, `commit.message` in the
+# template is already the bare description, which is what the body above
+# renders. The one preprocessor above only rewrites a subject; it never strips
+# a type.
