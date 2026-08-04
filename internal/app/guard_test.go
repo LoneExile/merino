@@ -52,7 +52,7 @@ func TestCheckResponseAllowlist(t *testing.T) {
 func TestCheckKeysAllowlist(t *testing.T) {
 	g := guardWith("p1")
 
-	for _, ok := range [][]string{{"Ctrl+c"}, {"Enter"}, {"y"}, {"esc"}, {"Backspace"}, {"Up", "Down"}} {
+	for _, ok := range [][]string{{"Ctrl+c"}, {"Ctrl+l"}, {"ctrl+l"}, {"Enter"}, {"y"}, {"esc"}, {"Backspace"}, {"Up", "Down"}} {
 		if err := g.CheckKeys(ok); err != nil {
 			t.Errorf("CheckKeys(%v) rejected: %v", ok, err)
 		}
