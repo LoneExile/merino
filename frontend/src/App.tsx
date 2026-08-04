@@ -84,6 +84,27 @@ export default function App() {
       return { ...d, [paneId]: text };
     });
   }, []);
+
+  // A pane leaving the herd (agent exited, tab closed) orphans its draft:
+  // the entry would otherwise outlive the pane and a recycled pane id could
+  // seed stale text into a fresh terminal. Absence from the agent list is
+  // the same ground truth the vanish-guard uses — herdr pushes the full
+  // snapshot on every change, so a missing pane is a gone pane. The open
+  // pane is spared for one render so its vanish-guard close can commit
+  // first.
+  useEffect(() => {
+    setDrafts((d) => {
+      if (Object.keys(d).length === 0) return d;
+      let next = d;
+      for (const paneId of Object.keys(d)) {
+        if (paneId === openPane) continue;
+        if (agents.some((a) => a.paneId === paneId)) continue;
+        if (next === d) next = { ...d };
+        delete next[paneId];
+      }
+      return next;
+    });
+  }, [agents, openPane]);
   // First-run pairing: open Pair phone once. Drop ?pair=1 from the URL so a
   // later full reload (e.g. session switch) does not re-open this sheet.
   useEffect(() => {
