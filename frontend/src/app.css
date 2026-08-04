@@ -244,6 +244,27 @@ html.desktop .app {
   max-height: 100%;
 }
 
+/* Reconnect splash (browser/PWA only): the SSE transport dropped and the
+ * agent list on screen is stale, so the whole dashboard wears the logo until
+ * the herd stream is back. Same sheep-hop language as the boot splash in
+ * index.html — `.splash__*` inner classes and keyframes are that file's
+ * document-global rules. `is-done` mirrors #splash.is-done for the fade. */
+.reconnect {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  background: var(--color-paper);
+  color: var(--color-ink-3);
+  transition: opacity 320ms ease, visibility 320ms ease;
+}
+.reconnect.is-done {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .rail__brand {
   display: flex;
   align-items: center;
