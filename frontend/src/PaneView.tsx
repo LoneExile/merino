@@ -26,6 +26,14 @@ export interface PaneViewProps {
   termFont: ReturnType<typeof useTermFontPref>;
   onBack: () => void;
   onRename: (agent: Agent) => void;
+  /**
+   * Reply-draft persistence. PaneView is keyed on the pane id, so going back
+   * or switching panes unmounts the composer and its text with it. The owner
+   * keeps one draft per pane and hands the initial value back on remount;
+   * the composer reports the latest text on unmount.
+   */
+  draft?: string;
+  onDraftChange?: (paneId: string, text: string) => void;
 }
 
 /**
@@ -211,7 +219,7 @@ function renderTermBody(
   return nodes;
 }
 
-export function PaneView({ client, agent, readOnly = false, wrap, termFont, onBack, onRename }: PaneViewProps) {
+export function PaneView({ client, agent, readOnly = false, wrap, termFont, onBack, onRename, draft, onDraftChange }: PaneViewProps) {
   // pinned is declared below; the stream hook only needs it to release a
   // history hold when the user returns to the live tail — initialise true.
   const [pinned, setPinned] = useState(true);
@@ -673,6 +681,8 @@ export function PaneView({ client, agent, readOnly = false, wrap, termFont, onBa
         client={client}
         agent={agent}
         readOnly={readOnly}
+        draft={draft}
+        onDraftChange={onDraftChange}
         onSent={() => setPinned(true)}
         expanded={composeExpanded}
         onCollapse={() => setComposeExpanded(false)}
@@ -689,6 +699,10 @@ interface ComposerProps {
   client: Client;
   agent: Agent;
   readOnly?: boolean;
+  /** Initial reply text restored for this pane; empty for a fresh composer. */
+  draft?: string;
+  /** Reports the latest draft when the composer unmounts (back / pane switch). */
+  onDraftChange?: (paneId: string, text: string) => void;
   onSent: () => void;
   /**
    * Fullscreen compose. Owned by PaneView because its control lives in the
@@ -739,8 +753,8 @@ function slashTokenAt(
   return { start: i, end: j, query: text.slice(i + 1, j) };
 }
 
-function Composer({ client, agent, readOnly = false, onSent, expanded, onCollapse }: ComposerProps) {
-  const [value, setValue] = useState("");
+function Composer({ client, agent, readOnly = false, draft, onDraftChange, onSent, expanded, onCollapse }: ComposerProps) {
+  const [value, setValue] = useState(draft ?? "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const box = useRef<HTMLTextAreaElement>(null);
@@ -763,6 +777,20 @@ function Composer({ client, agent, readOnly = false, onSent, expanded, onCollaps
   // Gates the placeholder's "/" hint. Advertising a menu the transport
   // cannot open would be a lie in the one place a new operator reads.
   const canSlash = Boolean(client.slashCommands) && canWrite;
+
+  // Reply-draft persistence. The composer unmounts when the pane is closed
+  // or switched (PaneView is keyed on the pane id), so without this the text
+  // dies with it. Both refs are read at unmount only: valueRef holds the
+  // latest draft, draftChangeRef the newest callback — nothing in the mount-
+  // once cleanup can go stale.
+  const valueRef = useRef(value);
+  valueRef.current = value;
+  const draftChangeRef = useRef(onDraftChange);
+  draftChangeRef.current = onDraftChange;
+  useEffect(() => {
+    return () => draftChangeRef.current?.(agent.paneId, valueRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount only
+  }, []);
 
   // Grow with the content up to a cap, so a long reply is readable while the
   // terminal keeps most of the screen. Skipped while expanded: the CSS flex
