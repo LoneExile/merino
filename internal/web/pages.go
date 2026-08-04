@@ -241,6 +241,37 @@ var loginTmpl = template.Must(template.New("login").Parse(`<!DOCTYPE html>
     </form>
   </div>
   <script nonce="{{.Nonce}}">
+// Shared by the form submit and QR redeem paths. The server 303s to the app
+// shell on success and re-renders this page with an error on failure.
+function landAfterLogin(res) {
+  if (new URL(res.url).pathname === "/") {
+    // Replace the CURRENT history entry (the /login page) with the app, so
+    // sign-in never stays in the back stack — a PWA swipe-back gesture from
+    // the dashboard or a terminal cannot land back on the form.
+    location.replace("/");
+    return true;
+  }
+  return false;
+}
+
+// Failure: the server re-rendered this page with an error message. Lift just
+// the .err block into the live form — a whole-document swap would inherit
+// THIS page's CSP nonce and silently block the failure page's inline scripts
+// (the splash would never dismiss, the QR scanner would stay dead).
+function renderServerError(res) {
+  return res.text().then(function (html) {
+    var doc = new DOMParser().parseFromString(html, "text/html");
+    var err = doc.querySelector(".err");
+    var form = document.getElementById("login-form");
+    var btn = form && form.querySelector('button[type="submit"]');
+    if (btn) btn.disabled = false;
+    if (!err || !form) return;
+    var slot = form.querySelector(".err");
+    if (slot) slot.replaceWith(err);
+    else form.appendChild(err);
+  });
+}
+
 (function () {
   var el = document.getElementById("splash");
   if (!el) return;
@@ -307,12 +338,23 @@ var loginTmpl = template.Must(template.New("login").Parse(`<!DOCTYPE html>
   }
 
   function redeem(token) {
-    // Same-origin navigation keeps the installed PWA in its own context —
-    // unlike the OS camera app, which hands the URL to the default browser.
+    // Same-origin fetch keeps the installed PWA in its own context — unlike
+    // the OS camera app, which hands the URL to the default browser. On
+    // success landAfterLogin REPLACES the current /login entry with /, so
+    // this page never stays in the back stack: a later PWA swipe-back
+    // gesture cannot land back on a form the user already left.
     stop();
     hint.textContent = "Signing in\u2026";
     hint.className = "hint ok";
-    location.href = "/login?token=" + encodeURIComponent(token);
+    fetch("/login?token=" + encodeURIComponent(token), {
+      credentials: "same-origin",
+      redirect: "follow"
+    }).then(function (res) {
+      if (!landAfterLogin(res)) renderServerError(res);
+    }).catch(function () {
+      hint.textContent = "Sign-in failed. Paste the code instead.";
+      hint.className = "hint bad";
+    });
   }
 
   async function start() {
@@ -367,6 +409,38 @@ var loginTmpl = template.Must(template.New("login").Parse(`<!DOCTYPE html>
   });
   stopBtn.addEventListener("click", stop);
   window.addEventListener("pagehide", stop);
+})();
+
+// Sign-in without leaving /login in the back stack.
+//
+// The native form POST works, but the browser keeps the /login entry in
+// history — so a PWA swipe-back gesture from the dashboard or a terminal
+// lands back on the form and the user signs in again for no reason. Both
+// sign-in paths below fetch instead and, on success, REPLACE the current
+// entry with / via landAfterLogin. The form keeps its native POST as the
+// no-JS / fetch-failure fallback.
+(function () {
+  var form = document.getElementById("login-form");
+  if (!form) return;
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var btn = form.querySelector('button[type="submit"]');
+    if (btn) btn.disabled = true;
+    // URLSearchParams, not FormData: the server reads r.PostFormValue,
+    // which only parses application/x-www-form-urlencoded bodies. A
+    // multipart FormData POST would arrive with every field empty.
+    fetch("/login", {
+      method: "POST",
+      body: new URLSearchParams(new FormData(form)),
+      credentials: "same-origin",
+      redirect: "follow"
+    }).then(function (res) {
+      if (!landAfterLogin(res)) renderServerError(res);
+    }).catch(function () {
+      if (btn) btn.disabled = false;
+      form.submit();
+    });
+  });
 })();
   </script>
 </body>

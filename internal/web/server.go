@@ -340,7 +340,31 @@ func (s *Server) routes() http.Handler {
 
 	mux.Handle("GET /", s.authed(s.handleStatic))
 
-	return securityHeaders(mux)
+	return securityHeaders(s.redirectAuthedFromLogin(mux))
+}
+
+// redirectAuthedFromLogin sends session holders home instead of letting them
+// see the login form. Sign-in leaves /login in the browser's back stack, so a
+// PWA swipe-back gesture (or any history navigation) lands on /login with a
+// perfectly good session — and re-rendering the form there reads as a forced
+// re-login. A valid session gets a 303 to /; only genuinely unauthenticated
+// requests reach the provider's form.
+//
+// Token-bearing GETs (/login?token=…) are deliberately exempt: that is the QR
+// redemption path, and a session holder may still need it — a device revoked
+// in Settings keeps a valid-looking cookie, and re-pairing scans a fresh QR
+// precisely because the old session no longer counts. Bouncing that GET would
+// silently drop the one-shot token (2-minute TTL) and force a re-scan.
+func (s *Server) redirectAuthedFromLogin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == s.cfg.Provider.LoginPath() && r.URL.Query().Get("token") == "" {
+			if _, ok := s.sessions.ReadSession(r); ok {
+				http.Redirect(w, r, "/", http.StatusSeeOther)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // authed rejects unauthenticated requests: a redirect for navigations, 401 for
