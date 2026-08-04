@@ -11,7 +11,7 @@ services:
     # `build:` block and uncomment the pinned `image:` below. They can also
     # coexist: with both, `image:` names what `docker compose build` tags.
     #
-    # image: ghcr.io/loneexile/merinod:v0.3.2
+    # image: ghcr.io/loneexile/merinod:v0.3.3
     build:
       context: ../
       dockerfile: build/docker/Dockerfile.merinod
