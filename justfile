@@ -29,8 +29,17 @@ _default:
 
 # --- build -----------------------------------------------------------------
 
+# The committed Wails bindings (frontend/bindings) are the source of truth
+# for tsc — CI has no Go toolchain to regenerate them, which is exactly why
+# they are committed. `wails3 dev` (and a bare `wails3 generate bindings`
+# without -ts) regenerates them as .js and DELETES the committed .ts, which
+# breaks every tsc build with TS2307 until they are restored. Restore first
+# so app/build/typecheck can never hit that state.
+ensure-bindings:
+    git restore --source=HEAD -- frontend/bindings 2>/dev/null || true
+
 # Frontend bundle only.
-frontend:
+frontend: ensure-bindings
     cd frontend && npm run build
 
 # Go binary with the current frontend embedded.
@@ -117,8 +126,14 @@ tunnel-loopback port="8730" user="lex": build
     {{binary}} --listen 127.0.0.1:{{port}} --behind-proxy --allow-writes --allow-session-switch
 
 # Vite hot-reload (frontend only; Go changes need `just app`)
+#
+# wails3 dev regenerates frontend/bindings as .js and deletes the committed
+# .ts (see ensure-bindings). The dev server tolerates it (vite resolves .js),
+# but the tree must not be left broken for the next app/build — restore the
+# committed bindings when dev exits, interrupted or not.
 dev:
-    wails3 dev
+    wails3 dev || true
+    git restore --source=HEAD -- frontend/bindings 2>/dev/null || true
 
 # Foreground run with debug logs (incl. per-frame tray animation)
 debug: build
@@ -140,7 +155,7 @@ test:
     go test ./... -race -count=1
 
 # TypeScript typecheck
-typecheck:
+typecheck: ensure-bindings
     cd frontend && npm run typecheck
 
 # Frontend logic checks. This repo has no JS test runner (vite + tsc only), so

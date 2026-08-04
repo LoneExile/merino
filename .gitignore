@@ -5,9 +5,12 @@ frontend/node_modules
 build/linux/appimage/build
 build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
 
-# Generated from Go sources by `wails3 generate bindings`.
+# Generated from Go sources by `wails3 generate bindings -ts ./...` (the -ts
+# flag matters: without it the codegen emits .js and deletes these .ts files).
 # Committed intentionally: the frontend typechecks against them in CI, where
-# generating would require a full Go toolchain run first.
+# generating would require a full Go toolchain run first. `just dev` and a
+# bare codegen run will wipe them — `just frontend`/`typecheck` restore first
+# (see ensure-bindings in the justfile).
 !frontend/bindings
 
 # macOS
