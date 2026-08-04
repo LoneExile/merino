@@ -561,10 +561,11 @@ export function PaneView({ client, agent, readOnly = false, wrap, termFont, onBa
                       role="menuitem"
                       onClick={() => {
                         setMenu(false);
-                        // Ctrl+l (form feed) is the terminal-standard clear
-                        // screen every TUI and shell handles. The server-side
-                        // allowlist pins the exact spellings herdr accepts.
-                        void client.sendKeys?.(agent.paneId, ["Ctrl+l"]);
+                        // Ctrl+l is the terminal-standard clear, but the
+                        // agents this dashboard drives bind it to something
+                        // else — omp opens voice input on Ctrl+l. Ctrl+c is
+                        // what actually resets those TUIs to a clean prompt.
+                        void client.sendKeys?.(agent.paneId, ["Ctrl+c"]);
                       }}
                     >
                       Clear screen
