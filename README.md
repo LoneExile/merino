@@ -14,7 +14,7 @@
   <a href="https://github.com/LoneExile/merino/releases/latest"><img src="https://img.shields.io/github/v/release/LoneExile/merino?display_name=tag&sort=semver" alt="Release" /></a>
   <a href="https://github.com/LoneExile/merino/blob/main/LICENSE"><img src="https://img.shields.io/github/license/LoneExile/merino" alt="License" /></a>
   <a href="https://github.com/LoneExile/merino/stargazers"><img src="https://img.shields.io/github/stars/LoneExile/merino?style=social" alt="Stars" /></a>
-  <a href="https://github.com/sponsors/LoneExile"><img src="https://img.shields.io/github/sponsors/LoneExile?style=social" alt="Sponsors" /></a>
+  <a href="https://github.com/sponsors/LoneExile"><img src="https://img.shields.io/badge/sponsor-GitHub%20Sponsors-ea4aaa?logo=githubsponsors" alt="Sponsor" /></a>
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-black" alt="macOS and Linux" />
 </p>
 
