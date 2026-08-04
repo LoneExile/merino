@@ -14,7 +14,7 @@
   <a href="https://github.com/LoneExile/merino/releases/latest"><img src="https://img.shields.io/github/v/release/LoneExile/merino?display_name=tag&sort=semver" alt="Release" /></a>
   <a href="https://github.com/LoneExile/merino/blob/main/LICENSE"><img src="https://img.shields.io/github/license/LoneExile/merino" alt="License" /></a>
   <a href="https://github.com/LoneExile/merino/stargazers"><img src="https://img.shields.io/github/stars/LoneExile/merino?style=social" alt="Stars" /></a>
-  <a href="https://github.com/sponsors/LoneExile"><img src="https://img.shields.io/github/sponsors/LoneExile?style=social" alt="Sponsors" /></a>
+  <iframe src="https://github.com/sponsors/LoneExile/button" title="Sponsor LoneExile" height="32" width="114" style="border: 0; border-radius: 6px;"></iframe>
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-black" alt="macOS and Linux" />
 </p>
 
@@ -204,6 +204,8 @@ Leaves [herdr](https://herdr.dev) alone.
 Merino is free and open source. If the sheep keeps your agents out of
 trouble, [sponsor the work](https://github.com/sponsors/LoneExile) on GitHub
 Sponsors.
+
+<iframe src="https://github.com/sponsors/LoneExile/card" title="Sponsor LoneExile" height="225" width="600" style="border: 0;"></iframe>
 
 ## License
 
