@@ -17,16 +17,30 @@ import (
 // the identity through only when it carries AllowRole. Roles land in
 // Identity.Roles so a later multi-user swap to RequireRole is a one-liner.
 type OIDCProvider struct {
-	Cfg  OIDCConfig
-	Log  *slog.Logger
-	HTTP *http.Client // overridable for tests
+	// Config returns the live config on every request (backed by OAuthStore).
+	// Cfg is the static fallback used by tests.
+	Config func() OIDCConfig
+	Cfg    OIDCConfig
+	Log    *slog.Logger
+	HTTP   *http.Client // overridable for tests
 }
 
 func (p *OIDCProvider) Name() string      { return "oidc" }
 func (p *OIDCProvider) LoginPath() string { return "/login/oidc" }
 func (p *OIDCProvider) LoginLabel() string {
-	return p.Cfg.LoginLabel()
+	return p.cfg().LoginLabel()
 }
+
+// cfg returns the live config, falling back to the static Cfg for tests.
+func (p *OIDCProvider) cfg() OIDCConfig {
+	if p.Config != nil {
+		return p.Config()
+	}
+	return p.Cfg
+}
+
+// Enabled reports whether a login button should show for this provider.
+func (p *OIDCProvider) Enabled() bool { return p.cfg().Enabled() }
 
 // Mount registers the authorize and callback routes. sessions owns the
 // signed state cookie that protects the exchange.
@@ -44,15 +58,15 @@ func (p *OIDCProvider) oauth(ctx context.Context) (*oidc.Provider, oauth2.Config
 		client = http.DefaultClient
 	}
 	ctx = oidc.ClientContext(ctx, client)
-	prov, err := oidc.NewProvider(ctx, p.Cfg.Issuer)
+	prov, err := oidc.NewProvider(ctx, p.cfg().Issuer)
 	if err != nil {
 		return nil, oauth2.Config{}, err
 	}
 	cfg := oauth2.Config{
-		ClientID:     p.Cfg.ClientID,
-		ClientSecret: p.Cfg.ClientSecret,
+		ClientID:     p.cfg().ClientID,
+		ClientSecret: p.cfg().ClientSecret,
 		Endpoint:     prov.Endpoint(),
-		RedirectURL:  p.Cfg.RedirectURL,
+		RedirectURL:  p.cfg().RedirectURL,
 		Scopes:       []string{oidc.ScopeOpenID, "profile", "email"},
 	}
 	return prov, cfg, nil
@@ -60,14 +74,14 @@ func (p *OIDCProvider) oauth(ctx context.Context) (*oidc.Provider, oauth2.Config
 
 func (p *OIDCProvider) handleAuthorize(sessions *Sessions, success func(http.ResponseWriter, *http.Request, Identity)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !p.Cfg.Enabled() {
+		if !p.cfg().Enabled() {
 			http.Error(w, "OAuth login is not configured. Set MERINO_OIDC_* and a public HTTPS URL.", http.StatusNotImplemented)
 			return
 		}
 		ctx := r.Context()
 		prov, cfg, err := p.oauth(ctx)
 		if err != nil {
-			p.Log.Warn("oidc discovery failed", "issuer", p.Cfg.Issuer, "err", err)
+			p.Log.Warn("oidc discovery failed", "issuer", p.cfg().Issuer, "err", err)
 			http.Error(w, "OIDC discovery failed. Check MERINO_OIDC_ISSUER.", http.StatusBadGateway)
 			return
 		}
@@ -118,7 +132,7 @@ func (p *OIDCProvider) handleCallback(sessions *Sessions, success func(http.Resp
 		ctx := r.Context()
 		prov, cfg, err := p.oauth(ctx)
 		if err != nil {
-			p.Log.Warn("oidc discovery failed", "issuer", p.Cfg.Issuer, "err", err)
+			p.Log.Warn("oidc discovery failed", "issuer", p.cfg().Issuer, "err", err)
 			http.Error(w, "OIDC discovery failed.", http.StatusBadGateway)
 			return
 		}
@@ -136,7 +150,7 @@ func (p *OIDCProvider) handleCallback(sessions *Sessions, success func(http.Resp
 			http.Error(w, "no id_token in token response", http.StatusBadGateway)
 			return
 		}
-		idTok, err := prov.Verifier(&oidc.Config{ClientID: p.Cfg.ClientID}).Verify(ctx, rawIDToken)
+		idTok, err := prov.Verifier(&oidc.Config{ClientID: p.cfg().ClientID}).Verify(ctx, rawIDToken)
 		if err != nil {
 			p.Log.Warn("oidc id_token verification failed", "err", err)
 			http.Error(w, "id_token verification failed", http.StatusBadGateway)
@@ -173,11 +187,11 @@ func (p *OIDCProvider) handleCallback(sessions *Sessions, success func(http.Resp
 		// registered as.
 		roles := append([]string(nil), claims.Roles...)
 		roles = append(roles, claims.Realm.Roles...)
-		if cr, ok := claims.Resource[p.Cfg.ClientID]; ok {
+		if cr, ok := claims.Resource[p.cfg().ClientID]; ok {
 			roles = append(roles, cr.Roles...)
 		}
-		if !hasRole(Identity{Roles: roles}, p.Cfg.AllowRole) {
-			p.Log.Warn("oidc login denied", "subject", claims.Sub, "want_role", p.Cfg.AllowRole)
+		if !hasRole(Identity{Roles: roles}, p.cfg().AllowRole) {
+			p.Log.Warn("oidc login denied", "subject", claims.Sub, "want_role", p.cfg().AllowRole)
 			denied(w)
 			return
 		}

@@ -52,9 +52,12 @@ type Config struct {
 	// Provider authenticates users.
 	Provider Provider
 	// OAuth lists the OAuth login rungs (GitHub, Keycloak) mounted alongside
-	// the primary provider. Each provider is fail-closed: it only appears
-	// when fully configured with an allowlist.
+	// the primary provider. Routes are always mounted; each provider gates
+	// itself on its live config and only shows a button when enabled.
 	OAuth []OAuthProvider
+	// OAuthStore is the live, editable source of OAuth config that backs the
+	// Settings UI. Nil disables OAuth management entirely.
+	OAuthStore *OAuthStore
 	// Policy authorises what an authenticated user may see.
 	Policy Policy
 	// BehindProxy declares that every request arrives through a trusted
@@ -182,14 +185,10 @@ func New(src Source, cfg Config) (*Server, error) {
 	if s.pairing != nil && cfg.PublicBaseURL != "" {
 		s.pairing.SetBaseURL(cfg.PublicBaseURL)
 	}
-	// The password provider owns the /login form; hand it the buttons for
-	// every OAuth rung so the page renders them before any request arrives.
-	if pp, ok := cfg.Provider.(*PasswordProvider); ok {
-		btns := make([]OAuthButton, 0, len(cfg.OAuth))
-		for _, o := range cfg.OAuth {
-			btns = append(btns, OAuthButton{Label: o.LoginLabel(), Path: o.LoginPath()})
-		}
-		pp.SetOAuthButtons(btns)
+	// The password provider owns the /login form; hand it a LIVE getter for
+	// the OAuth buttons so a Settings edit shows/hides them without a restart.
+	if pp, ok := cfg.Provider.(*PasswordProvider); ok && cfg.OAuthStore != nil {
+		pp.SetOAuthButtons(cfg.OAuthStore.Buttons)
 	}
 
 	// Push failing to initialise must never take the dashboard down over a
@@ -295,6 +294,7 @@ func (s *Server) routes() http.Handler {
 	}
 	s.mountPairing(mux)
 	s.mountDevices(mux)
+	s.mountOAuthAdmin(mux)
 
 	// POST only — Settings uses a form method=post. GET would allow CSRF
 	// logout via <img src="/logout"> / link prefetch.
@@ -513,7 +513,7 @@ func (s *Server) handleSession(w http.ResponseWriter, _ *http.Request, id Identi
 		"devicesEnabled":   s.cfg.Devices != nil,
 		"canManageDevices": !IsDeviceSubject(id.Subject) && s.cfg.Devices != nil,
 		"firstRunPending":  FirstRunPending(s.stateDir()),
-		"oauthEnabled":     len(s.cfg.OAuth) > 0,
+		"oauthEnabled":     s.cfg.OAuthStore != nil && len(s.cfg.OAuthStore.Buttons()) > 0,
 		"accessOrigins":    origins,
 		"defaultPairBase":  s.defaultPairBase(),
 		"passwordLoginEnabled": func() bool {
