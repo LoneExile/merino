@@ -19,9 +19,13 @@ import (
 // /user/orgs endpoint only reports PUBLIC memberships, so team checks use the
 // org membership endpoint with the Bearer token instead.
 type GitHubProvider struct {
-	Cfg  GitHubConfig
-	Log  *slog.Logger
-	HTTP *http.Client // overridable for tests
+	// Config returns the live config on every request (backed by OAuthStore),
+	// so a Settings edit takes effect without a restart. Cfg is the static
+	// fallback used by tests.
+	Config func() GitHubConfig
+	Cfg    GitHubConfig
+	Log    *slog.Logger
+	HTTP   *http.Client // overridable for tests
 
 	// authURL/tokenURL/apiBase override the GitHub endpoints. Production
 	// defaults to github.com; tests point them at an httptest server.
@@ -33,8 +37,19 @@ type GitHubProvider struct {
 func (p *GitHubProvider) Name() string      { return "github" }
 func (p *GitHubProvider) LoginPath() string { return "/login/github" }
 func (p *GitHubProvider) LoginLabel() string {
-	return p.Cfg.LoginLabel()
+	return p.cfg().LoginLabel()
 }
+
+// cfg returns the live config, falling back to the static Cfg for tests.
+func (p *GitHubProvider) cfg() GitHubConfig {
+	if p.Config != nil {
+		return p.Config()
+	}
+	return p.Cfg
+}
+
+// Enabled reports whether a login button should show for this provider.
+func (p *GitHubProvider) Enabled() bool { return p.cfg().Enabled() }
 
 func (p *GitHubProvider) oauth() oauth2.Config {
 	authURL, tokenURL := p.authURL, p.tokenURL
@@ -45,8 +60,8 @@ func (p *GitHubProvider) oauth() oauth2.Config {
 		tokenURL = "https://github.com/login/oauth/access_token"
 	}
 	return oauth2.Config{
-		ClientID:     p.Cfg.ClientID,
-		ClientSecret: p.Cfg.ClientSecret,
+		ClientID:     p.cfg().ClientID,
+		ClientSecret: p.cfg().ClientSecret,
 		Endpoint: oauth2.Endpoint{
 			AuthURL:  authURL,
 			TokenURL: tokenURL,
@@ -55,7 +70,7 @@ func (p *GitHubProvider) oauth() oauth2.Config {
 			// client_secret at all and every exchange fails.
 			AuthStyle: oauth2.AuthStyleInParams,
 		},
-		RedirectURL: p.Cfg.RedirectURL,
+		RedirectURL: p.cfg().RedirectURL,
 		// read:user proves identity; read:org is required for the team
 		// membership check (org membership for a single named org can also be
 		// checked with read:org). A login without org/team configured needs
@@ -79,7 +94,7 @@ func (p *GitHubProvider) Mount(mux *http.ServeMux, sessions *Sessions, success f
 
 func (p *GitHubProvider) handleAuthorize(sessions *Sessions, success func(http.ResponseWriter, *http.Request, Identity)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !p.Cfg.Enabled() {
+		if !p.cfg().Enabled() {
 			http.Error(w, "GitHub login is not configured. Set MERINO_GITHUB_* and a public HTTPS URL.", http.StatusNotImplemented)
 			return
 		}
@@ -150,16 +165,16 @@ func (p *GitHubProvider) handleCallback(sessions *Sessions, success func(http.Re
 		}
 
 		allowed := false
-		for _, a := range p.Cfg.Allow {
+		for _, a := range p.cfg().Allow {
 			if strings.EqualFold(a, user.Login) {
 				allowed = true
 				break
 			}
 		}
-		if !allowed && p.Cfg.Org != "" {
+		if !allowed && p.cfg().Org != "" {
 			member, err := p.orgAllows(ctx, httpc, tok.AccessToken, user.Login)
 			if err != nil {
-				p.Log.Warn("github org check failed", "login", user.Login, "org", p.Cfg.Org, "err", err)
+				p.Log.Warn("github org check failed", "login", user.Login, "org", p.cfg().Org, "err", err)
 				// Fail closed on a membership-check error: a transient API
 				// failure must not open the door wider than configured.
 				denied(w)
@@ -191,7 +206,7 @@ func (p *GitHubProvider) handleCallback(sessions *Sessions, success func(http.Re
 // memberships, rather than /user/orgs which lists only public ones.
 func (p *GitHubProvider) orgAllows(ctx context.Context, httpc *http.Client, token, login string) (bool, error) {
 	base := p.apiBase()
-	memberURL := base + "/orgs/" + url.PathEscape(p.Cfg.Org) + "/members/" + url.PathEscape(login)
+	memberURL := base + "/orgs/" + url.PathEscape(p.cfg().Org) + "/members/" + url.PathEscape(login)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, memberURL, nil)
 	if err != nil {
 		return false, err
@@ -214,10 +229,10 @@ func (p *GitHubProvider) orgAllows(ctx context.Context, httpc *http.Client, toke
 	default:
 		return false, &githubAPIError{status: resp.Status}
 	}
-	if p.Cfg.Team == "" {
+	if p.cfg().Team == "" {
 		return true, nil
 	}
-	teamURL := base + "/orgs/" + url.PathEscape(p.Cfg.Org) + "/teams/" + url.PathEscape(p.Cfg.Team) + "/memberships/" + url.PathEscape(login)
+	teamURL := base + "/orgs/" + url.PathEscape(p.cfg().Org) + "/teams/" + url.PathEscape(p.cfg().Team) + "/memberships/" + url.PathEscape(login)
 	req2, err := http.NewRequestWithContext(ctx, http.MethodGet, teamURL, nil)
 	if err != nil {
 		return false, err

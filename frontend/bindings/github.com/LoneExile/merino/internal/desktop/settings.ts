@@ -9,7 +9,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -23,8 +23,10 @@ import * as $models from "./models.js";
  * AccessOrigins returns localhost + LAN (and never invents a Cloudflare URL).
  * The Settings sheet uses these as one-tap QR bases before any tunnel setup.
  */
-export function AccessOrigins(): $CancellablePromise<web$0.AccessOrigin[] | null> {
-    return $Call.ByID(3263902163);
+export function AccessOrigins(): $CancellablePromise<web$0.AccessOrigin[]> {
+    return $Call.ByID(3263902163).then(($result: any) => {
+        return $$createType1($result);
+    });
 }
 
 /**
@@ -38,7 +40,16 @@ export function AllowWritesEnabled(): $CancellablePromise<boolean> {
  * CheckUpdate looks up the latest GitHub release (read-only; does not download).
  */
 export function CheckUpdate(): $CancellablePromise<$models.UpdateInfo> {
-    return $Call.ByID(3345746207);
+    return $Call.ByID(3345746207).then(($result: any) => {
+        return $$createType2($result);
+    });
+}
+
+/**
+ * ClearOAuth removes a provider's stored config ("github" or "oidc").
+ */
+export function ClearOAuth(provider: string): $CancellablePromise<void> {
+    return $Call.ByID(826742742, provider);
 }
 
 /**
@@ -61,7 +72,9 @@ export function FirstRunPending(): $CancellablePromise<boolean> {
  * reported canInstall (or it re-checks). Blocks until staged; process then quits.
  */
 export function InstallUpdate(): $CancellablePromise<$models.InstallResult> {
-    return $Call.ByID(1410411228);
+    return $Call.ByID(1410411228).then(($result: any) => {
+        return $$createType3($result);
+    });
 }
 
 /**
@@ -74,8 +87,10 @@ export function LaunchAtLogin(): $CancellablePromise<boolean> {
 /**
  * ListDevices returns paired phones (including revoked).
  */
-export function ListDevices(): $CancellablePromise<web$0.Device[] | null> {
-    return $Call.ByID(2060505397);
+export function ListDevices(): $CancellablePromise<web$0.Device[]> {
+    return $Call.ByID(2060505397).then(($result: any) => {
+        return $$createType5($result);
+    });
 }
 
 /**
@@ -89,7 +104,19 @@ export function MarkFirstRunDone(): $CancellablePromise<void> {
  * MintPairing returns a short-lived QR ticket for phone login.
  */
 export function MintPairing(): $CancellablePromise<web$0.PairingTicket> {
-    return $Call.ByID(4038686222);
+    return $Call.ByID(4038686222).then(($result: any) => {
+        return $$createType6($result);
+    });
+}
+
+/**
+ * OAuthConfig returns the secret-free sign-in settings view for the Settings
+ * sheet. Empty when the web server is not wired.
+ */
+export function OAuthConfig(): $CancellablePromise<web$0.OAuthStatus> {
+    return $Call.ByID(2566841191).then(($result: any) => {
+        return $$createType7($result);
+    });
 }
 
 /**
@@ -143,6 +170,20 @@ export function SetLaunchAtLogin(on: boolean): $CancellablePromise<void> {
 }
 
 /**
+ * SetOAuthGitHub applies and persists a GitHub sign-in edit, live.
+ */
+export function SetOAuthGitHub($in: web$0.GitHubSettings): $CancellablePromise<void> {
+    return $Call.ByID(679993978, $in);
+}
+
+/**
+ * SetOAuthOIDC applies and persists a Keycloak/OIDC sign-in edit, live.
+ */
+export function SetOAuthOIDC($in: web$0.OIDCSettings): $CancellablePromise<void> {
+    return $Call.ByID(1037908360, $in);
+}
+
+/**
  * SetOptionalPassword enables username/password phone login without QR.
  */
 export function SetOptionalPassword(user: string, pass: string): $CancellablePromise<void> {
@@ -179,3 +220,13 @@ export function SetSessionSwitchEnabled(on: boolean): $CancellablePromise<void> 
 export function SetWebServer(srv: web$0.Server | null): $CancellablePromise<void> {
     return $Call.ByID(2770529491, srv);
 }
+
+// Private type creation functions
+const $$createType0 = web$0.AccessOrigin.createFrom;
+const $$createType1 = $Create.Array($$createType0);
+const $$createType2 = $models.UpdateInfo.createFrom;
+const $$createType3 = $models.InstallResult.createFrom;
+const $$createType4 = web$0.Device.createFrom;
+const $$createType5 = $Create.Array($$createType4);
+const $$createType6 = web$0.PairingTicket.createFrom;
+const $$createType7 = web$0.OAuthStatus.createFrom;

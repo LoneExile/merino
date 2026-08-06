@@ -221,5 +221,18 @@ export function wailsClient(): Client {
     setSessionSwitchEnabled: (on: boolean) => DesktopSettings.SetSessionSwitchEnabled(on),
     allowWritesEnabled: () => DesktopSettings.AllowWritesEnabled(),
     setAllowWritesEnabled: (on: boolean) => DesktopSettings.SetAllowWritesEnabled(on),
+    oauthConfig: () => DesktopSettings.OAuthConfig(),
+    setOAuthGithub: async (cfg) => {
+      await DesktopSettings.SetOAuthGitHub(cfg);
+      return DesktopSettings.OAuthConfig();
+    },
+    setOAuthOidc: async (cfg) => {
+      await DesktopSettings.SetOAuthOIDC(cfg);
+      return DesktopSettings.OAuthConfig();
+    },
+    clearOAuth: async (provider) => {
+      await DesktopSettings.ClearOAuth(provider);
+      return DesktopSettings.OAuthConfig();
+    },
   };
 }

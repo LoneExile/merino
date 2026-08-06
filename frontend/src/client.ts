@@ -87,6 +87,50 @@ export interface Session {
   passwordLoginEnabled?: boolean;
 }
 
+export interface OAuthProviderStatus {
+  /** live-enabled ⇒ a "Sign in with …" button shows on /login */
+  configured: boolean;
+  /** set via MERINO_* env; read-only in the UI */
+  envLocked: boolean;
+  clientID: string;
+  /** a secret is stored (never the secret itself) */
+  hasSecret: boolean;
+  allow?: string[];
+  org?: string;
+  team?: string;
+  issuer?: string;
+  allowRole?: string;
+  label: string;
+  /** derived from the public URL; register this at the identity provider */
+  redirectURL: string;
+}
+
+export interface OAuthStatus {
+  /** false ⇒ no public origin, so no provider can be enabled */
+  publicUrlSet: boolean;
+  github: OAuthProviderStatus;
+  oidc: OAuthProviderStatus;
+}
+
+export interface GitHubSettingsInput {
+  clientID: string;
+  /** empty keeps the stored secret */
+  clientSecret: string;
+  allow: string[];
+  org: string;
+  team: string;
+  label: string;
+}
+
+export interface OidcSettingsInput {
+  clientID: string;
+  /** empty keeps the stored secret */
+  clientSecret: string;
+  issuer: string;
+  allowRole: string;
+  label: string;
+}
+
 export interface PairedDevice {
   id: string;
   name: string;
@@ -259,6 +303,11 @@ export interface Client {
   setSessionSwitchEnabled?(on: boolean): Promise<void>;
   allowWritesEnabled?(): Promise<boolean>;
   setAllowWritesEnabled?(on: boolean): Promise<void>;
+  /** Read the sign-in (OAuth) configuration for Settings. Operator-only. */
+  oauthConfig?(): Promise<OAuthStatus>;
+  setOAuthGithub?(cfg: GitHubSettingsInput): Promise<OAuthStatus>;
+  setOAuthOidc?(cfg: OidcSettingsInput): Promise<OAuthStatus>;
+  clearOAuth?(provider: "github" | "oidc"): Promise<OAuthStatus>;
 }
 
 export interface UpdateInfo {
@@ -479,6 +528,13 @@ async function httpClient(): Promise<Client> {
           setPasswordLoginEnabled: (on: boolean) =>
             postJSON("/api/auth/password-login", { enabled: on }),
           markFirstRunDone: () => postJSON("/api/first-run/done", {}),
+          oauthConfig: () => getJSON<OAuthStatus>("/api/auth/oauth"),
+          setOAuthGithub: (cfg: GitHubSettingsInput) =>
+            postJSON<OAuthStatus>("/api/auth/oauth/github", cfg),
+          setOAuthOidc: (cfg: OidcSettingsInput) =>
+            postJSON<OAuthStatus>("/api/auth/oauth/oidc", cfg),
+          clearOAuth: (provider: "github" | "oidc") =>
+            postJSON<OAuthStatus>(`/api/auth/oauth/${provider}/clear`, {}),
         }
       : {}),
   };

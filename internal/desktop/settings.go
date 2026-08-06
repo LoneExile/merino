@@ -238,3 +238,36 @@ func (s *Settings) SetAllowWritesEnabled(on bool) error {
 	}
 	return nil
 }
+
+// OAuthConfig returns the secret-free sign-in settings view for the Settings
+// sheet. Empty when the web server is not wired.
+func (s *Settings) OAuthConfig() web.OAuthStatus {
+	if s == nil || s.webServer == nil {
+		return web.OAuthStatus{}
+	}
+	return s.webServer.OAuthStatus()
+}
+
+// SetOAuthGitHub applies and persists a GitHub sign-in edit, live.
+func (s *Settings) SetOAuthGitHub(in web.GitHubSettings) error {
+	if s.webServer == nil {
+		return fmt.Errorf("sign-in settings require the web dashboard")
+	}
+	return s.webServer.SetOAuthGitHub(in)
+}
+
+// SetOAuthOIDC applies and persists a Keycloak/OIDC sign-in edit, live.
+func (s *Settings) SetOAuthOIDC(in web.OIDCSettings) error {
+	if s.webServer == nil {
+		return fmt.Errorf("sign-in settings require the web dashboard")
+	}
+	return s.webServer.SetOAuthOIDC(in)
+}
+
+// ClearOAuth removes a provider's stored config ("github" or "oidc").
+func (s *Settings) ClearOAuth(provider string) error {
+	if s.webServer == nil {
+		return fmt.Errorf("sign-in settings require the web dashboard")
+	}
+	return s.webServer.ClearOAuth(provider)
+}

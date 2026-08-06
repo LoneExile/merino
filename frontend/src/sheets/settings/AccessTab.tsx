@@ -5,6 +5,7 @@
 
 import { useEffect, useState } from "react";
 import type { Client, Session } from "../../client";
+import { OAuthSettings } from "./OAuthSettings";
 
 export interface AccessTabProps {
   client: Client | null;
@@ -231,14 +232,11 @@ export function AccessTab({ client, session, isDesktop }: AccessTabProps) {
           >
             Save phone password
           </button>
-          {session?.oauthEnabled && (
-            <p className="settings-copy settings-copy--quiet">
-              Single sign-on is configured — sign in with GitHub or Keycloak from the login page.
-            </p>
-          )}
           {passMsg && <p className="settings-copy">{passMsg}</p>}
         </section>
       )}
+
+      <OAuthSettings client={client} />
     </>
   );
 }
