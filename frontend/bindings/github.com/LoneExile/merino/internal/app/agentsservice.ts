@@ -167,6 +167,20 @@ export function SlashCommands(paneID: string, agent: string, query: string): $Ca
 }
 
 /**
+ * Start boots the client and background streams. The context lives for the
+ * lifetime of the application.
+ * 
+ * Named Start rather than carrying the Wails lifecycle signature
+ * (ServiceStartup(ctx, application.ServiceOptions)): that one desktop type in
+ * one signature was the entire reason package app — and therefore
+ * internal/web, which is on the read path of the dashboard — pulled 22 Wails
+ * packages into every build. service_wails.go adapts it back for the menubar.
+ */
+export function Start(): $CancellablePromise<void> {
+    return $Call.ByID(3336728367);
+}
+
+/**
  * StartAgentPane opens a tab in a workspace and starts an agent in it.
  * 
  * Two herdr calls, and the second one can fail after the first succeeded —
