@@ -104,6 +104,32 @@ OAuth is only offered over a public HTTPS origin (`MERINO_PUBLIC_URL`); on a
 plain LAN bind the buttons do not appear. The menu-bar panel is unaffected —
 it authenticates through Wails IPC, not HTTP.
 
+Three sources configure a provider, highest precedence first: **environment**
+(`MERINO_*`) > **`config.yml`** > the **Settings UI** (`oauth.json`). A higher
+source makes the provider read-only in the panel, which says which one owns it.
+
+In `config.yml` the client secret is never inline — the same rule as
+`auth.passwordFile` — it is read from `clientSecretFile` (or the matching
+`MERINO_*_CLIENT_SECRET` env). `config.yml` is read at startup, so an edit needs
+a relaunch:
+
+```yaml
+oauth:
+  github:
+    clientID: "Iv1.xxxxxxxx"
+    clientSecretFile: "/run/secrets/merino-github"
+    allow: ["your-gh-login"]      # or org/team
+  oidc:
+    clientID: "merino"
+    clientSecretFile: "/run/secrets/merino-oidc"
+    issuer: "https://keycloak.example/realms/main"
+    allowRole: "herd-admin"
+```
+
+The menu-bar **Settings → Access → Single sign-on** section has an **Open config
+file** button: it opens `config.yml` in the OS editor, creating it from a
+fully-commented (behaviour-neutral) template if it does not exist yet.
+
 ## Before you push
 
 ```bash

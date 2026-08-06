@@ -11,6 +11,15 @@ interface Props {
   client: Client | null;
 }
 
+// The read-only note shown when env or config.yml owns a provider. config.yml
+// is editable via the "Open config file" button but needs a relaunch; env is
+// changed wherever the process is launched.
+function lockedNote(source: string): string {
+  if (source === "config.yml")
+    return "Configured by config.yml \u2014 use \u201cOpen config file\u201d below, then relaunch to change it.";
+  return "Configured by environment variables \u2014 edit those to change it.";
+}
+
 export function OAuthSettings({ client }: Props) {
   const [status, setStatus] = useState<OAuthStatus | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -119,6 +128,25 @@ export function OAuthSettings({ client }: Props) {
             stay off.
           </p>
 
+          {client?.openConfigFile && (
+            <p className="settings-copy settings-copy--quiet">
+              A provider set in <code>config.yml</code> is read-only here.{" "}
+              <button
+                type="button"
+                className="btn btn--link"
+                disabled={busy}
+                onClick={() =>
+                  void client!
+                    .openConfigFile!()
+                    .then((path) => setMsg(`Opened ${path} \u2014 relaunch to apply edits.`))
+                    .catch((e) => setErr(e instanceof Error ? e.message : String(e)))
+                }
+              >
+                Open config file
+              </button>
+            </p>
+          )}
+
       {!status.publicUrlSet && (
         <p className="settings-copy settings-copy--warn">
           No public URL is set, so sign-in stays off until one is (OAuth needs an
@@ -131,10 +159,8 @@ export function OAuthSettings({ client }: Props) {
         GitHub{" "}
         <span className="settings-row__hint">{gh.configured ? "· enabled" : "· off"}</span>
       </h4>
-      {gh.envLocked ? (
-        <p className="settings-copy settings-copy--quiet">
-          Configured by environment variables — edit those to change it.
-        </p>
+      {gh.locked ? (
+        <p className="settings-copy settings-copy--quiet">{lockedNote(gh.source)}</p>
       ) : (
         <>
           <label className="field__label" htmlFor="gh-cid">Client ID</label>
@@ -197,10 +223,8 @@ export function OAuthSettings({ client }: Props) {
         Keycloak (OIDC){" "}
         <span className="settings-row__hint">{oi.configured ? "· enabled" : "· off"}</span>
       </h4>
-      {oi.envLocked ? (
-        <p className="settings-copy settings-copy--quiet">
-          Configured by environment variables — edit those to change it.
-        </p>
+      {oi.locked ? (
+        <p className="settings-copy settings-copy--quiet">{lockedNote(oi.source)}</p>
       ) : (
         <>
           <label className="field__label" htmlFor="oi-cid">Client ID</label>

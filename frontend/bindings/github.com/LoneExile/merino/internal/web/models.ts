@@ -169,7 +169,8 @@ export class OAuthProviderStatus {
      * live-enabled ⇒ a button shows
      */
     "configured": boolean;
-    "envLocked": boolean;
+    "locked": boolean;
+    "source": string;
     "clientID": string;
     "hasSecret": boolean;
     "allow"?: string[];
@@ -185,8 +186,11 @@ export class OAuthProviderStatus {
         if (!("configured" in $$source)) {
             this["configured"] = false;
         }
-        if (!("envLocked" in $$source)) {
-            this["envLocked"] = false;
+        if (!("locked" in $$source)) {
+            this["locked"] = false;
+        }
+        if (!("source" in $$source)) {
+            this["source"] = "";
         }
         if (!("clientID" in $$source)) {
             this["clientID"] = "";

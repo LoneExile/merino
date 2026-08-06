@@ -90,8 +90,10 @@ export interface Session {
 export interface OAuthProviderStatus {
   /** live-enabled ⇒ a "Sign in with …" button shows on /login */
   configured: boolean;
-  /** set via MERINO_* env; read-only in the UI */
-  envLocked: boolean;
+  /** read-only in the UI — env or config.yml owns it */
+  locked: boolean;
+  /** where the effective config came from: "environment" | "config.yml" | "settings" */
+  source: string;
   clientID: string;
   /** a secret is stored (never the secret itself) */
   hasSecret: boolean;
@@ -110,6 +112,13 @@ export interface OAuthStatus {
   publicUrlSet: boolean;
   github: OAuthProviderStatus;
   oidc: OAuthProviderStatus;
+}
+
+export interface ConfigInfo {
+  /** effective config.yml path (the loaded file, or the default user path) */
+  path: string;
+  /** whether that file exists yet */
+  exists: boolean;
 }
 
 export interface GitHubSettingsInput {
@@ -308,6 +317,10 @@ export interface Client {
   setOAuthGithub?(cfg: GitHubSettingsInput): Promise<OAuthStatus>;
   setOAuthOidc?(cfg: OidcSettingsInput): Promise<OAuthStatus>;
   clearOAuth?(provider: "github" | "oidc"): Promise<OAuthStatus>;
+  /** Desktop-only. Open config.yml in the OS editor (creating it if absent). */
+  openConfigFile?(): Promise<string>;
+  /** Desktop-only. Effective config.yml path and whether it exists yet. */
+  configFileInfo?(): Promise<ConfigInfo>;
 }
 
 export interface UpdateInfo {

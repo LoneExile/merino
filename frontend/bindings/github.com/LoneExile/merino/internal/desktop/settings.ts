@@ -46,6 +46,22 @@ export function CheckUpdate(): $CancellablePromise<$models.UpdateInfo> {
 }
 
 /**
+ * ConfigFileInfo reports the effective config path and whether it exists.
+ */
+export function ConfigFileInfo(): $CancellablePromise<$models.ConfigInfo> {
+    return $Call.ByID(3538901526);
+}
+
+/**
+ * OpenConfigFile opens config.yml in the OS default editor, creating it from a
+ * fully-commented starter template first if it does not exist. Returns the
+ * path opened.
+ */
+export function OpenConfigFile(): $CancellablePromise<string> {
+    return $Call.ByID(2669502342);
+}
+
+/**
  * ClearOAuth removes a provider's stored config ("github" or "oidc").
  */
 export function ClearOAuth(provider: string): $CancellablePromise<void> {

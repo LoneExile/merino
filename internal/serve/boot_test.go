@@ -117,11 +117,18 @@ func TestPrepareSetsEveryOptionsField(t *testing.T) {
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yml")
+	secretPath := filepath.Join(dir, "oauth-secret")
+	if err := os.WriteFile(secretPath, []byte("s3cr3t\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	body := "listen: \"127.0.0.1:9003\"\n" +
 		"publicUrl: \"https://merino.example\"\n" +
 		"behindProxy: true\n" +
 		"access:\n  allowWrites: true\n  allowSessionSwitch: true\n  passwordLogin: true\n" +
-		"auth:\n  user: \"operator\"\n  passwordFile: \"/run/secrets/merino\"\n"
+		"auth:\n  user: \"operator\"\n  passwordFile: \"/run/secrets/merino\"\n" +
+		"oauth:\n" +
+		"  github:\n    clientID: \"gh-cid\"\n    clientSecretFile: \"" + secretPath + "\"\n    allow: [\"lex\"]\n" +
+		"  oidc:\n    clientID: \"oidc-cid\"\n    clientSecretFile: \"" + secretPath + "\"\n    issuer: \"https://idp\"\n    allowRole: \"admin\"\n"
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}

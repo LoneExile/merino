@@ -48,6 +48,7 @@ type Config struct {
 	Auth   Auth   `yaml:"auth"`
 	Paths  Paths  `yaml:"paths"`
 	Log    Log    `yaml:"log"`
+	OAuth  OAuth  `yaml:"oauth"`
 }
 
 // Herdr locates the herd and describes what can be spawned on it.
@@ -92,6 +93,34 @@ type Paths struct {
 type Log struct {
 	Level  string `yaml:"level"`  // debug | info | warn | error
 	Format string `yaml:"format"` // text | json
+}
+
+// OAuth configures browser/phone sign-in providers. Non-secret fields only:
+// the client secret is read from ClientSecretFile or the MERINO_*_CLIENT_SECRET
+// env, never inline — the same rule as Auth (no password key), because
+// config.yml is the file that gets committed and copied around.
+type OAuth struct {
+	GitHub OAuthGitHub `yaml:"github"`
+	OIDC   OAuthOIDC   `yaml:"oidc"`
+}
+
+// OAuthGitHub is the config.yml GitHub block.
+type OAuthGitHub struct {
+	ClientID         string   `yaml:"clientID"`
+	ClientSecretFile string   `yaml:"clientSecretFile"`
+	Allow            []string `yaml:"allow"`
+	Org              string   `yaml:"org"`
+	Team             string   `yaml:"team"`
+	Label            string   `yaml:"label"`
+}
+
+// OAuthOIDC is the config.yml Keycloak/OIDC block.
+type OAuthOIDC struct {
+	ClientID         string `yaml:"clientID"`
+	ClientSecretFile string `yaml:"clientSecretFile"`
+	Issuer           string `yaml:"issuer"`
+	AllowRole        string `yaml:"allowRole"`
+	Label            string `yaml:"label"`
 }
 
 // File is a loaded config plus where it came from and whether that source can

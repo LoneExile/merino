@@ -29,7 +29,7 @@ func clearOAuthEnv(t *testing.T) {
 // both, after the store is edited.
 func TestLoginPageRendersConfiguredOAuthButtons(t *testing.T) {
 	clearOAuthEnv(t)
-	store := NewOAuthStore(t.TempDir(), "https://merino.example")
+	store := NewOAuthStore(t.TempDir(), "https://merino.example", OAuthConfigLayer{})
 
 	s, err := New(&fakeSource{}, Config{
 		Provider:   testProvider("alice", "correct-horse"),
@@ -68,7 +68,7 @@ func TestLoginPageRendersConfiguredOAuthButtons(t *testing.T) {
 // even when fully credentialed — the buttons stay hidden.
 func TestLoginPageHidesButtonsWithoutPublicURL(t *testing.T) {
 	clearOAuthEnv(t)
-	store := NewOAuthStore(t.TempDir(), "") // no public origin
+	store := NewOAuthStore(t.TempDir(), "", OAuthConfigLayer{}) // no public origin
 	if err := store.SetGitHub(GitHubSettings{ClientID: "cid", ClientSecret: "s", Allow: []string{"lex"}}); err != nil {
 		t.Fatal(err)
 	}

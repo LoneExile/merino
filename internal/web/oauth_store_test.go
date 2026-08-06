@@ -2,6 +2,7 @@ package web
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -13,13 +14,13 @@ import (
 func TestOAuthStorePersistRoundTrip(t *testing.T) {
 	clearOAuthEnv(t)
 	dir := t.TempDir()
-	store := NewOAuthStore(dir, "https://merino.example")
+	store := NewOAuthStore(dir, "https://merino.example", OAuthConfigLayer{})
 
 	if err := store.SetGitHub(GitHubSettings{ClientID: "cid", ClientSecret: "shh", Allow: []string{"lex", " ada "}, Label: "Acme GH"}); err != nil {
 		t.Fatal(err)
 	}
 	// A reloaded store sees the same config (persisted to oauth.json).
-	reloaded := NewOAuthStore(dir, "https://merino.example")
+	reloaded := NewOAuthStore(dir, "https://merino.example", OAuthConfigLayer{})
 	gh := reloaded.GitHub()
 	if gh.ClientID != "cid" || gh.ClientSecret != "shh" {
 		t.Fatalf("reloaded github = %+v", gh)
@@ -38,7 +39,7 @@ func TestOAuthStorePersistRoundTrip(t *testing.T) {
 // Editing the allowlist without re-supplying the secret must keep the secret.
 func TestOAuthStoreKeepsSecretOnEmpty(t *testing.T) {
 	clearOAuthEnv(t)
-	store := NewOAuthStore(t.TempDir(), "https://merino.example")
+	store := NewOAuthStore(t.TempDir(), "https://merino.example", OAuthConfigLayer{})
 	if err := store.SetGitHub(GitHubSettings{ClientID: "cid", ClientSecret: "shh", Allow: []string{"lex"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -57,10 +58,10 @@ func TestOAuthStoreEnvLocked(t *testing.T) {
 	t.Setenv("MERINO_GITHUB_CLIENT_ID", "env-cid")
 	t.Setenv("MERINO_GITHUB_CLIENT_SECRET", "env-secret")
 	t.Setenv("MERINO_GITHUB_ALLOW", "envuser")
-	store := NewOAuthStore(t.TempDir(), "https://merino.example")
+	store := NewOAuthStore(t.TempDir(), "https://merino.example", OAuthConfigLayer{})
 
-	if !store.Status().GitHub.EnvLocked {
-		t.Fatal("github configured via env must report EnvLocked")
+	if !store.Status().GitHub.Locked {
+		t.Fatal("github configured via env must report Locked")
 	}
 	if err := store.SetGitHub(GitHubSettings{ClientID: "x", ClientSecret: "y", Allow: []string{"z"}}); err == nil {
 		t.Fatal("editing an env-locked provider must be refused")
@@ -73,7 +74,7 @@ func TestOAuthStoreEnvLocked(t *testing.T) {
 // Status is the client-facing view and must NEVER carry the client secret.
 func TestOAuthStatusNeverLeaksSecret(t *testing.T) {
 	clearOAuthEnv(t)
-	store := NewOAuthStore(t.TempDir(), "https://merino.example")
+	store := NewOAuthStore(t.TempDir(), "https://merino.example", OAuthConfigLayer{})
 	_ = store.SetOIDC(OIDCSettings{ClientID: "cid", ClientSecret: "TOP-SECRET", Issuer: "https://idp", AllowRole: "herd-admin"})
 
 	raw, err := json.Marshal(store.Status())
@@ -111,7 +112,7 @@ func oauthAdminServer(t *testing.T, store *OAuthStore) *Server {
 // phone's job.
 func TestOAuthAdminRejectsPairedDevice(t *testing.T) {
 	clearOAuthEnv(t)
-	store := NewOAuthStore(t.TempDir(), "https://merino.example")
+	store := NewOAuthStore(t.TempDir(), "https://merino.example", OAuthConfigLayer{})
 	srv := oauthAdminServer(t, store)
 	routes := srv.routes()
 
@@ -134,7 +135,7 @@ func TestOAuthAdminRejectsPairedDevice(t *testing.T) {
 
 func TestOAuthAdminOperatorCanConfigure(t *testing.T) {
 	clearOAuthEnv(t)
-	store := NewOAuthStore(t.TempDir(), "https://merino.example")
+	store := NewOAuthStore(t.TempDir(), "https://merino.example", OAuthConfigLayer{})
 	srv := oauthAdminServer(t, store)
 	routes := srv.routes()
 
@@ -156,5 +157,73 @@ func TestOAuthAdminOperatorCanConfigure(t *testing.T) {
 	// The 200 body is a status view and must not echo the secret.
 	if strings.Contains(rr.Body.String(), "shh") {
 		t.Fatalf("response leaked the secret: %s", rr.Body.String())
+	}
+}
+
+// A provider set in config.yml wins over oauth.json (the UI layer), reports its
+// source, and is read-only in the UI — a file write must not shadow it.
+func TestOAuthStoreConfigLayerBeatsFileAndLocks(t *testing.T) {
+	clearOAuthEnv(t)
+	dir := t.TempDir()
+
+	// Seed oauth.json with a DIFFERENT value via a plain (no-layer) store.
+	seed := NewOAuthStore(dir, "https://merino.example", OAuthConfigLayer{})
+	if err := seed.SetGitHub(GitHubSettings{ClientID: "file-cid", ClientSecret: "file-secret", Allow: []string{"fileuser"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	store := NewOAuthStore(dir, "https://merino.example", OAuthConfigLayer{
+		GitHub:    GitHubConfig{ClientID: "cfg-cid", ClientSecret: "cfg-secret", Allow: []string{"cfguser"}, Label: "Cfg GH"},
+		GitHubSet: true,
+	})
+
+	if gh := store.GitHub(); gh.ClientID != "cfg-cid" || gh.ClientSecret != "cfg-secret" {
+		t.Fatalf("config.yml must win over oauth.json, got %+v", gh)
+	}
+	st := store.Status().GitHub
+	if st.Source != "config.yml" || !st.Locked {
+		t.Fatalf("config-owned provider: source=%q locked=%v, want config.yml/true", st.Source, st.Locked)
+	}
+	if err := store.SetGitHub(GitHubSettings{ClientID: "x", ClientSecret: "y", Allow: []string{"z"}}); !errors.Is(err, errLocked) {
+		t.Fatalf("editing a config-locked provider must return errLocked, got %v", err)
+	}
+	if err := store.ClearGitHub(); !errors.Is(err, errLocked) {
+		t.Fatalf("clearing a config-locked provider must return errLocked, got %v", err)
+	}
+	if store.GitHub().ClientID != "cfg-cid" {
+		t.Fatal("config value must be untouched after refused edits")
+	}
+}
+
+// Environment outranks config.yml: with both set, env wins and the source says so.
+func TestOAuthStoreEnvBeatsConfig(t *testing.T) {
+	clearOAuthEnv(t)
+	t.Setenv("MERINO_GITHUB_CLIENT_ID", "env-cid")
+	t.Setenv("MERINO_GITHUB_CLIENT_SECRET", "env-secret")
+	t.Setenv("MERINO_GITHUB_ALLOW", "envuser")
+
+	store := NewOAuthStore(t.TempDir(), "https://merino.example", OAuthConfigLayer{
+		GitHub:    GitHubConfig{ClientID: "cfg-cid", ClientSecret: "cfg-secret", Allow: []string{"cfguser"}},
+		GitHubSet: true,
+	})
+	if gh := store.GitHub(); gh.ClientID != "env-cid" {
+		t.Fatalf("env must beat config.yml, got clientID %q", gh.ClientID)
+	}
+	if src := store.Status().GitHub.Source; src != "environment" {
+		t.Fatalf("source with env set = %q, want environment", src)
+	}
+}
+
+// With neither env nor config.yml, a UI-configured provider reports source
+// "settings" and stays editable.
+func TestOAuthStoreSettingsSourceEditable(t *testing.T) {
+	clearOAuthEnv(t)
+	store := NewOAuthStore(t.TempDir(), "https://merino.example", OAuthConfigLayer{})
+	if err := store.SetOIDC(OIDCSettings{ClientID: "cid", ClientSecret: "shh", Issuer: "https://idp", AllowRole: "admin"}); err != nil {
+		t.Fatal(err)
+	}
+	st := store.Status().OIDC
+	if st.Source != "settings" || st.Locked {
+		t.Fatalf("UI-owned provider: source=%q locked=%v, want settings/false", st.Source, st.Locked)
 	}
 }

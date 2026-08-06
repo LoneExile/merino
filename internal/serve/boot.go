@@ -165,6 +165,12 @@ func Prepare(kind Kind, f Flags) (*Boot, error) {
 		behindProxy = f.BehindProxy
 	}
 
+	// config.yml OAuth layer: non-secret fields from the file, secret from the
+	// named file (or MERINO_*_CLIENT_SECRET env). config.yml never holds the
+	// secret inline — same rule as auth.passwordFile.
+	ghCfg, ghSet := resolveConfigGitHub(cfg.OAuth.GitHub, logger)
+	oidcCfg, oidcSet := resolveConfigOIDC(cfg.OAuth.OIDC, logger)
+
 	return &Boot{
 		Config:   cfg,
 		Logger:   logger,
@@ -183,6 +189,10 @@ func Prepare(kind Kind, f Flags) (*Boot, error) {
 			AuthPasswordFile:   cfg.Auth.PasswordFile,
 			StateDir:           stateDir,
 			Logger:             logger,
+			OAuthGitHub:        ghCfg,
+			OAuthGitHubSet:     ghSet,
+			OAuthOIDC:          oidcCfg,
+			OAuthOIDCSet:       oidcSet,
 		},
 	}, nil
 }
@@ -238,4 +248,58 @@ func LogLevel(fileLevel string) slog.Level {
 func Fatal(err error) {
 	fmt.Fprintln(os.Stderr, err)
 	os.Exit(1)
+}
+
+// resolveConfigGitHub turns a config.yml github block into an effective config,
+// reading the secret from clientSecretFile (or the env fallback). Returns
+// set=false when the block does not name a client ID.
+func resolveConfigGitHub(c config.OAuthGitHub, log *slog.Logger) (web.GitHubConfig, bool) {
+	if c.ClientID == "" {
+		return web.GitHubConfig{}, false
+	}
+	secret := readSecretFile(c.ClientSecretFile, log)
+	if secret == "" {
+		secret = app.Env("GITHUB_CLIENT_SECRET")
+	}
+	return web.GitHubConfig{
+		ClientID:     c.ClientID,
+		ClientSecret: secret,
+		Allow:        c.Allow,
+		Org:          c.Org,
+		Team:         c.Team,
+		Label:        c.Label,
+	}, true
+}
+
+// resolveConfigOIDC is resolveConfigGitHub for the OIDC block.
+func resolveConfigOIDC(c config.OAuthOIDC, log *slog.Logger) (web.OIDCConfig, bool) {
+	if c.ClientID == "" {
+		return web.OIDCConfig{}, false
+	}
+	secret := readSecretFile(c.ClientSecretFile, log)
+	if secret == "" {
+		secret = app.Env("OIDC_CLIENT_SECRET")
+	}
+	return web.OIDCConfig{
+		ClientID:     c.ClientID,
+		ClientSecret: secret,
+		Issuer:       c.Issuer,
+		AllowRole:    c.AllowRole,
+		Label:        c.Label,
+	}, true
+}
+
+// readSecretFile reads a secret from a file, trimming the trailing newline a
+// Secret mount or `echo >` leaves. A named-but-unreadable file is warned about
+// (the provider then stays disabled) rather than crashing the dashboard.
+func readSecretFile(path string, log *slog.Logger) string {
+	if path == "" {
+		return ""
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		log.Warn("oauth clientSecretFile unreadable; provider stays off", "path", path, "err", err)
+		return ""
+	}
+	return strings.TrimRight(string(raw), "\r\n")
 }

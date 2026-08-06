@@ -127,7 +127,7 @@ func (s *Server) clearOAuth(w http.ResponseWriter, r *http.Request, id Identity,
 // explains) and anything else to 500, auditing the refusal either way.
 func (s *Server) oauthWriteErr(w http.ResponseWriter, r *http.Request, id Identity, provider string, err error) {
 	code := http.StatusInternalServerError
-	if errors.Is(err, errEnvLocked) {
+	if errors.Is(err, errLocked) {
 		code = http.StatusConflict
 	}
 	s.audit(r, id, "oauth_config_set", provider, "", false, err.Error())
