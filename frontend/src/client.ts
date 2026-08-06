@@ -81,7 +81,7 @@ export interface Session {
   devicesEnabled?: boolean;
   canManageDevices?: boolean;
   firstRunPending?: boolean;
-  oidcEnabled?: boolean;
+  oauthEnabled?: boolean;
   accessOrigins?: AccessOrigin[];
   defaultPairBase?: string;
   passwordLoginEnabled?: boolean;

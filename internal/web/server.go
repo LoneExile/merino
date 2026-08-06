@@ -51,6 +51,10 @@ type Config struct {
 	Addr string
 	// Provider authenticates users.
 	Provider Provider
+	// OAuth lists the OAuth login rungs (GitHub, Keycloak) mounted alongside
+	// the primary provider. Each provider is fail-closed: it only appears
+	// when fully configured with an allowlist.
+	OAuth []OAuthProvider
 	// Policy authorises what an authenticated user may see.
 	Policy Policy
 	// BehindProxy declares that every request arrives through a trusted
@@ -178,6 +182,15 @@ func New(src Source, cfg Config) (*Server, error) {
 	if s.pairing != nil && cfg.PublicBaseURL != "" {
 		s.pairing.SetBaseURL(cfg.PublicBaseURL)
 	}
+	// The password provider owns the /login form; hand it the buttons for
+	// every OAuth rung so the page renders them before any request arrives.
+	if pp, ok := cfg.Provider.(*PasswordProvider); ok {
+		btns := make([]OAuthButton, 0, len(cfg.OAuth))
+		for _, o := range cfg.OAuth {
+			btns = append(btns, OAuthButton{Label: o.LoginLabel(), Path: o.LoginPath()})
+		}
+		pp.SetOAuthButtons(btns)
+	}
 
 	// Push failing to initialise must never take the dashboard down over a
 	// notifications feature — see newPushManager's doc comment. Disabled
@@ -273,6 +286,13 @@ func (s *Server) routes() http.Handler {
 			"cfConnectingIP", r.Header.Get("CF-Connecting-IP"))
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 	})
+	for _, o := range s.cfg.OAuth {
+		o.Mount(mux, s.sessions, func(w http.ResponseWriter, r *http.Request, id Identity) {
+			s.sessions.Issue(w, id)
+			s.log.Info("web login", "user", id.Name, "provider", id.Provider, "ip", s.clientIP(r))
+			http.Redirect(w, r, "/", http.StatusSeeOther)
+		})
+	}
 	s.mountPairing(mux)
 	s.mountDevices(mux)
 
@@ -493,7 +513,7 @@ func (s *Server) handleSession(w http.ResponseWriter, _ *http.Request, id Identi
 		"devicesEnabled":   s.cfg.Devices != nil,
 		"canManageDevices": !IsDeviceSubject(id.Subject) && s.cfg.Devices != nil,
 		"firstRunPending":  FirstRunPending(s.stateDir()),
-		"oidcEnabled":      OIDCFromEnv().Enabled() && s.cfg.PublicBaseURL != "",
+		"oauthEnabled":     len(s.cfg.OAuth) > 0,
 		"accessOrigins":    origins,
 		"defaultPairBase":  s.defaultPairBase(),
 		"passwordLoginEnabled": func() bool {
