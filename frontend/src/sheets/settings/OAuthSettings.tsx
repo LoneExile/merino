@@ -32,6 +32,9 @@ export function OAuthSettings({ client }: Props) {
   const [oiLabel, setOiLabel] = useState("");
 
   const [busy, setBusy] = useState(false);
+  // Collapsed by default: the forms are long, and most sessions never touch
+  // them. The toggle reveals them; the header keeps a one-line status.
+  const [expanded, setExpanded] = useState(false);
 
   // Seed the forms from the server's current (secret-free) view. The secret
   // fields stay blank: an empty secret on save keeps the stored one.
@@ -91,11 +94,30 @@ export function OAuthSettings({ client }: Props) {
       <header className="settings-block__head">
         <h3 id="set-sso">Single sign-on</h3>
       </header>
-      <p className="settings-copy">
-        Let people sign in to the dashboard with GitHub or Keycloak. Only the
-        accounts you list below are admitted — credentials without an allowlist
-        stay off.
-      </p>
+      <div className="settings-row settings-row--toggle">
+        <div className="settings-row__meta">
+          <span className="settings-row__label">Configure sign-in providers</span>
+          <span className="settings-row__hint">
+            GitHub {gh.configured ? "on" : "off"} · Keycloak {oi.configured ? "on" : "off"}
+          </span>
+        </div>
+        <label className="switch">
+          <input
+            type="checkbox"
+            checked={expanded}
+            aria-label="Show single sign-on settings"
+            onChange={(e) => setExpanded(e.target.checked)}
+          />
+          <span className="switch__ui" />
+        </label>
+      </div>
+      {expanded && (
+        <>
+          <p className="settings-copy">
+            Let people sign in to the dashboard with GitHub or Keycloak. Only the
+            accounts you list below are admitted — credentials without an allowlist
+            stay off.
+          </p>
 
       {!status.publicUrlSet && (
         <p className="settings-copy settings-copy--warn">
@@ -232,8 +254,10 @@ export function OAuthSettings({ client }: Props) {
         </>
       )}
 
-      {err && <p className="composer__err" role="alert">{err}</p>}
-      {msg && <p className="settings-copy">{msg}</p>}
+          {err && <p className="composer__err" role="alert">{err}</p>}
+          {msg && <p className="settings-copy">{msg}</p>}
+        </>
+      )}
     </section>
   );
 }
