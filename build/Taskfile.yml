@@ -193,7 +193,12 @@ tasks:
     generates:
       - frontend/bindings/**/*
     cmds:
-      - wails3 generate bindings -f '{{.BUILD_FLAGS}}' -clean=true{{if eq .OBFUSCATED "true"}} -obfuscated{{end}} -ts -i
+      # Scan the whole module (`./...`): this project's main package lives under
+      # cmd/merino, not the repo root. With no pattern, wails3 scans only the
+      # cwd (root) — which has no Go files — so `-clean=true` rewrites
+      # frontend/bindings EMPTY, and the next tsc fails with TS2307. This broke
+      # `just app` whenever Task's cache re-ran this step instead of skipping it.
+      - wails3 generate bindings -f '{{.BUILD_FLAGS}}' -clean=true{{if eq .OBFUSCATED "true"}} -obfuscated{{end}} -ts -i ./...
 
   generate:icons:
     summary: Generates Windows `.ico` and Mac `.icns` from an image; on macOS, `-iconcomposerinput appicon.icon -macassetdir darwin` also produces `Assets.car` from a `.icon` file (skipped on other platforms).
