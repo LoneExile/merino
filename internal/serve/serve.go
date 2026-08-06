@@ -226,20 +226,28 @@ func Start(opts Options) (*Dashboard, error) {
 		logger.Info("optional phone password enabled", "user", ou)
 	}
 
-	// OAuth rung: mount scaffold routes only when explicitly configured AND
-	// we have a public HTTPS base (redirect URIs) — env or config.yml, never
-	// the LAN autodetect. Full code flow is TODO.
-	if oidc := web.OIDCFromEnv(); oidc.Enabled() && opts.PublicURL != "" {
-		logger.Info("OIDC scaffold enabled (authorization code not implemented yet)",
-			"issuer", oidc.Issuer)
-		// Keep password as the Mount provider; OIDC routes are registered via
-		// a tiny side mount below after New — see attachOIDCScaffold.
-		_ = oidc
+	// OAuth rungs: GitHub + Keycloak, only when explicitly configured AND a
+	// public HTTPS base exists (redirect URIs) — env or config.yml, never the
+	// LAN autodetect. Each provider fails closed on its own allowlist, so an
+	// empty allow-role/allow means the button does not even appear.
+	var oauth []web.OAuthProvider
+	if opts.PublicURL != "" {
+		if oidc := web.OIDCFromEnv(); oidc.Enabled() {
+			logger.Info("OIDC (Keycloak) login enabled", "issuer", oidc.Issuer,
+				"redirect", oidc.RedirectURL, "allow_role", oidc.AllowRole)
+			oauth = append(oauth, &web.OIDCProvider{Cfg: oidc, Log: logger})
+		}
+		if gh := web.GitHubFromEnv(); gh.Enabled() {
+			logger.Info("GitHub login enabled", "redirect", gh.RedirectURL,
+				"org", gh.Org, "team", gh.Team, "allow", len(gh.Allow))
+			oauth = append(oauth, &web.GitHubProvider{Cfg: gh, Log: logger})
+		}
 	}
 
 	srv, err := web.New(src, web.Config{
 		Addr:     addr,
 		Provider: provider,
+		OAuth:    oauth,
 		// Single operator still: paired devices carry view+control roles for
 		// RequireRole later; today every authenticated identity is trusted.
 		Policy:        web.SingleOperator{},

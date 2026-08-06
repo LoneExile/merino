@@ -109,6 +109,20 @@ var loginTmpl = template.Must(template.New("login").Parse(`<!DOCTYPE html>
     letter-spacing: .06em;
   }
   .or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+  .oauth-btn {
+    display: block;
+    margin-top: 10px;
+    padding: 12px;
+    font: inherit;
+    font-weight: 600;
+    text-align: center;
+    text-decoration: none;
+    color: var(--text);
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    cursor: pointer;
+  }
   .scan {
     display: none;
     margin-top: 12px;
@@ -237,6 +251,12 @@ var loginTmpl = template.Must(template.New("login").Parse(`<!DOCTYPE html>
       <input id="token" name="token" autocomplete="one-time-code" autocapitalize="none" autocorrect="off"
              spellcheck="false" placeholder="Or paste code from desktop">
       <button type="submit">Sign in</button>
+      {{if .OAuthButtons}}
+      <div class="or">or single sign-on</div>
+      {{range .OAuthButtons}}
+      <a class="oauth-btn" href="{{.Path}}">Sign in with {{.Label}}</a>
+      {{end}}
+      {{end}}
       {{if .Error}}<div class="err">{{.Error}}</div>{{end}}
     </form>
   </div>
@@ -446,7 +466,7 @@ function renderServerError(res) {
 </body>
 </html>`))
 
-func writeLoginPage(w http.ResponseWriter, r *http.Request, errMsg string, allowPassword bool) {
+func writeLoginPage(w http.ResponseWriter, r *http.Request, errMsg string, allowPassword bool, oauthBtns []OAuthButton) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	// Never cache a page that reflects auth state.
 	w.Header().Set("Cache-Control", "no-store")
@@ -455,5 +475,6 @@ func writeLoginPage(w http.ResponseWriter, r *http.Request, errMsg string, allow
 		Error         string
 		Nonce         string
 		AllowPassword bool
-	}{Error: errMsg, Nonce: nonce, AllowPassword: allowPassword})
+		OAuthButtons  []OAuthButton
+	}{Error: errMsg, Nonce: nonce, AllowPassword: allowPassword, OAuthButtons: oauthBtns})
 }

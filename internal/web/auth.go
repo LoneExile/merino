@@ -67,6 +67,9 @@ type PasswordProvider struct {
 	// preference (PasswordLoginEnabled) and calls SetPasswordLogin. A
 	// construction site that forgets is then closed, not open.
 	allowPassword bool
+	// oauthButtons are the "Sign in with …" entries shown on the /login page,
+	// supplied by the server from its configured OAuth providers.
+	oauthButtons []OAuthButton
 
 	mu       sync.Mutex
 	failures map[string]*attemptRecord
@@ -118,6 +121,18 @@ func (p *PasswordProvider) SetDevices(d *DeviceStore) { p.devices = d }
 // SetPasswordLogin enables or disables HTTP username/password sign-in.
 // Pairing tokens (QR) always work. Desktop Settings uses Wails IPC, not this.
 func (p *PasswordProvider) SetPasswordLogin(on bool) { p.allowPassword = on }
+
+// SetOAuthButtons names the OAuth rungs rendered on the login page. The
+// password provider owns the /login form, so the server hands it the buttons
+// for every enabled OAuth provider.
+func (p *PasswordProvider) SetOAuthButtons(btns []OAuthButton) {
+	p.oauthButtons = btns
+}
+
+// OAuthButtons returns the login-page OAuth entries.
+func (p *PasswordProvider) OAuthButtons() []OAuthButton {
+	return p.oauthButtons
+}
 
 // PasswordLogin reports whether HTTP user/pass is currently accepted.
 func (p *PasswordProvider) PasswordLogin() bool { return p.allowPassword }
@@ -230,7 +245,7 @@ const insecureMsg = "This page was loaded over plain HTTP. " +
 func (p *PasswordProvider) Mount(mux *http.ServeMux, success func(http.ResponseWriter, *http.Request, Identity)) {
 	mux.HandleFunc("GET /login", func(w http.ResponseWriter, r *http.Request) {
 		if insecureTransport(r, p.behindProxy) {
-			writeLoginPage(w, r, insecureMsg, p.allowPassword)
+			writeLoginPage(w, r, insecureMsg, p.allowPassword, p.oauthButtons)
 			return
 		}
 		// Phone scanned a QR: /login?token=… redeems in one GET so the
@@ -240,7 +255,7 @@ func (p *PasswordProvider) Mount(mux *http.ServeMux, success func(http.ResponseW
 			client := p.ip(r)
 			if p.throttled(client) {
 				w.WriteHeader(http.StatusTooManyRequests)
-				writeLoginPage(w, r, "Too many attempts. Wait a minute and try again.", p.allowPassword)
+				writeLoginPage(w, r, "Too many attempts. Wait a minute and try again.", p.allowPassword, p.oauthButtons)
 				return
 			}
 			if p.redeemToken(w, r, tok, success) {
@@ -248,28 +263,28 @@ func (p *PasswordProvider) Mount(mux *http.ServeMux, success func(http.ResponseW
 				return
 			}
 			p.recordFailure(client)
-			writeLoginPage(w, r, "That sign-in link expired or was already used. Ask the desktop app for a new QR.", p.allowPassword)
+			writeLoginPage(w, r, "That sign-in link expired or was already used. Ask the desktop app for a new QR.", p.allowPassword, p.oauthButtons)
 			return
 		}
-		writeLoginPage(w, r, "", p.allowPassword)
+		writeLoginPage(w, r, "", p.allowPassword, p.oauthButtons)
 	})
 
 	mux.HandleFunc("POST /login", func(w http.ResponseWriter, r *http.Request) {
 		if insecureTransport(r, p.behindProxy) {
 			// Refuse rather than issue a cookie the browser will throw away.
 			w.WriteHeader(http.StatusBadRequest)
-			writeLoginPage(w, r, insecureMsg, p.allowPassword)
+			writeLoginPage(w, r, insecureMsg, p.allowPassword, p.oauthButtons)
 			return
 		}
 		client := p.ip(r)
 		if p.throttled(client) {
 			w.WriteHeader(http.StatusTooManyRequests)
-			writeLoginPage(w, r, "Too many attempts. Wait a minute and try again.", p.allowPassword)
+			writeLoginPage(w, r, "Too many attempts. Wait a minute and try again.", p.allowPassword, p.oauthButtons)
 			return
 		}
 		if err := r.ParseForm(); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
-			writeLoginPage(w, r, "Malformed request.", p.allowPassword)
+			writeLoginPage(w, r, "Malformed request.", p.allowPassword, p.oauthButtons)
 			return
 		}
 		// Token form field (manual paste fallback from the QR sheet).
@@ -279,7 +294,7 @@ func (p *PasswordProvider) Mount(mux *http.ServeMux, success func(http.ResponseW
 			}
 			p.recordFailure(client)
 			w.WriteHeader(http.StatusUnauthorized)
-			writeLoginPage(w, r, "That sign-in code expired or was already used.", p.allowPassword)
+			writeLoginPage(w, r, "That sign-in code expired or was already used.", p.allowPassword, p.oauthButtons)
 			return
 		}
 		user := r.PostFormValue("username")
@@ -287,12 +302,12 @@ func (p *PasswordProvider) Mount(mux *http.ServeMux, success func(http.ResponseW
 		// Empty password fields with no token → user submitted the password form.
 		if (user != "" || pass != "") && !p.allowPassword {
 			w.WriteHeader(http.StatusForbidden)
-			writeLoginPage(w, r, "Username and password sign-in is turned off. Scan a QR from the Mac app.", p.allowPassword)
+			writeLoginPage(w, r, "Username and password sign-in is turned off. Scan a QR from the Mac app.", p.allowPassword, p.oauthButtons)
 			return
 		}
 		if !p.allowPassword {
 			w.WriteHeader(http.StatusUnauthorized)
-			writeLoginPage(w, r, "Username and password sign-in is turned off. Scan a QR from the Mac app.", p.allowPassword)
+			writeLoginPage(w, r, "Username and password sign-in is turned off. Scan a QR from the Mac app.", p.allowPassword, p.oauthButtons)
 			return
 		}
 
@@ -300,7 +315,7 @@ func (p *PasswordProvider) Mount(mux *http.ServeMux, success func(http.ResponseW
 			p.recordFailure(client)
 			// Deliberately vague: do not reveal which field was wrong.
 			w.WriteHeader(http.StatusUnauthorized)
-			writeLoginPage(w, r, "Incorrect username or password.", p.allowPassword)
+			writeLoginPage(w, r, "Incorrect username or password.", p.allowPassword, p.oauthButtons)
 			return
 		}
 		p.clearFailures(client)
@@ -331,7 +346,7 @@ func (p *PasswordProvider) redeemToken(w http.ResponseWriter, r *http.Request, t
 		_, id, err := p.devices.Mint(label, "pairing", nil)
 		if err != nil {
 			// Do not leave the user with a burned token and no session.
-			writeLoginPage(w, r, "Paired, but saving this device failed. Try minting a new QR.", p.allowPassword)
+			writeLoginPage(w, r, "Paired, but saving this device failed. Try minting a new QR.", p.allowPassword, p.oauthButtons)
 			return true
 		}
 		success(w, r, id)

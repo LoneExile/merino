@@ -231,9 +231,9 @@ export function AccessTab({ client, session, isDesktop }: AccessTabProps) {
           >
             Save phone password
           </button>
-          {session?.oidcEnabled && (
+          {session?.oauthEnabled && (
             <p className="settings-copy settings-copy--quiet">
-              OAuth is configured on the server (scaffold). Full provider login lands in a follow-up.
+              Single sign-on is configured — sign in with GitHub or Keycloak from the login page.
             </p>
           )}
           {passMsg && <p className="settings-copy">{passMsg}</p>}

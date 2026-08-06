@@ -67,13 +67,42 @@ app — which is why the README does not list it.
 | `--allow-writes` | Force phone writes on, overriding the persisted toggle. |
 | `--allow-session-switch` | Let the dashboard repoint at a different herdr session. |
 | `MERINO_USER` / `MERINO_PASS` | Operator credentials. Password via env, never argv. |
-| `MERINO_PUBLIC_URL` | Public origin baked into pairing QR links. |
+| `MERINO_PUBLIC_URL` | Public origin baked into pairing QR links. Required for OAuth: it derives the redirect URIs. |
+| `MERINO_OIDC_CLIENT_ID` / `MERINO_OIDC_CLIENT_SECRET` / `MERINO_OIDC_ISSUER` | Keycloak (or any OIDC) client. Enables the "Sign in with Keycloak" button. |
+| `MERINO_OIDC_REDIRECT_URL` | Must equal `<MERINO_PUBLIC_URL>/login/oidc/callback` exactly as registered. |
+| `MERINO_OIDC_ALLOW_ROLE` | Realm/client role required to log in via Keycloak. **Fail-closed: without it the button does not appear.** |
+| `MERINO_OIDC_LABEL` | Button label for the OIDC provider (default "Keycloak"). |
+| `MERINO_GITHUB_CLIENT_ID` / `MERINO_GITHUB_CLIENT_SECRET` | GitHub OAuth app. Enables the "Sign in with GitHub" button. |
+| `MERINO_GITHUB_REDIRECT_URL` | Must equal `<MERINO_PUBLIC_URL>/login/github/callback` exactly as registered. |
+| `MERINO_GITHUB_ALLOW` | Comma-separated GitHub logins allowed to sign in. |
+| `MERINO_GITHUB_ORG` (optionally `MERINO_GITHUB_TEAM`) | Admission rule: members of this org (or team) may sign in. Needs the `read:org` scope, which the provider always requests. |
+| `MERINO_GITHUB_LABEL` | Button label for GitHub (default "GitHub"). |
 | `MERINO_DEBUG=1` | Verbose logging, including per-frame tray animation. |
 | `HERDR_SOCK` | herdr socket path, if not the default. |
 
 Anything a user should be able to change has to be a **persisted setting** the
 panel can write, not a flag: see `session-switch.json`, `allow-writes.json` and
 `password-login.json` under `~/Library/Logs/merino/` for the pattern.
+
+### OAuth login
+
+GitHub and Keycloak (OIDC) sign-in are optional rungs on top of password / QR
+login. Every provider is **fail-closed**: it only appears on the login page
+when fully configured **and** an admission rule is set (an allowlist, an
+org/team, or a required role). Credentials alone never open a door — a
+provider without an allowlist would admit every GitHub/Keycloak account to a
+herd whose policy grants full access.
+
+Register the redirect URIs with your IdP as:
+
+| Provider | Redirect URI |
+| --- | --- |
+| GitHub OAuth app | `<MERINO_PUBLIC_URL>/login/github/callback` |
+| Keycloak client | `<MERINO_PUBLIC_URL>/login/oidc/callback` |
+
+OAuth is only offered over a public HTTPS origin (`MERINO_PUBLIC_URL`); on a
+plain LAN bind the buttons do not appear. The menu-bar panel is unaffected —
+it authenticates through Wails IPC, not HTTP.
 
 ## Before you push
 
