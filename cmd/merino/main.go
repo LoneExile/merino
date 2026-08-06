@@ -183,6 +183,7 @@ func main() {
 
 	desk = desktop.NewSettings(nil, "dev.apinant.merino", version, "LoneExile/merino", pairing, devices, boot.StateDir, webAddr, passProvider)
 	desk.SetWebServer(srv)
+	desk.ConfigPath = boot.Config.Path
 	// Re-apply the gates after the server exists so a disk toggle and a CLI
 	// flag cannot drift from the live switchOn bit (phone canSwitch reads
 	// this). Neither call logs its success here: logGate above already

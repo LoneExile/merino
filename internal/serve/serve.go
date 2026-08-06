@@ -73,6 +73,14 @@ type Options struct {
 	StateDir string
 
 	Logger *slog.Logger
+
+	// OAuth* are the config.yml-derived OAuth layer, resolved by Prepare
+	// (which reads the secret file). *Set is true when config.yml owns the
+	// provider, which pins it above the Settings UI.
+	OAuthGitHub    web.GitHubConfig
+	OAuthGitHubSet bool
+	OAuthOIDC      web.OIDCConfig
+	OAuthOIDCSet   bool
 }
 
 // Dashboard is what a running dashboard exposes to its caller: the server
@@ -231,7 +239,12 @@ func Start(opts Options) (*Dashboard, error) {
 	// every request, so a Settings edit takes effect without a restart. The
 	// redirect URLs derive from the public base, so an empty public URL simply
 	// leaves every provider disabled (no valid redirect) rather than erroring.
-	oauthStore := web.NewOAuthStore(stateDir, opts.PublicURL)
+	oauthStore := web.NewOAuthStore(stateDir, opts.PublicURL, web.OAuthConfigLayer{
+		GitHub:    opts.OAuthGitHub,
+		GitHubSet: opts.OAuthGitHubSet,
+		OIDC:      opts.OAuthOIDC,
+		OIDCSet:   opts.OAuthOIDCSet,
+	})
 	oauth := []web.OAuthProvider{
 		&web.GitHubProvider{Config: oauthStore.GitHub, Log: logger},
 		&web.OIDCProvider{Config: oauthStore.OIDC, Log: logger},

@@ -23,6 +23,9 @@ type Settings struct {
 	Password *web.PasswordProvider
 	// webServer is set after start so Settings can flip runtime gates.
 	webServer *web.Server
+	// ConfigPath is the config.yml that was loaded, or "" when none was
+	// found. Empty means "Open config file" creates the default user path.
+	ConfigPath string
 }
 
 // NewSettings wires the three optional backends. Any may be nil; methods then

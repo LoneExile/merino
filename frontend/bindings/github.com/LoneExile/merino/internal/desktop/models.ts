@@ -96,3 +96,32 @@ export class UpdateInfo {
         return new UpdateInfo($$parsedSource as Partial<UpdateInfo>);
     }
 }
+
+/**
+ * ConfigInfo is the Settings view of config.yml: where it is and whether it
+ * exists yet. The frontend uses this to label the "Open config file" button.
+ */
+export class ConfigInfo {
+    "path": string;
+    "exists": boolean;
+
+    /** Creates a new ConfigInfo instance. */
+    constructor($$source: Partial<ConfigInfo> = {}) {
+        if (!("path" in $$source)) {
+            this["path"] = "";
+        }
+        if (!("exists" in $$source)) {
+            this["exists"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ConfigInfo instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ConfigInfo {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ConfigInfo($$parsedSource as Partial<ConfigInfo>);
+    }
+}

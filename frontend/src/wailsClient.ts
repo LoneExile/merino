@@ -234,5 +234,10 @@ export function wailsClient(): Client {
       await DesktopSettings.ClearOAuth(provider);
       return DesktopSettings.OAuthConfig();
     },
+    openConfigFile: () => DesktopSettings.OpenConfigFile(),
+    configFileInfo: async () => {
+      const info = await DesktopSettings.ConfigFileInfo();
+      return { path: info.path, exists: info.exists };
+    },
   };
 }
