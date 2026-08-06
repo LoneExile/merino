@@ -220,9 +220,21 @@ function renderTermBody(
 }
 
 export function PaneView({ client, agent, readOnly = false, wrap, termFont, onBack, onRename, draft, onDraftChange }: PaneViewProps) {
-  // pinned is declared below; the stream hook only needs it to release a
-  // history hold when the user returns to the live tail — initialise true.
-  const [pinned, setPinned] = useState(true);
+  // `pinned` drives the "↓ Latest" dock; `pinnedRef` is its synchronous
+  // mirror. The auto-follow layout effect reads the ref, not the state: a
+  // text update can land in the same frame the user starts scrolling, before
+  // setPinnedState commits, and a stale `true` would yank them back to the
+  // tail — the phone bug this guards against.
+  const [pinned, setPinnedState] = useState(true);
+  const pinnedRef = useRef(true);
+  const setPinned = useCallback((v: boolean) => {
+    pinnedRef.current = v;
+    setPinnedState(v);
+  }, []);
+  // True while a finger is down on the scroll region. Auto-follow yields to an
+  // in-progress touch so reading history mid-stream is not fought frame by
+  // frame; on release the pin is recomputed from where the drag settled.
+  const touchingRef = useRef(false);
   const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQ, setSearchQ] = useState("");
@@ -290,7 +302,9 @@ export function PaneView({ client, agent, readOnly = false, wrap, termFont, onBa
       }
       // While waiting for loadMore (or after a failed shrink), do NOT fall
       // through to pin-to-bottom — that was yanking the user after an error.
-    } else if (pinned && !shrunk) {
+      // Follow the tail only when still pinned AND the user is not mid-touch.
+      // `shrunk` is excluded so a TUI redraw that drops a line is not chased.
+    } else if (pinnedRef.current && !touchingRef.current && !shrunk) {
       el.scrollTo({ top: el.scrollHeight, behavior: "auto" });
     }
 
@@ -330,6 +344,18 @@ export function PaneView({ client, agent, readOnly = false, wrap, termFont, onBa
       loadMore();
     }
   }, [canLoadMore, loadingMore, loadMore]);
+
+  // A finger leaving the glass: recompute the pin from where the drag settled,
+  // so a release at the tail resumes following and a release scrolled-up stays
+  // put. onScroll also fires during the drag; this makes the release itself
+  // authoritative even when it did not.
+  const endTouch = useCallback(() => {
+    touchingRef.current = false;
+    const el = scroller.current;
+    if (!el) return;
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setPinned(distance <= PIN_SLACK);
+  }, [setPinned]);
 
   const openSearch = useCallback(() => {
     setSearchOpen(true);
@@ -646,7 +672,22 @@ export function PaneView({ client, agent, readOnly = false, wrap, termFont, onBa
             </button>
           </div>
         )}
-        <div className="pane__screen" ref={scroller} onScroll={onScroll} tabIndex={0}>
+        <div
+          className="pane__screen"
+          ref={scroller}
+          onScroll={onScroll}
+          onTouchStart={() => {
+            touchingRef.current = true;
+          }}
+          onTouchEnd={endTouch}
+          onTouchCancel={endTouch}
+          // A wheel/trackpad nudge upward is intent expressed at input time,
+          // before any scroll event or text-driven relayout — unpin at once.
+          onWheel={(e) => {
+            if (e.deltaY < 0) setPinned(false);
+          }}
+          tabIndex={0}
+        >
           {loadingMore && (
             <div className="pane__history mono" role="status">
               Loading earlier output…
