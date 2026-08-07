@@ -12,11 +12,15 @@ interface Props {
 }
 
 // The read-only note shown when env or config.yml owns a provider. config.yml
-// is editable via the "Open config file" button but needs a relaunch; env is
-// changed wherever the process is launched.
-function lockedNote(source: string): string {
-  if (source === "config.yml")
-    return "Configured by config.yml \u2014 use \u201cOpen config file\u201d below, then relaunch to change it.";
+// needs a relaunch to change; env is changed wherever the process is launched.
+// canOpenConfig is true only on desktop, where the "Open config file" button
+// exists (above); in the browser there is no such button, so point at the file.
+function lockedNote(source: string, canOpenConfig: boolean): string {
+  if (source === "config.yml") {
+    return canOpenConfig
+      ? "Configured by config.yml \u2014 use \u201cOpen config file\u201d above, then relaunch to change it."
+      : "Configured by config.yml \u2014 edit the file on the host and relaunch to change it.";
+  }
   return "Configured by environment variables \u2014 edit those to change it.";
 }
 
@@ -105,20 +109,29 @@ export function OAuthSettings({ client }: Props) {
       </header>
       <div className="settings-row settings-row--toggle">
         <div className="settings-row__meta">
-          <span className="settings-row__label">Configure sign-in providers</span>
-          <span className="settings-row__hint">
-            GitHub {gh.configured ? "on" : "off"} · Keycloak {oi.configured ? "on" : "off"}
+          <span className="settings-row__label">Sign-in providers</span>
+          <span className="settings-row__hint sso-chips">
+            <span className={gh.configured ? "chip chip--on" : "chip"}>
+              GitHub {gh.configured ? "on" : "off"}
+            </span>
+            <span className={oi.configured ? "chip chip--on" : "chip"}>
+              Keycloak {oi.configured ? "on" : "off"}
+            </span>
           </span>
         </div>
-        <label className="switch">
-          <input
-            type="checkbox"
-            checked={expanded}
-            aria-label="Show single sign-on settings"
-            onChange={(e) => setExpanded(e.target.checked)}
-          />
-          <span className="switch__ui" />
-        </label>
+        {/* A disclosure, not an enable switch: providers turn on when they are
+            fully configured (see the chips), never by flipping a toggle here.
+            A switch shaped like the access toggles above read as on/off and
+            misled operators, so this is a plain Show/Hide button. */}
+        <button
+          type="button"
+          className="btn btn--ghost"
+          aria-expanded={expanded}
+          aria-label={expanded ? "Hide sign-in settings" : "Show sign-in settings"}
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {expanded ? "Hide" : "Show"}
+        </button>
       </div>
       {expanded && (
         <>
@@ -133,7 +146,7 @@ export function OAuthSettings({ client }: Props) {
               A provider set in <code>config.yml</code> is read-only here.{" "}
               <button
                 type="button"
-                className="btn btn--link"
+                className="btn btn--ghost"
                 disabled={busy}
                 onClick={() =>
                   void client!
@@ -160,7 +173,7 @@ export function OAuthSettings({ client }: Props) {
         <span className="settings-row__hint">{gh.configured ? "· enabled" : "· off"}</span>
       </h4>
       {gh.locked ? (
-        <p className="settings-copy settings-copy--quiet">{lockedNote(gh.source)}</p>
+        <p className="settings-copy settings-copy--quiet">{lockedNote(gh.source, !!client?.openConfigFile)}</p>
       ) : (
         <>
           <label className="field__label" htmlFor="gh-cid">Client ID</label>
@@ -224,7 +237,7 @@ export function OAuthSettings({ client }: Props) {
         <span className="settings-row__hint">{oi.configured ? "· enabled" : "· off"}</span>
       </h4>
       {oi.locked ? (
-        <p className="settings-copy settings-copy--quiet">{lockedNote(oi.source)}</p>
+        <p className="settings-copy settings-copy--quiet">{lockedNote(oi.source, !!client?.openConfigFile)}</p>
       ) : (
         <>
           <label className="field__label" htmlFor="oi-cid">Client ID</label>
