@@ -41,7 +41,7 @@ const configTemplate = `# merino config.yml
 # A provider set here is read-only in the Settings UI. Restart to apply edits.
 # oauth:
 #   github:
-#     clientID: "Iv1.xxxxxxxx"
+#     clientID: "Ov23liXXXXXXXXXXXXXX"   # the OAuth app's Client ID, NOT the secret
 #     clientSecretFile: "/run/secrets/merino-github"
 #     allow: ["your-gh-login"]   # usernames; OR use org/team
 #     org: ""

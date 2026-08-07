@@ -43,7 +43,7 @@ For Kubernetes you need a container image. Releases publish one as
 linux/arm64, pullable without credentials:
 
 ```bash
-docker pull ghcr.io/loneexile/merinod:v0.3.3
+docker pull ghcr.io/loneexile/merinod:v0.4.0
 ```
 
 The manifests here are pinned to that tag. Pin whatever you use: `latest`
@@ -178,6 +178,16 @@ auth:
 The password is read from the file. There is no `--password` flag and no
 password key in the config: argv is world-readable and a literal in
 `config.yml` travels with the deployment.
+
+### Single sign-on (optional)
+
+GitHub or Keycloak (OIDC) can sit alongside — or instead of — password login,
+configured by an `oauth:` block in `config.yml`. The client secret comes from a
+`clientSecretFile` (a Kubernetes Secret is a file), never inline; `publicUrl`
+must be set (OAuth needs a real HTTPS callback origin); and you register
+`<publicUrl>/login/github/callback` (or `/login/oidc/callback`) with the
+provider. Full block and precedence rules:
+[CONTRIBUTING.md](../CONTRIBUTING.md#oauth-login).
 
 ### Pairing a phone
 
