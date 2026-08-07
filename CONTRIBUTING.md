@@ -116,7 +116,7 @@ a relaunch:
 ```yaml
 oauth:
   github:
-    clientID: "Iv1.xxxxxxxx"
+    clientID: "Ov23liXXXXXXXXXXXXXX"    # the OAuth app's Client ID, NOT the secret
     clientSecretFile: "/run/secrets/merino-github"
     allow: ["your-gh-login"]      # or org/team
   oidc:
@@ -129,6 +129,12 @@ oauth:
 The menu-bar **Settings → Access → Single sign-on** section has an **Open config
 file** button: it opens `config.yml` in the OS editor, creating it from a
 fully-commented (behaviour-neutral) template if it does not exist yet.
+
+`clientID` is the **Client ID** from the provider's app page — for a GitHub
+OAuth app it looks like `Ov23li…` (or a 20-char hex string), never the
+40-char secret. GitHub answers an authorize request for an unknown client ID
+with a bare **404**, not a worded error, so a 404 at `github.com/login/oauth/authorize`
+almost always means the secret (or some other value) was pasted into `clientID`.
 
 ## Before you push
 

@@ -136,7 +136,7 @@ lifetime, PWA install.
 | Tab | |
 | --- | --- |
 | **Pairing** | Pairing QR, paired devices, revoke one or all |
-| **Access** | Phone writes, session switch, password sign-in |
+| **Access** | Phone writes, session switch, password sign-in, single sign-on (GitHub / Keycloak) |
 | **Display** | Theme, line wrap, terminal font size |
 | **System** | Launch at login, updates, notification alerts |
 | **About** | Identity, transport, keyboard shortcuts |
