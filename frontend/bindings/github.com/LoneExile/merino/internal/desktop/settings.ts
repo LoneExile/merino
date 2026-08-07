@@ -9,7 +9,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -23,10 +23,8 @@ import * as $models from "./models.js";
  * AccessOrigins returns localhost + LAN (and never invents a Cloudflare URL).
  * The Settings sheet uses these as one-tap QR bases before any tunnel setup.
  */
-export function AccessOrigins(): $CancellablePromise<web$0.AccessOrigin[]> {
-    return $Call.ByID(3263902163).then(($result: any) => {
-        return $$createType1($result);
-    });
+export function AccessOrigins(): $CancellablePromise<web$0.AccessOrigin[] | null> {
+    return $Call.ByID(3263902163);
 }
 
 /**
@@ -40,25 +38,7 @@ export function AllowWritesEnabled(): $CancellablePromise<boolean> {
  * CheckUpdate looks up the latest GitHub release (read-only; does not download).
  */
 export function CheckUpdate(): $CancellablePromise<$models.UpdateInfo> {
-    return $Call.ByID(3345746207).then(($result: any) => {
-        return $$createType2($result);
-    });
-}
-
-/**
- * ConfigFileInfo reports the effective config path and whether it exists.
- */
-export function ConfigFileInfo(): $CancellablePromise<$models.ConfigInfo> {
-    return $Call.ByID(3538901526);
-}
-
-/**
- * OpenConfigFile opens config.yml in the OS default editor, creating it from a
- * fully-commented starter template first if it does not exist. Returns the
- * path opened.
- */
-export function OpenConfigFile(): $CancellablePromise<string> {
-    return $Call.ByID(2669502342);
+    return $Call.ByID(3345746207);
 }
 
 /**
@@ -66,6 +46,13 @@ export function OpenConfigFile(): $CancellablePromise<string> {
  */
 export function ClearOAuth(provider: string): $CancellablePromise<void> {
     return $Call.ByID(826742742, provider);
+}
+
+/**
+ * ConfigFileInfo reports the effective config path and whether it exists.
+ */
+export function ConfigFileInfo(): $CancellablePromise<$models.ConfigInfo> {
+    return $Call.ByID(3538901526);
 }
 
 /**
@@ -88,9 +75,7 @@ export function FirstRunPending(): $CancellablePromise<boolean> {
  * reported canInstall (or it re-checks). Blocks until staged; process then quits.
  */
 export function InstallUpdate(): $CancellablePromise<$models.InstallResult> {
-    return $Call.ByID(1410411228).then(($result: any) => {
-        return $$createType3($result);
-    });
+    return $Call.ByID(1410411228);
 }
 
 /**
@@ -103,10 +88,8 @@ export function LaunchAtLogin(): $CancellablePromise<boolean> {
 /**
  * ListDevices returns paired phones (including revoked).
  */
-export function ListDevices(): $CancellablePromise<web$0.Device[]> {
-    return $Call.ByID(2060505397).then(($result: any) => {
-        return $$createType5($result);
-    });
+export function ListDevices(): $CancellablePromise<web$0.Device[] | null> {
+    return $Call.ByID(2060505397);
 }
 
 /**
@@ -120,9 +103,7 @@ export function MarkFirstRunDone(): $CancellablePromise<void> {
  * MintPairing returns a short-lived QR ticket for phone login.
  */
 export function MintPairing(): $CancellablePromise<web$0.PairingTicket> {
-    return $Call.ByID(4038686222).then(($result: any) => {
-        return $$createType6($result);
-    });
+    return $Call.ByID(4038686222);
 }
 
 /**
@@ -130,9 +111,17 @@ export function MintPairing(): $CancellablePromise<web$0.PairingTicket> {
  * sheet. Empty when the web server is not wired.
  */
 export function OAuthConfig(): $CancellablePromise<web$0.OAuthStatus> {
-    return $Call.ByID(2566841191).then(($result: any) => {
-        return $$createType7($result);
-    });
+    return $Call.ByID(2566841191);
+}
+
+/**
+ * OpenConfigFile opens config.yml in the OS default editor, creating it from a
+ * fully-commented starter template first if it does not exist. Returns the
+ * path opened. Creating from the (all-commented) template is behaviour-neutral:
+ * the file still means "zero config" until the operator edits it.
+ */
+export function OpenConfigFile(): $CancellablePromise<string> {
+    return $Call.ByID(2669502342);
 }
 
 /**
@@ -236,13 +225,3 @@ export function SetSessionSwitchEnabled(on: boolean): $CancellablePromise<void> 
 export function SetWebServer(srv: web$0.Server | null): $CancellablePromise<void> {
     return $Call.ByID(2770529491, srv);
 }
-
-// Private type creation functions
-const $$createType0 = web$0.AccessOrigin.createFrom;
-const $$createType1 = $Create.Array($$createType0);
-const $$createType2 = $models.UpdateInfo.createFrom;
-const $$createType3 = $models.InstallResult.createFrom;
-const $$createType4 = web$0.Device.createFrom;
-const $$createType5 = $Create.Array($$createType4);
-const $$createType6 = web$0.PairingTicket.createFrom;
-const $$createType7 = web$0.OAuthStatus.createFrom;

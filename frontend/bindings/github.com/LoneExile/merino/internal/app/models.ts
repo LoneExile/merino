@@ -3,10 +3,6 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Create as $Create } from "@wailsio/runtime";
-
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
 import * as herdr$0 from "../herdr/models.js";
 
 /**
@@ -16,7 +12,7 @@ import * as herdr$0 from "../herdr/models.js";
  * derived fields the UI needs and shields the frontend from wire churn when
  * herdr's schema moves.
  */
-export class Agent {
+export interface Agent {
     "paneId": string;
     "agent": string;
 
@@ -33,56 +29,12 @@ export class Agent {
     "tabId": string;
     "focused": boolean;
     "needsAttention": boolean;
-
-    /** Creates a new Agent instance. */
-    constructor($$source: Partial<Agent> = {}) {
-        if (!("paneId" in $$source)) {
-            this["paneId"] = "";
-        }
-        if (!("agent" in $$source)) {
-            this["agent"] = "";
-        }
-        if (!("label" in $$source)) {
-            this["label"] = "";
-        }
-        if (!("status" in $$source)) {
-            this["status"] = herdr$0.AgentStatus.$zero;
-        }
-        if (!("project" in $$source)) {
-            this["project"] = "";
-        }
-        if (!("cwd" in $$source)) {
-            this["cwd"] = "";
-        }
-        if (!("workspaceId" in $$source)) {
-            this["workspaceId"] = "";
-        }
-        if (!("tabId" in $$source)) {
-            this["tabId"] = "";
-        }
-        if (!("focused" in $$source)) {
-            this["focused"] = false;
-        }
-        if (!("needsAttention" in $$source)) {
-            this["needsAttention"] = false;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new Agent instance from a string or object.
-     */
-    static createFrom($$source: any = {}): Agent {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new Agent($$parsedSource as Partial<Agent>);
-    }
 }
 
 /**
  * AgentKind is one interactive agent Merino can start in a new pane.
  */
-export class AgentKind {
+export interface AgentKind {
     /**
      * Kind is herdr's identifier, passed verbatim to agent.start.
      */
@@ -97,138 +49,37 @@ export class AgentKind {
      * Path is where the executable was found, for the UI to show as evidence.
      */
     "path": string;
-
-    /** Creates a new AgentKind instance. */
-    constructor($$source: Partial<AgentKind> = {}) {
-        if (!("kind" in $$source)) {
-            this["kind"] = "";
-        }
-        if (!("label" in $$source)) {
-            this["label"] = "";
-        }
-        if (!("path" in $$source)) {
-            this["path"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new AgentKind instance from a string or object.
-     */
-    static createFrom($$source: any = {}): AgentKind {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new AgentKind($$parsedSource as Partial<AgentKind>);
-    }
 }
 
 /**
  * Conn describes connectivity to the herdr server.
  */
-export class Conn {
+export interface Conn {
     "connected": boolean;
     "version": string;
     "protocol": number;
     "socket": string;
     "error"?: string;
-
-    /** Creates a new Conn instance. */
-    constructor($$source: Partial<Conn> = {}) {
-        if (!("connected" in $$source)) {
-            this["connected"] = false;
-        }
-        if (!("version" in $$source)) {
-            this["version"] = "";
-        }
-        if (!("protocol" in $$source)) {
-            this["protocol"] = 0;
-        }
-        if (!("socket" in $$source)) {
-            this["socket"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new Conn instance from a string or object.
-     */
-    static createFrom($$source: any = {}): Conn {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new Conn($$parsedSource as Partial<Conn>);
-    }
 }
 
 /**
  * Counts summarises the herd for the tray label.
  */
-export class Counts {
+export interface Counts {
     "total": number;
     "blocked": number;
     "working": number;
-
-    /** Creates a new Counts instance. */
-    constructor($$source: Partial<Counts> = {}) {
-        if (!("total" in $$source)) {
-            this["total"] = 0;
-        }
-        if (!("blocked" in $$source)) {
-            this["blocked"] = 0;
-        }
-        if (!("working" in $$source)) {
-            this["working"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new Counts instance from a string or object.
-     */
-    static createFrom($$source: any = {}): Counts {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new Counts($$parsedSource as Partial<Counts>);
-    }
 }
 
 /**
  * NewPane identifies the pane a spawn produced, so the caller can open it.
  */
-export class NewPane {
+export interface NewPane {
     "paneId": string;
     "tabId": string;
     "workspaceId": string;
     "kind": string;
     "name": string;
-
-    /** Creates a new NewPane instance. */
-    constructor($$source: Partial<NewPane> = {}) {
-        if (!("paneId" in $$source)) {
-            this["paneId"] = "";
-        }
-        if (!("tabId" in $$source)) {
-            this["tabId"] = "";
-        }
-        if (!("workspaceId" in $$source)) {
-            this["workspaceId"] = "";
-        }
-        if (!("kind" in $$source)) {
-            this["kind"] = "";
-        }
-        if (!("name" in $$source)) {
-            this["name"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new NewPane instance from a string or object.
-     */
-    static createFrom($$source: any = {}): NewPane {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new NewPane($$parsedSource as Partial<NewPane>);
-    }
 }
 
 /**
@@ -238,7 +89,7 @@ export class NewPane {
  * constructs these, so a caller of SwitchSession can never point the server
  * at a socket outside this list.
  */
-export class SessionInfo {
+export interface SessionInfo {
     "id": string;
     "name": string;
     "socket": string;
@@ -246,41 +97,6 @@ export class SessionInfo {
     "agents": number;
     "reachable": boolean;
     "current": boolean;
-
-    /** Creates a new SessionInfo instance. */
-    constructor($$source: Partial<SessionInfo> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = "";
-        }
-        if (!("name" in $$source)) {
-            this["name"] = "";
-        }
-        if (!("socket" in $$source)) {
-            this["socket"] = "";
-        }
-        if (!("panes" in $$source)) {
-            this["panes"] = 0;
-        }
-        if (!("agents" in $$source)) {
-            this["agents"] = 0;
-        }
-        if (!("reachable" in $$source)) {
-            this["reachable"] = false;
-        }
-        if (!("current" in $$source)) {
-            this["current"] = false;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new SessionInfo instance from a string or object.
-     */
-    static createFrom($$source: any = {}): SessionInfo {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new SessionInfo($$parsedSource as Partial<SessionInfo>);
-    }
 }
 
 /**
@@ -290,7 +106,7 @@ export class SessionInfo {
  * text inserted into the composer (usually "/"+Name, sometimes "skill:Name "
  * for omp skill dispatch).
  */
-export class SlashCommand {
+export interface SlashCommand {
     "name": string;
     "value": string;
     "description"?: string;
@@ -299,32 +115,12 @@ export class SlashCommand {
      * builtin | skill | plugin
      */
     "source"?: string;
-
-    /** Creates a new SlashCommand instance. */
-    constructor($$source: Partial<SlashCommand> = {}) {
-        if (!("name" in $$source)) {
-            this["name"] = "";
-        }
-        if (!("value" in $$source)) {
-            this["value"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new SlashCommand instance from a string or object.
-     */
-    static createFrom($$source: any = {}): SlashCommand {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new SlashCommand($$parsedSource as Partial<SlashCommand>);
-    }
 }
 
 /**
  * Workspace is one herdr workspace, as the UI sees it.
  */
-export class Workspace {
+export interface Workspace {
     "workspaceId": string;
     "number": number;
     "label": string;
@@ -332,39 +128,4 @@ export class Workspace {
     "paneCount": number;
     "tabCount": number;
     "agentStatus": string;
-
-    /** Creates a new Workspace instance. */
-    constructor($$source: Partial<Workspace> = {}) {
-        if (!("workspaceId" in $$source)) {
-            this["workspaceId"] = "";
-        }
-        if (!("number" in $$source)) {
-            this["number"] = 0;
-        }
-        if (!("label" in $$source)) {
-            this["label"] = "";
-        }
-        if (!("focused" in $$source)) {
-            this["focused"] = false;
-        }
-        if (!("paneCount" in $$source)) {
-            this["paneCount"] = 0;
-        }
-        if (!("tabCount" in $$source)) {
-            this["tabCount"] = 0;
-        }
-        if (!("agentStatus" in $$source)) {
-            this["agentStatus"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new Workspace instance from a string or object.
-     */
-    static createFrom($$source: any = {}): Workspace {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new Workspace($$parsedSource as Partial<Workspace>);
-    }
 }

@@ -97,7 +97,8 @@ export interface OAuthProviderStatus {
   clientID: string;
   /** a secret is stored (never the secret itself) */
   hasSecret: boolean;
-  allow?: string[];
+  /** null (not absent) when unset: wails serialises a nil Go slice as null */
+  allow?: string[] | null;
   org?: string;
   team?: string;
   issuer?: string;

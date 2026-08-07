@@ -6,7 +6,8 @@ export {
     Settings
 };
 
-export {
+export type {
+    ConfigInfo,
     InstallResult,
     UpdateInfo
 } from "./models.js";

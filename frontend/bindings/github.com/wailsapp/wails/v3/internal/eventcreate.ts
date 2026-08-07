@@ -6,20 +6,4 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
-import * as app$0 from "../../../../LoneExile/merino/internal/app/models.js";
-
-function configure() {
-    Object.freeze(Object.assign($Create.Events, {
-        "agents:changed": $$createType1,
-        "conn:changed": $$createType2,
-    }));
-}
-
-// Private type creation functions
-const $$createType0 = app$0.Agent.createFrom;
-const $$createType1 = $Create.Array($$createType0);
-const $$createType2 = app$0.Conn.createFrom;
-
-configure();
+Object.freeze($Create.Events);

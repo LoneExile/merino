@@ -12,7 +12,7 @@ import type * as app$0 from "../../../../LoneExile/merino/internal/app/models.js
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
-            "agents:changed": app$0.Agent[];
+            "agents:changed": app$0.Agent[] | null;
             "conn:changed": app$0.Conn;
             "ui:open": string;
         }

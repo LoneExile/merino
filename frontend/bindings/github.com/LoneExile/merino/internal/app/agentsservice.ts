@@ -9,7 +9,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -18,17 +18,15 @@ import * as $models from "./models.js";
 /**
  * AgentKinds lists the interactive agents installed on this machine.
  */
-export function AgentKinds(): $CancellablePromise<$models.AgentKind[]> {
-    return $Call.ByID(1425232241).then(($result: any) => {
-        return $$createType1($result);
-    });
+export function AgentKinds(): $CancellablePromise<$models.AgentKind[] | null> {
+    return $Call.ByID(1425232241);
 }
 
 /**
  * AttachImage stages one image for a known pane and returns the host path.
  * The caller is expected to send that path into the agent (SendText / prompt).
  */
-export function AttachImage(paneID: string, declaredMIME: string, data: string): $CancellablePromise<string> {
+export function AttachImage(paneID: string, declaredMIME: string, data: string | null): $CancellablePromise<string> {
     return $Call.ByID(3999166657, paneID, declaredMIME, data);
 }
 
@@ -43,18 +41,14 @@ export function AttachImageB64(paneID: string, mime: string, b64: string): $Canc
  * Connection reports herdr connectivity.
  */
 export function Connection(): $CancellablePromise<$models.Conn> {
-    return $Call.ByID(1012542057).then(($result: any) => {
-        return $$createType2($result);
-    });
+    return $Call.ByID(1012542057);
 }
 
 /**
  * Counts returns a summary of the herd.
  */
 export function Counts(): $CancellablePromise<$models.Counts> {
-    return $Call.ByID(2920819413).then(($result: any) => {
-        return $$createType3($result);
-    });
+    return $Call.ByID(2920819413);
 }
 
 /**
@@ -74,10 +68,8 @@ export function Interrupt(paneID: string): $CancellablePromise<void> {
 /**
  * List returns the current agents, most urgent first.
  */
-export function List(): $CancellablePromise<$models.Agent[]> {
-    return $Call.ByID(1694561137).then(($result: any) => {
-        return $$createType5($result);
-    });
+export function List(): $CancellablePromise<$models.Agent[] | null> {
+    return $Call.ByID(1694561137);
 }
 
 /**
@@ -136,7 +128,7 @@ export function Respond(paneID: string, text: string): $CancellablePromise<void>
 /**
  * SendKeys presses allowlisted keys in a pane.
  */
-export function SendKeys(paneID: string, keys: string[]): $CancellablePromise<void> {
+export function SendKeys(paneID: string, keys: string[] | null): $CancellablePromise<void> {
     return $Call.ByID(2484043855, paneID, keys);
 }
 
@@ -159,10 +151,8 @@ export function SendText(paneID: string, text: string): $CancellablePromise<void
  * Sessions enumerates every herdr session this machine knows about,
  * best-effort probed for reachability and pane/agent counts.
  */
-export function Sessions(): $CancellablePromise<$models.SessionInfo[]> {
-    return $Call.ByID(2577011260).then(($result: any) => {
-        return $$createType7($result);
-    });
+export function Sessions(): $CancellablePromise<$models.SessionInfo[] | null> {
+    return $Call.ByID(2577011260);
 }
 
 /**
@@ -172,10 +162,8 @@ export function Sessions(): $CancellablePromise<$models.SessionInfo[]> {
  * agent/query may still be passed for label matching; empty agent falls back
  * to the store projection for the pane.
  */
-export function SlashCommands(paneID: string, agent: string, query: string): $CancellablePromise<$models.SlashCommand[]> {
-    return $Call.ByID(1176936456, paneID, agent, query).then(($result: any) => {
-        return $$createType9($result);
-    });
+export function SlashCommands(paneID: string, agent: string, query: string): $CancellablePromise<$models.SlashCommand[] | null> {
+    return $Call.ByID(1176936456, paneID, agent, query);
 }
 
 /**
@@ -205,9 +193,7 @@ export function Start(): $CancellablePromise<void> {
  * label is optional; empty means herdr names the tab.
  */
 export function StartAgentPane(workspaceID: string, kind: string, label: string): $CancellablePromise<$models.NewPane> {
-    return $Call.ByID(397066554, workspaceID, kind, label).then(($result: any) => {
-        return $$createType10($result);
-    });
+    return $Call.ByID(397066554, workspaceID, kind, label);
 }
 
 /**
@@ -247,23 +233,6 @@ export function SwitchSession(id: string): $CancellablePromise<void> {
  * Workspaces lists the session's workspaces, so a spawn can name where it
  * should land instead of silently taking whichever one happens to be focused.
  */
-export function Workspaces(): $CancellablePromise<$models.Workspace[]> {
-    return $Call.ByID(406411759).then(($result: any) => {
-        return $$createType12($result);
-    });
+export function Workspaces(): $CancellablePromise<$models.Workspace[] | null> {
+    return $Call.ByID(406411759);
 }
-
-// Private type creation functions
-const $$createType0 = $models.AgentKind.createFrom;
-const $$createType1 = $Create.Array($$createType0);
-const $$createType2 = $models.Conn.createFrom;
-const $$createType3 = $models.Counts.createFrom;
-const $$createType4 = $models.Agent.createFrom;
-const $$createType5 = $Create.Array($$createType4);
-const $$createType6 = $models.SessionInfo.createFrom;
-const $$createType7 = $Create.Array($$createType6);
-const $$createType8 = $models.SlashCommand.createFrom;
-const $$createType9 = $Create.Array($$createType8);
-const $$createType10 = $models.NewPane.createFrom;
-const $$createType11 = $models.Workspace.createFrom;
-const $$createType12 = $Create.Array($$createType11);
