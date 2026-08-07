@@ -2201,6 +2201,21 @@ kbd {
   border-color: var(--status-blocked);
 }
 
+/* An enabled sign-in provider: green so "on" reads at a glance, distinct from
+   the neutral (off) chip. Mirrors the .chip--warn accent pattern. */
+.chip--on {
+  color: var(--status-working);
+  border-color: var(--status-working);
+}
+
+/* Provider status chips sit under the row label as a small wrapping row. */
+.sso-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2xs);
+  margin-top: 2px;
+}
+
 /* ---------------------------------------------------------------- palette */
 
 .palette {
