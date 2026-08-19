@@ -8,7 +8,7 @@ import (
 // herdrAgentName is herdr's own rule, quoted from the error it returns:
 // "agent name must start with a lowercase letter and contain only lowercase
 // letters, digits, '-' or '_' (1-32 characters)". Verified live against
-// herdr 0.8.0 (protocol 19) — see herdr.TestLiveAgentStartRejectsInvalidName
+// herdr 0.8.2 (protocol 20) — see herdr.TestLiveAgentStartRejectsInvalidName
 // — which rejects anything else with invalid_agent_name AFTER the tab has
 // been created.
 var herdrAgentName = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,31}$`)
