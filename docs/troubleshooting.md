@@ -14,6 +14,11 @@ then reload the phone dashboard.
 **The login page says password sign-in is disabled.** That is the default.
 Pair with a QR, or enable it in **Settings → Access**.
 
+**Disconnected herd, no agents, after a herdr update.** Merino pins herdr's
+socket protocol and refuses a mismatch by design. This build needs herdr
+**0.8.2** (protocol 20). Update herdr, or update Merino. Proof in the log:
+`connected to herdr version=… protocol=…` versus `herdr handshake failed`.
+
 ## Tunnels
 
 **`530` from the public URL, app running.** No connector registered —

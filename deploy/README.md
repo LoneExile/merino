@@ -13,6 +13,9 @@ owner, and herdr's is `srw-------`. **merinod has to run as the user that owns
 it.** Get this wrong and nothing looks broken — the dashboard serves, sign-in
 works, `/healthz` says 200 — but the agent list stays empty forever.
 
+A third rule: merinod speaks herdr protocol 20 (herdr 0.8.2+). A mismatch
+looks like a disconnected empty herd, not a socket permission error.
+
 ---
 
 ## Which layout do you want?
