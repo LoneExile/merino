@@ -225,7 +225,7 @@ spec:
           # without credentials. To build your own instead:
           #   docker build -f build/docker/Dockerfile.merinod -t <registry>/merinod:<tag> .
           #   docker push <registry>/merinod:<tag>
-          image: ghcr.io/loneexile/merinod:v0.4.0
+          image: ghcr.io/loneexile/merinod:v0.4.1
           args: ["serve"]
           ports:
             - name: http
