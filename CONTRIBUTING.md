@@ -25,8 +25,11 @@ just app      # build the .app and launch it against your real herd
 `just app` rebuilds every time on purpose. A stale bundle that silently
 predates your change is the most confusing state this project has.
 
-You need a running [herdr](https://herdr.dev) to develop against. Point at a
-throwaway session instead of your real herd with:
+You need a running [herdr](https://herdr.dev) **0.8.2+** (socket protocol 20)
+to develop against. Merino pins that protocol and refuses a mismatch — after
+a herdr upgrade, bump `const Protocol` in `internal/herdr/types.go` and re-run
+`go test ./internal/herdr/ -run TestLive`. Point at a throwaway session
+instead of your real herd with:
 
 ```bash
 just sock=~/.config/herdr/sessions/test/herdr.sock app
