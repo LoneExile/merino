@@ -113,18 +113,23 @@ source makes the provider read-only in the panel, which says which one owns it.
 
 In `config.yml` the client secret is never inline — the same rule as
 `auth.passwordFile` — it is read from `clientSecretFile` (or the matching
-`MERINO_*_CLIENT_SECRET` env). `config.yml` is read at startup, so an edit needs
-a relaunch:
+`MERINO_*_CLIENT_SECRET` env fallback when the yaml already names a
+`clientID`). Paths are **absolute**: `os.ReadFile` does not expand `~`.
+Mode **0600** is recommended, not enforced. An unreadable file logs
+`oauth clientSecretFile unreadable`; unless `MERINO_*_CLIENT_SECRET` supplies
+the secret the provider stays off — and because yaml owns it, Settings cannot
+fill the gap. `config.yml` is read at startup, so an edit needs a relaunch.
+`/run/secrets/...` is a Kubernetes Secret mount; on a Mac:
 
 ```yaml
 oauth:
   github:
     clientID: "Ov23liXXXXXXXXXXXXXX"    # the OAuth app's Client ID, NOT the secret
-    clientSecretFile: "/run/secrets/merino-github"
+    clientSecretFile: "/Users/YOU/.config/merino/github-client-secret"
     allow: ["your-gh-login"]      # or org/team
   oidc:
     clientID: "merino"
-    clientSecretFile: "/run/secrets/merino-oidc"
+    clientSecretFile: "/Users/YOU/.config/merino/oidc-client-secret"
     issuer: "https://keycloak.example/realms/main"
     allowRole: "herd-admin"
 ```

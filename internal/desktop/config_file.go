@@ -37,19 +37,26 @@ const configTemplate = `# merino config.yml
 
 # Browser/phone single sign-on. Non-secret fields only — the client SECRET is
 # read from clientSecretFile (or MERINO_GITHUB_CLIENT_SECRET /
-# MERINO_OIDC_CLIENT_SECRET), NEVER written in this file, which gets committed.
+# MERINO_OIDC_CLIENT_SECRET), NEVER written in this file.
 # A provider set here is read-only in the Settings UI. Restart to apply edits.
+#
+# clientSecretFile is an absolute path; os.ReadFile does not expand ~.
+# The file must exist and be readable. 0600 is recommended, not enforced.
+# A missing file logs "oauth clientSecretFile unreadable"; unless
+# MERINO_*_CLIENT_SECRET supplies the secret, the provider stays off.
+# /run/secrets/... is a container mount. On a Mac use e.g.
+# /Users/YOU/.config/merino/github-client-secret.
 # oauth:
 #   github:
 #     clientID: "Ov23liXXXXXXXXXXXXXX"   # the OAuth app's Client ID, NOT the secret
-#     clientSecretFile: "/run/secrets/merino-github"
+#     clientSecretFile: "/Users/YOU/.config/merino/github-client-secret"
 #     allow: ["your-gh-login"]   # usernames; OR use org/team
 #     org: ""
 #     team: ""
 #     label: "Sign in with GitHub"
 #   oidc:                        # Keycloak / any OIDC issuer
 #     clientID: "merino"
-#     clientSecretFile: "/run/secrets/merino-oidc"
+#     clientSecretFile: "/Users/YOU/.config/merino/oidc-client-secret"
 #     issuer: "https://keycloak.example/realms/main"
 #     allowRole: "herd-admin"    # required realm role
 #     label: "Sign in with Keycloak"
