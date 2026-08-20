@@ -14,6 +14,13 @@ then reload the phone dashboard.
 **The login page says password sign-in is disabled.** That is the default.
 Pair with a QR, or enable it in **Settings → Access**.
 
+**GitHub / Keycloak button gone, `config.yml` has `oauth:`.** Yaml owns the
+provider. `clientSecretFile` must be an absolute path to a **0600** file that
+exists (`os.ReadFile` does not expand `~`). `/run/secrets/merino-github` is a
+container path and does not exist on a Mac — that fail-closes the button and
+locks Settings. Log: `oauth clientSecretFile unreadable; provider stays off`.
+A `.env` in a git checkout is not loaded by `/Applications/Merino.app`.
+
 **Disconnected herd, no agents, after a herdr update.** Merino pins herdr's
 socket protocol and refuses a mismatch by design. This build needs herdr
 **0.8.2** (protocol 20). Update herdr, or update Merino. Proof in the log:

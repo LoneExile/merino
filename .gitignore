@@ -15,3 +15,8 @@ build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
 
 # macOS
 .DS_Store
+
+# Local operator env (MERINO_GITHUB_CLIENT_SECRET, etc.). Never commit.
+.env
+.env.*
+!.env.example
