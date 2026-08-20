@@ -15,10 +15,14 @@ then reload the phone dashboard.
 Pair with a QR, or enable it in **Settings → Access**.
 
 **GitHub / Keycloak button gone, `config.yml` has `oauth:`.** Yaml owns the
-provider. `clientSecretFile` must be an absolute path to a **0600** file that
-exists (`os.ReadFile` does not expand `~`). `/run/secrets/merino-github` is a
-container path and does not exist on a Mac — that fail-closes the button and
-locks Settings. Log: `oauth clientSecretFile unreadable; provider stays off`.
+provider, so Settings cannot fill the gap. Three things each keep the button
+off, and only the first one logs. `clientSecretFile` must be an absolute,
+readable path (`os.ReadFile` does not expand `~`) unless
+`MERINO_*_CLIENT_SECRET` supplies the secret — `/run/secrets/merino-github`
+is a container path that does not exist on a Mac. The log line is
+`oauth clientSecretFile unreadable; provider stays off`. There must also be a
+public HTTPS origin, or the derived redirect URL is empty; and a non-empty
+`allow` or `org`. `config.yml` is read at startup, so relaunch after an edit.
 A `.env` in a git checkout is not loaded by `/Applications/Merino.app`.
 
 **Disconnected herd, no agents, after a herdr update.** Merino pins herdr's

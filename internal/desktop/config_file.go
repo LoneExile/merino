@@ -41,8 +41,9 @@ const configTemplate = `# merino config.yml
 # A provider set here is read-only in the Settings UI. Restart to apply edits.
 #
 # clientSecretFile is an absolute path; os.ReadFile does not expand ~.
-# The file must exist, be readable, and be mode 0600. A missing file logs
-# "oauth clientSecretFile unreadable" and the provider stays off.
+# The file must exist and be readable. 0600 is recommended, not enforced.
+# A missing file logs "oauth clientSecretFile unreadable"; unless
+# MERINO_*_CLIENT_SECRET supplies the secret, the provider stays off.
 # /run/secrets/... is a container mount. On a Mac use e.g.
 # /Users/YOU/.config/merino/github-client-secret.
 # oauth:

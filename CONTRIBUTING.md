@@ -115,9 +115,11 @@ In `config.yml` the client secret is never inline — the same rule as
 `auth.passwordFile` — it is read from `clientSecretFile` (or the matching
 `MERINO_*_CLIENT_SECRET` env fallback when the yaml already names a
 `clientID`). Paths are **absolute**: `os.ReadFile` does not expand `~`.
-Mode **0600**. A missing file logs `oauth clientSecretFile unreadable` and
-the provider stays off — and because yaml owns the provider, Settings cannot
-fill the gap. `/run/secrets/...` is a Kubernetes Secret mount; on a Mac:
+Mode **0600** is recommended, not enforced. An unreadable file logs
+`oauth clientSecretFile unreadable`; unless `MERINO_*_CLIENT_SECRET` supplies
+the secret the provider stays off — and because yaml owns it, Settings cannot
+fill the gap. `config.yml` is read at startup, so an edit needs a relaunch.
+`/run/secrets/...` is a Kubernetes Secret mount; on a Mac:
 
 ```yaml
 oauth:
