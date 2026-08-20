@@ -46,7 +46,7 @@ For Kubernetes you need a container image. Releases publish one as
 linux/arm64, pullable without credentials:
 
 ```bash
-docker pull ghcr.io/loneexile/merinod:v0.4.1
+docker pull ghcr.io/loneexile/merinod:v0.4.2
 ```
 
 The manifests here are pinned to that tag. Pin whatever you use: `latest`
