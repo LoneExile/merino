@@ -141,7 +141,13 @@ func TestLiveGetPanePinsTheRequestShape(t *testing.T) {
 	for _, agent := range agents {
 		info, err := c.GetPane(ctx, agent.PaneID)
 		if err != nil {
-			t.Fatalf("pane.get on agent pane %s: %v", agent.PaneID, err)
+			// Not fatal: an agent that exits between the list above and this
+			// call takes its pane with it, and a herd-liveness race must not
+			// redden the request-shape pin this test exists for. That pin is
+			// the unconditional probe-pane assertion above, whose pane this
+			// test owns for its own lifetime.
+			t.Logf("pane.get on agent pane %s failed, skipping it: %v", agent.PaneID, err)
+			continue
 		}
 		if info.PaneID != agent.PaneID {
 			t.Fatalf("GetPane(%s).PaneID = %q, want the requested pane",
