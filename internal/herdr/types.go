@@ -23,7 +23,7 @@ import (
 
 // AcceptedProtocols is the set of herdr socket API protocol versions this
 // client is written against, ascending: 20 is herdr 0.8.2, 22 is 0.9.x
-// (0.9.0 and 0.9.1 both advertise it).
+// (0.9.0 is live at 22; 0.9.1's own schema declares it).
 //
 // A set, not a single number, because Merino talks to more than one herdr:
 // a saved SSH machine can run a different version from the local one, and
