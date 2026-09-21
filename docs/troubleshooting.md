@@ -26,8 +26,9 @@ public HTTPS origin, or the derived redirect URL is empty; and a non-empty
 A `.env` in a git checkout is not loaded by `/Applications/Merino.app`.
 
 **Disconnected herd, no agents, after a herdr update.** Merino pins herdr's
-socket protocol and refuses a mismatch by design. This build needs herdr
-**0.8.2** (protocol 20). Update herdr, or update Merino. Proof in the log:
+socket protocol and refuses a mismatch by design. This build accepts herdr
+**0.8.2** (protocol 20) and herdr **0.9.x** (protocol 22). Update herdr, or
+update Merino. Proof in the log:
 `connected to herdr version=… protocol=…` versus `herdr handshake failed`.
 
 ## Tunnels

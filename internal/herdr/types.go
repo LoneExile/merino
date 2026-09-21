@@ -1,6 +1,7 @@
 // Package herdr is a client for the herdr terminal-multiplexer socket API.
 //
-// Wire protocol (verified against herdr 0.8.2, protocol 20):
+// Wire protocol (verified against herdr 0.8.2, protocol 20, and herdr 0.9.1,
+// protocol 22; the 0.8.2 floor is fixture-pinned, 0.9.1 is live):
 //
 //   - Transport is a unix socket, default ~/.config/herdr/herdr.sock.
 //   - Messages are newline-delimited JSON: {"id","method","params"}.
@@ -161,9 +162,9 @@ const (
 	SubPaneAgentDetected SubKind = "pane.agent_detected"
 
 	// Closing a tab or workspace destroys its panes but emits NO pane.closed
-	// event — only tab_closed / workspace_closed. Verified against herdr
-	// 0.8.2 (TestLiveTabCloseEmitsNoPaneClosed). Subscribe to these or panes
-	// leak in local state forever.
+	// event — only tab_closed / workspace_closed. Verified against herdr 0.8.2
+	// and again on 0.9.x (protocol 22) by TestLiveTabCloseEmitsNoPaneClosed.
+	// Subscribe to these or panes leak in local state forever.
 	SubTabClosed       SubKind = "tab.closed"
 	SubWorkspaceClosed SubKind = "workspace.closed"
 )
@@ -185,7 +186,10 @@ const (
 //   - Per-pane subscriptions deliver DOTTED names (schema:
 //     subscription_event.SubscriptionEventKind), e.g. "pane.agent_status_changed".
 //
-// Verified against a running herdr 0.8.2.
+// Verified against a running herdr 0.8.2, and re-checked against 0.9.1
+// (protocol 22): its schema still splits event.EventKind (snake_case) from
+// subscription_event.SubscriptionEventKind (dotted), and the live suite
+// observes tab_closed on a global subscription against a 22 herd.
 type EventKind string
 
 // Delivered by global subscriptions.
