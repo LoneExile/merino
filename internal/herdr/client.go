@@ -211,12 +211,15 @@ func (c *Client) ListWorkspaces(ctx context.Context) ([]WorkspaceInfo, error) {
 
 // GetPane returns one pane's metadata without its screen contents.
 //
-// This is the cheap half of the output poll. Measured against herdr 0.9.1: a
-// pane.get response is ~806 bytes, while an 800-line ANSI pane.read of a busy
-// agent pane is ~297 KB. Over a unix socket that gap is irrelevant; over an
-// SSH-forwarded socket, re-reading the screen every 300ms regardless of
-// change is ~723 KB/s per watched pane, which is why the poll loop compares
-// Revision from here before paying for a read.
+// This is the cheap half of the output poll. Measured here against a herdr
+// 0.9.0 server speaking protocol 22: a pane.get response is 665-870 bytes,
+// while an 800-line ANSI pane.read of a working agent pane runs 57-441 KB
+// (~297 KB typical). Over a unix socket that gap does not matter. Over an
+// SSH-forwarded socket every call costs ~110ms regardless of payload, so a
+// 300ms tick is really a ~410ms cycle, and re-reading the screen on every one
+// of them regardless of change sustains ~700 KB/s per watched pane. That is
+// why the poll loop compares Revision from here before paying for a read.
+
 func (c *Client) GetPane(ctx context.Context, paneID string) (PaneInfo, error) {
 	var r paneGetResult
 	if err := c.Call(ctx, "pane.get", paneTarget{PaneID: paneID}, &r); err != nil {
