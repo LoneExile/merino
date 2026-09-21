@@ -451,7 +451,7 @@ func (c *Client) FocusPane(ctx context.Context, paneID string) error {
 // id alongside the new label.
 //
 // The field is "label", NOT "name". Verified against herdr 0.8.2's own schema
-// and a live socket, and re-checked against 0.9.1's schema (protocol 22), where
+// and a live socket, and re-checked against 0.9.x's schema (protocol 22), where
 // the required sets are the same: tab.rename and workspace.rename reject "name"
 // outright with `missing field \`label\``, and pane.rename — where label is
 // optional — accepts the call and silently renames nothing, which is the worse
