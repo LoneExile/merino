@@ -12,11 +12,32 @@ import (
 	"github.com/LoneExile/merino/internal/herdr"
 )
 
-// paneGetSocket answers pane.get with herdr's real envelope: the pane is
-// nested one level under "pane", beside a "type" tag. Decoding a top-level
-// PaneInfo yields a zero value with no error — the same shape of silent
-// failure pane.read's "read" nesting already caused once.
-func paneGetSocket(t *testing.T, revision int64) string {
+// paneGetEnvelope is herdr's pane.get result shape, stated once so the two
+// fakes in this package cannot drift from each other or from the wire: the
+// pane is nested one level under "pane", beside a "type" tag reading
+// "pane_info" (the live server's value — an earlier draft of this fixture
+// said "pane_get", which herdr never sends). Decoding a top-level PaneInfo
+// yields a zero value with no error — the same shape of silent failure
+// pane.read's "read" nesting already caused once, and enough for a fixture to
+// script a wire herdr never sends and still pass.
+//
+// A caller wanting a different pane mutates the returned map (see
+// TestGetPaneLeavesIsAgentFalseForAShellPane) rather than restating it.
+func paneGetEnvelope(paneID string, revision int64) map[string]any {
+	return map[string]any{
+		"type": "pane_info",
+		"pane": map[string]any{
+			"pane_id": paneID, "terminal_id": "t1",
+			"workspace_id": "w1", "tab_id": "w1:t1",
+			"agent": "omp", "agent_status": "working",
+			"revision": revision,
+		},
+	}
+}
+
+// paneGetSocket answers every pane.get on a throwaway unix socket with result,
+// encoded exactly as herdr would.
+func paneGetSocket(t *testing.T, result map[string]any) string {
 	t.Helper()
 	// Not t.TempDir(): that embeds the test name and pushes the socket path
 	// past macOS's 104-byte AF_UNIX cap, which fails the listen with EINVAL.
@@ -47,15 +68,7 @@ func paneGetSocket(t *testing.T, revision int64) string {
 					if err := json.Unmarshal(sc.Bytes(), &req); err != nil {
 						return
 					}
-					b, _ := json.Marshal(map[string]any{"id": req.ID, "result": map[string]any{
-						"type": "pane_get",
-						"pane": map[string]any{
-							"pane_id": "w1:p1", "terminal_id": "t1",
-							"workspace_id": "w1", "tab_id": "w1:t1",
-							"agent": "omp", "agent_status": "working",
-							"revision": revision,
-						},
-					}})
+					b, _ := json.Marshal(map[string]any{"id": req.ID, "result": result})
 					if _, err := conn.Write(append(b, '\n')); err != nil {
 						return
 					}
@@ -67,7 +80,7 @@ func paneGetSocket(t *testing.T, revision int64) string {
 }
 
 func TestGetPaneDecodesTheNestedEnvelope(t *testing.T) {
-	got, err := herdr.New(paneGetSocket(t, 4242)).GetPane(context.Background(), "w1:p1")
+	got, err := herdr.New(paneGetSocket(t, paneGetEnvelope("w1:p1", 4242))).GetPane(context.Background(), "w1:p1")
 	if err != nil {
 		t.Fatalf("GetPane: %v", err)
 	}
@@ -78,7 +91,34 @@ func TestGetPaneDecodesTheNestedEnvelope(t *testing.T) {
 	if got.Revision != 4242 {
 		t.Fatalf("revision = %d, want 4242", got.Revision)
 	}
+	// Agent and PaneID arrive in the same object, so this assertion rides on
+	// the pane_id check above and a decode that lost Agent is caught there.
+	// The branch worth its own fixture is the opposite one, below.
 	if !got.IsAgent() {
 		t.Fatalf("agent field lost in decode: %+v", got)
+	}
+}
+
+// A pane herdr has no agent in carries no "agent" key at all — "Most panes in
+// a typical session are plain shells; only agent panes are worth tracking"
+// (PaneInfo.IsAgent's own doc). This is the branch the poll loop's callers
+// depend on, and the reason the assertion above cannot carry it: Agent and
+// PaneID are set by the same object, so the page that empties one empties the
+// other and the pane_id check fires first.
+func TestGetPaneLeavesIsAgentFalseForAShellPane(t *testing.T) {
+	env := paneGetEnvelope("w1:p1", 7)
+	delete(env["pane"].(map[string]any), "agent")
+
+	got, err := herdr.New(paneGetSocket(t, env)).GetPane(context.Background(), "w1:p1")
+	if err != nil {
+		t.Fatalf("GetPane: %v", err)
+	}
+	if got.IsAgent() {
+		t.Fatalf("IsAgent() = true for a pane with no agent key: %+v", got)
+	}
+	// A shell pane still carries the revision the poll loop compares, so the
+	// gate must work for it too — shells are the majority of panes.
+	if got.Revision != 7 {
+		t.Fatalf("revision = %d, want 7", got.Revision)
 	}
 }

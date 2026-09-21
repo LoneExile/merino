@@ -37,6 +37,11 @@ type Client struct {
 	DialTimeout time.Duration
 	// CallTimeout bounds a single request/response. Zero means 15s.
 	CallTimeout time.Duration
+	// PollInterval overrides how often StreamPaneOutput re-checks a watched
+	// pane. Zero means PaneOutputPollInterval. A remote endpoint reached over
+	// an SSH forward pays ~110ms per call regardless of payload size, so it
+	// polls slower than a local one.
+	PollInterval time.Duration
 }
 
 // New returns a Client for the given socket path. An empty path uses
@@ -345,11 +350,29 @@ func (c *Client) readPane(ctx context.Context, paneID string, source ReadSource,
 	return resp.Read, nil
 }
 
-// PaneOutputPollInterval is how often StreamPaneOutput re-reads a watched
-// pane. A pane.read over the unix socket measures ~1.4ms p50, so one watcher
-// costs roughly 0.5% of a core — cheap enough to sit well inside human
-// perception without an accelerator.
+// PaneOutputPollInterval is how often StreamPaneOutput re-checks a watched
+// pane. A pane.get over a local unix socket measures ~0.1ms and a pane.read
+// ~1.4ms, so a local watcher is free at this cadence. Over an SSH-forwarded
+// socket every call costs ~110ms fixed regardless of payload, which is what
+// Client.PollInterval exists to relax.
 const PaneOutputPollInterval = 300 * time.Millisecond
+
+// paneOutputFullReadEvery forces an unconditional read every Nth tick.
+//
+// The poll loop's gate trusts herdr to move a pane's revision whenever its
+// screen changes. That held for every tracked pane measured, but it is an
+// assumption about another process: a pane whose revision stalls would
+// otherwise never update again, and this belt bounds that to N ticks of
+// staleness. (Panes that report revision 0 are not tracked at all and are
+// excluded from the gate entirely — see the loop.)
+const paneOutputFullReadEvery = 20
+
+func (c *Client) pollInterval() time.Duration {
+	if c.PollInterval > 0 {
+		return c.PollInterval
+	}
+	return PaneOutputPollInterval
+}
 
 // StreamPaneOutput calls onText with a pane's visible text whenever it
 // changes, until ctx is cancelled. It returns nil on cancellation.
@@ -387,16 +410,65 @@ func (c *Client) StreamPaneOutputANSI(ctx context.Context, paneID string, lines 
 // differs — applies identically to both, since it compares whatever bytes
 // came back regardless of what they encode.
 func (c *Client) streamPaneOutput(ctx context.Context, paneID string, lines int, format ReadFormat, onText func(string)) error {
-	tick := time.NewTicker(PaneOutputPollInterval)
+	tick := time.NewTicker(c.pollInterval())
 	defer tick.Stop()
 
 	var last string
 	var primed bool
+	var lastRev int64
+	var ticks int
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-tick.C:
+		}
+		ticks++
+
+		// Ask the cheap question first, on every tick. Neither call below
+		// treats a failure as fatal: herdr restarts routinely and a pane can
+		// close under us, so a watcher that keeps polling recovers when it
+		// returns.
+		//
+		// A failed pane.get falls through to the read rather than skipping
+		// the tick. Skipping would freeze the view for as long as the failure
+		// lasts — and the belt could not recover it, because this error
+		// returns before the belt is consulted. For a pane that has actually
+		// gone, the read fails the same way and the tick costs one extra
+		// round trip; for a pane whose pane.get is failing on its own, the
+		// read is what keeps it on screen.
+		info, err := c.GetPane(ctx, paneID)
+		switch {
+		case err != nil && ctx.Err() != nil:
+			return nil
+		case err != nil:
+			// Forget the baseline: 0 is the value the gate refuses to skip
+			// on, so the next successful pane.get adopts a fresh revision
+			// instead of comparing against one that has since moved.
+			lastRev = 0
+		case primed && info.Revision != 0 && info.Revision == lastRev && ticks%paneOutputFullReadEvery != 0:
+			// The gate. Not applied before the stream has primed (the first
+			// payload must arrive without waiting for a change) or on a belt
+			// tick (paneOutputFullReadEvery above).
+			//
+			// Nor to a pane reporting revision 0, which is herdr saying it is
+			// not tracking this pane: measured in a throwaway session, a plain
+			// shell pane held revision 0 through three writes while its
+			// visible text grew each time (616 -> 747 -> 878 bytes, the later
+			// of two runs). Gating on an unchanged zero would hand every shell
+			// pane — most panes in a session — to the belt, six seconds stale
+			// at the shipped cadence, so those panes read every tick: what
+			// every pane did before this gate existed.
+			continue
+		default:
+			// The baseline comes from here, not from the read below.
+			// pane.read reports its own revision as 0 — measured against
+			// herdr 0.9.0 for both read sources, both line windows and both
+			// an idle and a working pane — so a baseline taken from the read
+			// never equals the live revision, the gate never skips, and every
+			// tick pays for a full read plus the pane.get that was supposed
+			// to prevent it.
+			lastRev = info.Revision
 		}
 
 		r, err := c.readPane(ctx, paneID, ReadRecent, lines, format)
@@ -404,8 +476,6 @@ func (c *Client) streamPaneOutput(ctx context.Context, paneID string, lines int,
 			if ctx.Err() != nil {
 				return nil
 			}
-			// herdr restarts routinely and a pane can close under us. Neither
-			// is fatal to a watcher: keep polling and recover when it returns.
 			continue
 		}
 		if primed && r.Text == last {
