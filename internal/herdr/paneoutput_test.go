@@ -14,6 +14,14 @@ import (
 	"github.com/LoneExile/merino/internal/herdr"
 )
 
+// errorFrame is herdr's failure envelope, captured from a live server: a pane
+// it cannot answer for gets {"id":…,"error":{"code":…,"message":…}}.
+func errorFrame(id, code, message string) map[string]any {
+	return map[string]any{"id": id, "error": map[string]any{
+		"code": code, "message": message,
+	}}
+}
+
 // paneRevision is the revision the fake's pane.get starts at.
 //
 // It is deliberately NOT zero, and deliberately not equal to what the fake's
@@ -56,6 +64,12 @@ type scriptedPane struct {
 	// getErr makes pane.get answer with herdr's pane_not_found failure while
 	// pane.read keeps serving the screen.
 	getErr bool
+	// failNextRead makes the next pane.read call fail.
+	failNextRead bool
+	// stageFailure arms the sequence stageReadFailure describes; staged
+	// records that it has fired.
+	stageFailure bool
+	staged       bool
 	// params records each pane.read call's raw request params, in call
 	// order, so a test can assert on the wire shape (format, strip_ansi)
 	// rather than only on the text a call returns.
@@ -135,6 +149,20 @@ func (p *scriptedPane) failGets() {
 	p.getErr = true
 }
 
+// stageReadFailure sets up the sequence TestStreamRereadsAfterAFailedRead
+// needs. Every step is settled by call order rather than by racing the ticker:
+// the first read is served, the screen then changes, and the read for that
+// change fails.
+//
+// The order matters. A failure on the very first read would prove nothing: the
+// loop cannot skip before it has primed, so both a baseline committed early and
+// one committed late would read again on the next tick.
+func (p *scriptedPane) stageReadFailure() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.stageFailure = true
+}
+
 // allParams returns every pane.read call's raw request params, in call
 // order.
 func (p *scriptedPane) allParams() []json.RawMessage {
@@ -161,15 +189,31 @@ func (p *scriptedPane) serve(conn net.Conn) {
 		case "pane.read":
 			p.mu.Lock()
 			p.params = append(p.params, req.Params)
+			fail := p.failNextRead
+			p.failNextRead = false
 			p.mu.Unlock()
-			resp = map[string]any{"id": req.ID, "result": map[string]any{
-				"read": map[string]any{
-					"type": "pane_read", "text": p.next(),
-					// What the real server sends, and what a baseline must
-					// not be taken from. See paneReadRevision.
-					"revision": paneReadRevision,
-				},
-			}}
+			if fail {
+				resp = errorFrame(req.ID, "pane_not_found", "pane w1:p1 not found")
+			} else {
+				text := p.next()
+				resp = map[string]any{"id": req.ID, "result": map[string]any{
+					"read": map[string]any{
+						"type": "pane_read", "text": text,
+						// What the real server sends, and what a baseline must
+						// not be taken from. See paneReadRevision.
+						"revision": paneReadRevision,
+					},
+				}}
+				p.mu.Lock()
+				if p.stageFailure && !p.staged {
+					// The screen changed again the moment this read
+					// returned, and the read for that change will fail.
+					p.staged = true
+					p.revision++
+					p.failNextRead = true
+				}
+				p.mu.Unlock()
+			}
 		case "pane.get":
 			p.mu.Lock()
 			p.gets++
@@ -177,10 +221,7 @@ func (p *scriptedPane) serve(conn net.Conn) {
 			bad := p.getErr
 			p.mu.Unlock()
 			if bad {
-				// herdr's real failure frame, captured from a live server.
-				resp = map[string]any{"id": req.ID, "error": map[string]any{
-					"code": "pane_not_found", "message": "pane w1:p1 not found",
-				}}
+				resp = errorFrame(req.ID, "pane_not_found", "pane w1:p1 not found")
 			} else {
 				resp = map[string]any{"id": req.ID, "result": paneGetEnvelope("w1:p1", rev)}
 			}
@@ -308,9 +349,12 @@ func observeFor(t *testing.T, sock string, window time.Duration, tune func(*herd
 }
 
 // The defect this fixes: the loop re-read the whole screen every tick whether
-// or not anything changed. Measured against herdr 0.9.1, one tick at the
-// dashboard's 800-line ANSI window is ~297 KB, so a single viewer pulled
-// ~723 KB/s over an SSH-forwarded socket while the pane sat still.
+// or not anything changed. Measured live against herdr 0.9.0 (protocol 22) on
+// an idle agent pane at the dashboard's 800-line ANSI window, the ungated loop
+// made 29 reads in 9 seconds — 11,080,514 bytes, ~1.2 MiB/s per watched pane.
+// Gated, the same window and the same delivered screen cost 2 reads and
+// 787,775 bytes (~85 KiB/s). GetPane's doc comment carries the rate model
+// behind those figures.
 //
 // 500ms at 20ms a tick is ~25 ticks. With the gate: one priming read, one
 // belt read at tick 20, and a pane.get on every other tick. Without it: ~25
@@ -335,7 +379,8 @@ func TestStreamSkipsTheReadWhileRevisionIsUnchanged(t *testing.T) {
 
 // The gate must not cost liveness: when the revision moves, the new screen
 // arrives on the next tick. The bump lands at ~tick 3, well before the belt
-// at tick 20, so a pass here is the gate working and not the belt covering.
+// at tick 20, so a pass here is the gate working and not the belt covering —
+// and the tick count below is what enforces that second half.
 func TestStreamDeliversWhenRevisionMoves(t *testing.T) {
 	p := newScriptedPane(t, "one", "two")
 	go func() {
@@ -347,6 +392,16 @@ func TestStreamDeliversWhenRevisionMoves(t *testing.T) {
 	})
 	if len(got) < 2 || got[1] != "two" {
 		t.Fatalf("payloads = %v, want the second screen after the revision moved", got)
+	}
+	// Delivery by the belt needs 20 ticks, so 15 is a margin on both sides:
+	// the gate delivers in ~3 and the belt cannot deliver in fewer than 20.
+	// The read count cannot carry this assertion — a belt delivery costs only
+	// two reads, the priming one and the belt's own, because every tick
+	// between them skips before it reaches the read. Ticks are the thing that
+	// differs, so ticks are what this counts.
+	if gets := p.getCount(); gets >= 15 {
+		t.Fatalf("pane.get called %d times before the second screen arrived — the belt (tick 20) "+
+			"delivered it, not the gate", gets)
 	}
 }
 
@@ -367,7 +422,8 @@ func TestStreamForcesAFullReadPeriodicallyEvenWithAFrozenRevision(t *testing.T) 
 //
 // A live herdr leaves a plain shell pane's revision at 0 through real screen
 // changes — measured in a throwaway session, three writes grew the visible text
-// 223 -> 354 -> 485 bytes while pane.get answered 0 every time. Skipping on an
+// 616 -> 747 -> 878 bytes (the later of two runs, the same figures the loop's
+// comment cites) while pane.get answered 0 every time. Skipping on an
 // unchanged zero would hand every shell pane to the belt: one read every 20
 // ticks, i.e. a six-second-stale terminal at the shipped 300ms cadence, for
 // most panes in a session.
@@ -408,6 +464,34 @@ func TestStreamKeepsReadingWhenPaneGetFails(t *testing.T) {
 	})
 	if len(got) < 2 || got[1] != "two" {
 		t.Fatalf("payloads = %v, want the second screen even though pane.get fails", got)
+	}
+}
+
+// A read that failed must not advance the baseline.
+//
+// lastRev means "the revision whose screen we actually got". Committing the
+// revision before the read delivered leaves the next tick comparing against a
+// revision it never fetched: it skips, and the screen that arrived at that
+// revision stays invisible until the belt fires — up to 20 ticks, ~6s at the
+// shipped cadence, where a baseline committed late recovers on the very next
+// tick.
+//
+// The fixture stages exactly that sequence (see stageReadFailure): a screen is
+// served, the screen then changes, and the read for the change fails. The
+// second screen can only arrive here if the tick after the failure read again.
+//
+// 250ms is 12 ticks at 20ms — inside the belt's 20, so nothing this test
+// observes can have come from the belt.
+func TestStreamRereadsAfterAFailedRead(t *testing.T) {
+	p := newScriptedPane(t, "one", "two")
+	p.stageReadFailure()
+
+	got := observeFor(t, p.path, 250*time.Millisecond, func(c *herdr.Client) {
+		c.PollInterval = 20 * time.Millisecond
+	})
+	if len(got) < 2 || got[1] != "two" {
+		t.Fatalf("payloads = %v — the screen that arrived while the read was failing must still "+
+			"reach the caller, which needs the next tick to read again", got)
 	}
 }
 

@@ -437,15 +437,20 @@ func (c *Client) streamPaneOutput(ctx context.Context, paneID string, lines int,
 		// gone, the read fails the same way and the tick costs one extra
 		// round trip; for a pane whose pane.get is failing on its own, the
 		// read is what keeps it on screen.
+		//
+		// rev is the revision this tick's read will describe. It reaches
+		// lastRev only once that read has delivered, so lastRev cannot mean
+		// anything but "the revision whose screen we actually got" — see the
+		// read-error branch below.
+		var rev int64
+		var skip bool
 		info, err := c.GetPane(ctx, paneID)
 		switch {
 		case err != nil && ctx.Err() != nil:
 			return nil
 		case err != nil:
-			// Forget the baseline: 0 is the value the gate refuses to skip
-			// on, so the next successful pane.get adopts a fresh revision
-			// instead of comparing against one that has since moved.
-			lastRev = 0
+			// rev stays 0, which the gate refuses to skip on, so the read
+			// below happens and the baseline stays where it was.
 		case primed && info.Revision != 0 && info.Revision == lastRev && ticks%paneOutputFullReadEvery != 0:
 			// The gate. Not applied before the stream has primed (the first
 			// payload must arrive without waiting for a change) or on a belt
@@ -459,7 +464,7 @@ func (c *Client) streamPaneOutput(ctx context.Context, paneID string, lines int,
 			// pane — most panes in a session — to the belt, six seconds stale
 			// at the shipped cadence, so those panes read every tick: what
 			// every pane did before this gate existed.
-			continue
+			skip = true
 		default:
 			// The baseline comes from here, not from the read below.
 			// pane.read reports its own revision as 0 — measured against
@@ -468,7 +473,10 @@ func (c *Client) streamPaneOutput(ctx context.Context, paneID string, lines int,
 			// never equals the live revision, the gate never skips, and every
 			// tick pays for a full read plus the pane.get that was supposed
 			// to prevent it.
-			lastRev = info.Revision
+			rev = info.Revision
+		}
+		if skip {
+			continue
 		}
 
 		r, err := c.readPane(ctx, paneID, ReadRecent, lines, format)
@@ -476,8 +484,15 @@ func (c *Client) streamPaneOutput(ctx context.Context, paneID string, lines int,
 			if ctx.Err() != nil {
 				return nil
 			}
+			// lastRev is deliberately NOT advanced. Committing rev here would
+			// leave the next tick comparing against a revision whose screen
+			// never arrived: it would skip, and that screen would stay
+			// invisible until the belt fired, up to paneOutputFullReadEvery
+			// ticks later, where the loop without a gate recovered on the very
+			// next tick.
 			continue
 		}
+		lastRev = rev
 		if primed && r.Text == last {
 			continue
 		}
