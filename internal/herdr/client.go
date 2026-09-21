@@ -41,6 +41,13 @@ type Client struct {
 	// pane. Zero means PaneOutputPollInterval. A remote endpoint reached over
 	// an SSH forward pays ~110ms per call regardless of payload size, so it
 	// polls slower than a local one.
+	//
+	// The value must be positive: zero or negative means PaneOutputPollInterval.
+	// Size it against the double wait a stalled pane.get costs — a tick whose
+	// get never answers blocks for CallTimeout (15s by default) and then pays
+	// the read as well, because a failed get falls through to the read rather
+	// than skipping the tick, so the retry cadence on exactly the remote
+	// endpoints this exists for is halved for the duration of the stall.
 	PollInterval time.Duration
 }
 
@@ -281,12 +288,18 @@ func (c *Client) StartAgent(ctx context.Context, paneID, kind, name string) erro
 
 // PaneRead is the payload of a pane.read response.
 type PaneRead struct {
-	PaneID    string `json:"pane_id"`
-	Source    string `json:"source"`
-	Format    string `json:"format"`
-	Text      string `json:"text"`
-	Revision  int64  `json:"revision"`
-	Truncated bool   `json:"truncated"`
+	PaneID string `json:"pane_id"`
+	Source string `json:"source"`
+	Format string `json:"format"`
+	Text   string `json:"text"`
+	// Revision is always 0 in practice — measured against herdr 0.9.0 for
+	// both read sources, both line windows and both an idle and a working
+	// pane, 8 combinations — and nothing reads it: the poll loop's baseline
+	// comes from GetPane, because a baseline taken from here never equals the
+	// live revision and the gate then never skips. Kept because the wire
+	// carries the key.
+	Revision  int64 `json:"revision"`
+	Truncated bool  `json:"truncated"`
 }
 
 // ReadPane returns what is currently on a pane's screen, as plain text.
@@ -460,10 +473,13 @@ func (c *Client) streamPaneOutput(ctx context.Context, paneID string, lines int,
 			// not tracking this pane: measured in a throwaway session, a plain
 			// shell pane held revision 0 through three writes while its
 			// visible text grew each time (616 -> 747 -> 878 bytes, the later
-			// of two runs). Gating on an unchanged zero would hand every shell
-			// pane — most panes in a session — to the belt, six seconds stale
-			// at the shipped cadence, so those panes read every tick: what
-			// every pane did before this gate existed.
+			// of two runs). 8 of the 26 panes on the development machine
+			// reported 0, so they read every tick — no reduction for them, and
+			// the ~14x fewer bytes measured on a tracked pane applies only to
+			// tracked panes. Gating on an unchanged zero would hand those
+			// panes to the belt instead, six seconds stale at the shipped
+			// cadence, which is worse than what every pane did before this
+			// gate existed.
 			skip = true
 		default:
 			// The baseline comes from here, not from the read below.

@@ -98,6 +98,67 @@ func TestLiveListPanes(t *testing.T) {
 	t.Logf("%d panes, %d agent panes", len(all), len(agents))
 }
 
+// GetPane's request shape is the gate's only input, and nothing else covers
+// it. The two fakes in this package answer any method and ignore the params,
+// so a drifted method name or pane_id tag errors on every tick against a real
+// server; the poll loop treats a failed get as "read instead" and falls
+// through to the read (TestStreamKeepsReadingWhenPaneGetFails pins that as
+// correct), leaving the feature dead with no log line and a green gate. So pin
+// method, param and envelope against a live server.
+func TestLiveGetPanePinsTheRequestShape(t *testing.T) {
+	c := liveClient(t)
+	p := newProbePane(t, c)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	got, err := c.GetPane(ctx, p.paneID)
+	if err != nil {
+		t.Fatalf("pane.get on a pane that exists: %v", err)
+	}
+	if got.PaneID != p.paneID {
+		t.Fatalf("GetPane(%s).PaneID = %q, want the requested pane — the method "+
+			"name, the pane_id param or the result envelope has drifted",
+			p.paneID, got.PaneID)
+	}
+
+	// The gate's other input, on the pane class it applies to. The probe pane
+	// is a plain shell and a shell pane reports 0 (see the loop's comment on
+	// revision 0), so this half needs an agent pane.
+	//
+	// Asserted existentially, not per pane: the loop tolerates a pane that
+	// reports 0 by reading it every tick, so "every agent pane is tracked" is
+	// more than the feature promises — a pane can legitimately sit at 0 (it is
+	// the shell class today). What the gate needs to be alive at all is that
+	// tracked panes exist, and that is what this pins.
+	agents, err := c.ListAgentPanes(ctx)
+	if err != nil {
+		t.Fatalf("agent panes: %v", err)
+	}
+	if len(agents) == 0 {
+		t.Skip("no agent panes in session")
+	}
+	tracked := 0
+	for _, agent := range agents {
+		info, err := c.GetPane(ctx, agent.PaneID)
+		if err != nil {
+			t.Fatalf("pane.get on agent pane %s: %v", agent.PaneID, err)
+		}
+		if info.PaneID != agent.PaneID {
+			t.Fatalf("GetPane(%s).PaneID = %q, want the requested pane",
+				agent.PaneID, info.PaneID)
+		}
+		if info.Revision != 0 {
+			tracked++
+		}
+	}
+	t.Logf("%d of %d agent panes report a tracked revision", tracked, len(agents))
+	if tracked == 0 {
+		t.Fatalf("none of the %d agent panes reports a non-zero revision, so the "+
+			"poll loop's gate can never skip and every tick pays for a read",
+			len(agents))
+	}
+}
+
 // Per-pane kinds must carry a pane_id. Sending one without must be rejected,
 // and Stream must not retry a rejection forever.
 func TestLiveSubscribeRejectsPerPaneKindWithoutPaneID(t *testing.T) {

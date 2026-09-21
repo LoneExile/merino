@@ -116,8 +116,14 @@ func TestGetPaneLeavesIsAgentFalseForAShellPane(t *testing.T) {
 	if got.IsAgent() {
 		t.Fatalf("IsAgent() = true for a pane with no agent key: %+v", got)
 	}
-	// A shell pane still carries the revision the poll loop compares, so the
-	// gate must work for it too — shells are the majority of panes.
+	// The revision is decoded from that same nested object whether or not the
+	// pane has an agent, which is what this asserts. 7 is not a value a shell
+	// pane was measured to carry — a live shell pane held revision 0 while its
+	// screen changed, which is why the poll loop refuses to gate on an
+	// unchanged 0 (client.go's gate comment,
+	// TestStreamKeepsReadingAPaneWithNoTrackedRevision). The non-zero value is
+	// deliberate: a decoder that skipped the field and a field carrying 0 are
+	// indistinguishable, so asserting 0 here would assert nothing.
 	if got.Revision != 7 {
 		t.Fatalf("revision = %d, want 7", got.Revision)
 	}

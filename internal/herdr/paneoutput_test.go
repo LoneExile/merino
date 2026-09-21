@@ -423,10 +423,11 @@ func TestStreamForcesAFullReadPeriodicallyEvenWithAFrozenRevision(t *testing.T) 
 // A live herdr leaves a plain shell pane's revision at 0 through real screen
 // changes — measured in a throwaway session, three writes grew the visible text
 // 616 -> 747 -> 878 bytes (the later of two runs, the same figures the loop's
-// comment cites) while pane.get answered 0 every time. Skipping on an
-// unchanged zero would hand every shell pane to the belt: one read every 20
-// ticks, i.e. a six-second-stale terminal at the shipped 300ms cadence, for
-// most panes in a session.
+// comment cites) while pane.get answered 0 every time. Skipping on an unchanged
+// zero would hand those panes to the belt: one read every 20 ticks, i.e. a
+// six-second-stale terminal at the shipped 300ms cadence. The loop's comment
+// carries the measured share of a real session in that class and the reduction
+// that therefore does not apply to them.
 //
 // The read count is the assertion. Delivery alone would not distinguish the
 // two behaviours: the belt delivers the second screen either way inside this

@@ -10,7 +10,7 @@ import (
 // letters, digits, '-' or '_' (1-32 characters)". Verified live against
 // herdr 0.8.2 (protocol 20) — see herdr.TestLiveAgentStartRejectsInvalidName
 // — which rejects anything else with invalid_agent_name AFTER the tab has
-// been created.
+// been created, and the same live test passes against 0.9.x (protocol 22).
 var herdrAgentName = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,31}$`)
 
 func TestAgentNameFromAlwaysSatisfiesHerdr(t *testing.T) {
