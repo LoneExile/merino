@@ -142,6 +142,11 @@ type PingResult struct {
 	// but 0.9 sends values that are not flags at all — the live 0.9.0 server
 	// advertises {"endpoint_protocol_generation":1,...}, which a bool map
 	// fails to decode, taking the whole ping down with it.
+	//
+	// Read a capability with a comma-ok assertion — v, ok :=
+	// r.Capabilities["health_check"]; ok && v == true — because values are
+	// not all booleans. An absent key means the server does not advertise it,
+	// and `r.Capabilities["health_check"] == false` cannot tell that apart.
 	Capabilities map[string]any `json:"capabilities"`
 }
 
