@@ -137,7 +137,7 @@ func TestCheckCompatibleRefusesUnknownProtocolAndNamesTheSet(t *testing.T) {
 // which herdr versions every install may run. Same reason
 // internal/app/agentkinds_pin_test.go pins its list.
 func TestAcceptedProtocolsPinsTheSupportedRange(t *testing.T) {
-	want := []int{20, 22} // 20 = herdr 0.8.2, 22 = herdr 0.9.1
+	want := []int{20, 22} // 20 = herdr 0.8.2, 22 = herdr 0.9.x (0.9.0 and 0.9.1 both advertise it)
 	if !slices.Equal(herdr.AcceptedProtocols, want) {
 		t.Fatalf("accepted set is %v, want %v — moving this moves the herdr floor or ceiling for every user", herdr.AcceptedProtocols, want)
 	}
