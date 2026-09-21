@@ -22,7 +22,10 @@ package main
 import (
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 
+	"github.com/LoneExile/merino/internal/herdr"
 	"github.com/spf13/cobra"
 )
 
@@ -75,14 +78,18 @@ func root() *cobra.Command {
 func versionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
-		Short: "Print the version and the herdr protocol this build speaks",
+		Short: "Print the version and the herdr protocols this build speaks",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			// The protocol range is here because an image pinned to an old
-			// tag beside an upgraded herdr connects and then does nothing
+			// The protocol set is here because an image pinned to an old
+			// tag beside a newer herdr connects and then does nothing
 			// useful; `merinod version` should make that diagnosable without
 			// reading logs.
-			_, err := fmt.Fprintf(cmd.OutOrStdout(), "merinod %s\nherdr protocol %d\n",
-				version, supportedProtocol)
+			vers := make([]string, len(herdr.AcceptedProtocols))
+			for i, v := range herdr.AcceptedProtocols {
+				vers[i] = strconv.Itoa(v)
+			}
+			_, err := fmt.Fprintf(cmd.OutOrStdout(), "merinod %s\nherdr protocols %s\n",
+				version, strings.Join(vers, ", "))
 			return err
 		},
 	}
