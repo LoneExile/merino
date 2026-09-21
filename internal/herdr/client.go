@@ -135,10 +135,19 @@ func (c *Client) Call(ctx context.Context, method string, params, out any) error
 
 // PingResult is the server's identity and capability advertisement.
 type PingResult struct {
-	Type         string          `json:"type"`
-	Version      string          `json:"version"`
-	Protocol     int             `json:"protocol"`
-	Capabilities map[string]bool `json:"capabilities"`
+	Type     string `json:"type"`
+	Version  string `json:"version"`
+	Protocol int    `json:"protocol"`
+	// Capabilities is not map[string]bool: herdr 0.8.2 sends only booleans,
+	// but 0.9 sends values that are not flags at all — the live 0.9.0 server
+	// advertises {"endpoint_protocol_generation":1,...}, which a bool map
+	// fails to decode, taking the whole ping down with it.
+	//
+	// Read a capability with a comma-ok assertion — v, ok :=
+	// r.Capabilities["health_check"]; ok && v == true — because values are
+	// not all booleans. An absent key means the server does not advertise it,
+	// and `r.Capabilities["health_check"] == false` cannot tell that apart.
+	Capabilities map[string]any `json:"capabilities"`
 }
 
 // ErrProtocolMismatch is returned when the server speaks a protocol this
@@ -160,9 +169,9 @@ func (c *Client) CheckCompatible(ctx context.Context) (PingResult, error) {
 	if err != nil {
 		return r, err
 	}
-	if r.Protocol != Protocol {
-		return r, fmt.Errorf("%w: server speaks %d, client targets %d (herdr %s)",
-			ErrProtocolMismatch, r.Protocol, Protocol, r.Version)
+	if !ProtocolAccepted(r.Protocol) {
+		return r, fmt.Errorf("%w: server speaks %d, client accepts %v (herdr %s)",
+			ErrProtocolMismatch, r.Protocol, AcceptedProtocols, r.Version)
 	}
 	return r, nil
 }
@@ -442,10 +451,11 @@ func (c *Client) FocusPane(ctx context.Context, paneID string) error {
 // id alongside the new label.
 //
 // The field is "label", NOT "name". Verified against herdr 0.8.2's own schema
-// and a live socket: tab.rename and workspace.rename reject "name" outright
-// with `missing field \`label\``, and pane.rename — where label is optional —
-// accepts the call and silently renames nothing, which is the worse failure of
-// the two because it reports success.
+// and a live socket, and re-checked against 0.9.x's schema (protocol 22), where
+// the required sets are the same: tab.rename and workspace.rename reject "name"
+// outright with `missing field \`label\``, and pane.rename — where label is
+// optional — accepts the call and silently renames nothing, which is the worse
+// failure of the two because it reports success.
 
 type paneRenameParams struct {
 	PaneID string `json:"pane_id"`

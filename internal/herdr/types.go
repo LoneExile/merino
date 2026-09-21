@@ -1,6 +1,8 @@
 // Package herdr is a client for the herdr terminal-multiplexer socket API.
 //
-// Wire protocol (verified against herdr 0.8.2, protocol 20):
+// Wire protocol (verified against herdr 0.8.2, protocol 20, and herdr 0.9.x,
+// protocol 22; the 0.8.2 floor is fixture-pinned, the 0.9.x half is live
+// against a 0.9.0 server plus 0.9.1's own schema):
 //
 //   - Transport is a unix socket, default ~/.config/herdr/herdr.sock.
 //   - Messages are newline-delimited JSON: {"id","method","params"}.
@@ -16,12 +18,31 @@ package herdr
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 )
 
-// Protocol is the herdr socket API protocol version this client is written
-// against. Client.Ping compares it to the server and refuses a mismatch
-// rather than misbehaving against an unknown wire format.
-const Protocol = 20
+// AcceptedProtocols is the set of herdr socket API protocol versions this
+// client is written against, ascending: 20 is herdr 0.8.2, 22 is 0.9.x
+// (0.9.0 is live at 22; 0.9.1's own schema declares it).
+//
+// A set, not a single number, because Merino talks to more than one herdr:
+// a saved SSH machine can run a different version from the local one, and
+// herdr's own model is capability negotiation rather than equality ("The
+// client and server negotiate compatibility rather than requiring identical
+// versions"). Client.CheckCompatible refuses anything outside the set rather
+// than decoding an unknown wire format into silently wrong state.
+//
+// Verified shapes are identical across 20 and 22: pane.list panes carry
+// agent/agent_status/agent_session, pane.read nests {type, read:{text,…}},
+// events.subscribe acks subscription_started, and per-pane delivery is
+// pane.agent_status_changed{agent,agent_status,pane_id,workspace_id}.
+// One payload does differ: ping's capabilities object carries non-boolean
+// values on 22 (see PingResult.Capabilities).
+var AcceptedProtocols = []int{20, 22}
+
+// ProtocolAccepted reports whether this client can speak to a server
+// advertising protocol v.
+func ProtocolAccepted(v int) bool { return slices.Contains(AcceptedProtocols, v) }
 
 // AgentStatus is the OBSERVED lifecycle state of an agent, as reported by the
 // server on pane.agent_status_changed and in PaneInfo.
@@ -143,9 +164,9 @@ const (
 	SubPaneAgentDetected SubKind = "pane.agent_detected"
 
 	// Closing a tab or workspace destroys its panes but emits NO pane.closed
-	// event — only tab_closed / workspace_closed. Verified against herdr
-	// 0.8.2 (TestLiveTabCloseEmitsNoPaneClosed). Subscribe to these or panes
-	// leak in local state forever.
+	// event — only tab_closed / workspace_closed. Verified against herdr 0.8.2
+	// and again on 0.9.x (protocol 22) by TestLiveTabCloseEmitsNoPaneClosed.
+	// Subscribe to these or panes leak in local state forever.
 	SubTabClosed       SubKind = "tab.closed"
 	SubWorkspaceClosed SubKind = "workspace.closed"
 )
@@ -167,7 +188,10 @@ const (
 //   - Per-pane subscriptions deliver DOTTED names (schema:
 //     subscription_event.SubscriptionEventKind), e.g. "pane.agent_status_changed".
 //
-// Verified against a running herdr 0.8.2.
+// Verified against a running herdr 0.8.2, and re-checked on 0.9.x (protocol
+// 22): the schema still splits event.EventKind (snake_case) from
+// subscription_event.SubscriptionEventKind (dotted), and the live suite
+// observes tab_closed on a global subscription against a 22 herd.
 type EventKind string
 
 // Delivered by global subscriptions.

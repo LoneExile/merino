@@ -7,16 +7,10 @@ import (
 	"syscall"
 
 	"github.com/LoneExile/merino/internal/app"
-	"github.com/LoneExile/merino/internal/herdr"
 	"github.com/LoneExile/merino/internal/serve"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
-
-// supportedProtocol is the herdr wire version this build was written for.
-// Surfaced by `merinod version` so an image pinned beside an upgraded herdr
-// is diagnosable without reading logs.
-const supportedProtocol = herdr.Protocol
 
 // serveFlags is shared by the root command and `serve` so both accept the
 // same set — a unit file and a container ENTRYPOINT each pick a different

@@ -50,7 +50,7 @@ wherever you are.
 
 ## Install
 
-Needs [herdr](https://herdr.dev) **0.8.2 or newer** already running (socket protocol 20).
+Needs [herdr](https://herdr.dev) **0.8.2 or newer** already running, speaking socket protocol 20 or 22.
 
 **macOS** — the menu bar app, on Apple Silicon.
 
