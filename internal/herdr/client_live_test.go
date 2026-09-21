@@ -137,7 +137,7 @@ func TestLiveGetPanePinsTheRequestShape(t *testing.T) {
 	if len(agents) == 0 {
 		t.Skip("no agent panes in session")
 	}
-	tracked := 0
+	tracked, answered := 0, 0
 	for _, agent := range agents {
 		info, err := c.GetPane(ctx, agent.PaneID)
 		if err != nil {
@@ -153,15 +153,22 @@ func TestLiveGetPanePinsTheRequestShape(t *testing.T) {
 			t.Fatalf("GetPane(%s).PaneID = %q, want the requested pane",
 				agent.PaneID, info.PaneID)
 		}
+		answered++
 		if info.Revision != 0 {
 			tracked++
 		}
 	}
-	t.Logf("%d of %d agent panes report a tracked revision", tracked, len(agents))
+	t.Logf("%d of %d agent panes report a tracked revision (%d answered)", tracked, len(agents), answered)
+	if answered == 0 {
+		// Every listed agent vanished between the list and the get: that is
+		// herd churn, not evidence about revisions, and the request-shape pin
+		// above already passed on a pane this test owns.
+		t.Skipf("all %d agent panes vanished before pane.get; nothing to say about revisions", len(agents))
+	}
 	if tracked == 0 {
-		t.Fatalf("none of the %d agent panes reports a non-zero revision, so the "+
+		t.Fatalf("none of the %d agent panes that answered reports a non-zero revision, so the "+
 			"poll loop's gate can never skip and every tick pays for a read",
-			len(agents))
+			answered)
 	}
 }
 

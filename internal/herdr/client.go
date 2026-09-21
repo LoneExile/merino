@@ -463,7 +463,11 @@ func (c *Client) streamPaneOutput(ctx context.Context, paneID string, lines int,
 			return nil
 		case err != nil:
 			// rev stays 0, which the gate refuses to skip on, so the read
-			// below happens and the baseline stays where it was.
+			// below happens. If that read delivers, it commits 0 as the
+			// baseline — deliberately not the old value: the old value
+			// belongs to a screen this tick could not confirm, and a 0
+			// baseline costs exactly one extra read on the next tick before
+			// a successful pane.get re-establishes it.
 		case primed && info.Revision != 0 && info.Revision == lastRev && ticks%paneOutputFullReadEvery != 0:
 			// The gate. Not applied before the stream has primed (the first
 			// payload must arrive without waiting for a change) or on a belt
