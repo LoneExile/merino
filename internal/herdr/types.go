@@ -316,6 +316,12 @@ type paneListResult struct {
 	Panes []PaneInfo `json:"panes"`
 }
 
+// paneGetResult is the pane.get envelope. The pane nests one level deep,
+// exactly as pane.read nests under "read".
+type paneGetResult struct {
+	Pane PaneInfo `json:"pane"`
+}
+
 // WorkspaceInfo is a single herdr workspace, as returned by workspace.list.
 type WorkspaceInfo struct {
 	WorkspaceID string      `json:"workspace_id"`
